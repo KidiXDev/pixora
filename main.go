@@ -4,7 +4,11 @@ import (
 	"embed"
 	_ "embed"
 	"log"
+	"net/http"
+	"pixora/internal/config"
+	"pixora/internal/db"
 	"pixora/internal/services"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -30,6 +34,34 @@ func init() {
 // logs any error that might occur.
 func main() {
 
+	// Initialize backend dependencies
+	database, err := db.New()
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer database.Close()
+
+	cfgMgr, err := config.NewManager()
+	if err != nil {
+		log.Fatalf("Failed to initialize config manager: %v", err)
+	}
+
+	thumbSvc, err := services.NewThumbnailService()
+	if err != nil {
+		log.Fatalf("Failed to initialize thumbnail service: %v", err)
+	}
+
+	indexer, err := services.NewIndexer(cfgMgr, database, thumbSvc)
+	if err != nil {
+		log.Fatalf("Failed to initialize indexer: %v", err)
+	}
+	defer indexer.Close()
+
+	// Initial scan in background
+	go indexer.ScanAll()
+
+	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer)
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -39,10 +71,29 @@ func main() {
 		Name:        "pixora",
 		Description: "High Performance Image Browser For AI Gen",
 		Services: []application.Service{
-			application.NewService(&services.GreetService{}),
+			application.NewService(gallerySvc),
+			application.NewService(&services.GreetService{}), // can be removed eventually
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
+			Middleware: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Serve thumbnails from the cache directory
+					if strings.HasPrefix(r.URL.Path, "/thumbs/") {
+						http.StripPrefix("/thumbs/", http.FileServer(http.Dir(thumbSvc.CacheDir()))).ServeHTTP(w, r)
+						return
+					}
+					// Serve original images from disk securely via path query param
+					if strings.HasPrefix(r.URL.Path, "/image/") {
+						imagePath := r.URL.Query().Get("path")
+						if imagePath != "" {
+							http.ServeFile(w, r, imagePath)
+							return
+						}
+					}
+					next.ServeHTTP(w, r)
+				})
+			},
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -81,7 +132,7 @@ func main() {
 	}()
 
 	// Run the application. This blocks until the application has been exited.
-	err := app.Run()
+	err = app.Run()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
