@@ -1,5 +1,5 @@
 import { Browser } from '@wailsio/runtime';
-import { motion } from 'framer-motion';
+import { memo } from 'react';
 import { ImageRecord } from '../../../bindings/pixora/internal/db/models';
 
 interface ImageTileProps {
@@ -9,7 +9,7 @@ interface ImageTileProps {
   layoutMode: 'compact' | 'comfortable' | 'spacious';
 }
 
-export function ImageTile({
+export const ImageTile = memo(function ImageTile({
   image,
   isSelected,
   onClick,
@@ -33,11 +33,7 @@ export function ImageTile({
   };
 
   return (
-    <motion.div
-      layoutId={`image-${image.ID}`}
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+    <div
       onClick={onClick}
       onDoubleClick={handleDoubleClick}
       className={`relative cursor-pointer overflow-hidden rounded-md bg-muted/50 w-full ${heightClass} ${
@@ -68,13 +64,13 @@ export function ImageTile({
       <div className="absolute inset-0 bg-linear-to-tr from-transparent to-black/10 mix-blend-overlay pointer-events-none"></div>
 
       {/* Tags / Metadata icons overlay */}
-      <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100">
         {image.Model && (
           <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-md">
             {image.Model}
           </span>
         )}
       </div>
-    </motion.div>
+    </div>
   );
-}
+});
