@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"os/exec"
 	"pixora/internal/config"
 	"pixora/internal/db"
 )
@@ -61,8 +62,28 @@ func (s *GalleryService) AddFolder(path string, mode config.ScanMode) error {
 	return nil
 }
 
-// RemoveFolder removes a supervised folder. (Note: we aren't purging indexed images here immediately, 
-// though we could implement a cleanup routine later).
+// RemoveFolder removes a supervised folder and purges indexed images immediately.
 func (s *GalleryService) RemoveFolder(path string) error {
-	return s.config.RemoveFolder(path)
+	s.indexer.StopScan(path)
+	err := s.config.RemoveFolder(path)
+	if err != nil {
+		return err
+	}
+
+	// Remove images associated with this folder from DB
+	return s.db.RemoveImagesByFolder(context.Background(), path)
+}
+
+// OpenExternally opens a file using the default OS application
+func (s *GalleryService) OpenExternally(path string) error {
+	// Works on Windows
+	cmd := exec.Command("cmd", "/c", "start", "", path)
+	return cmd.Start()
+}
+
+// ShowInFolder opens the file explorer and selects the file
+func (s *GalleryService) ShowInFolder(path string) error {
+	// Works on Windows
+	cmd := exec.Command("explorer", "/select,", path)
+	return cmd.Start()
 }

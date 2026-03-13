@@ -19,7 +19,15 @@ import (
 	"pixora/internal/parser"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+type ScanStatus struct {
+	FolderPath     string `json:"folderPath"`
+	ProcessedFiles int    `json:"processedFiles"`
+	TotalFiles     int    `json:"totalFiles"`
+	IsRunning      bool   `json:"isRunning"`
+}
 
 type Indexer struct {
 	configManager *config.Manager
@@ -29,6 +37,9 @@ type Indexer struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
+	activeScans   map[string]context.CancelFunc
+	scansMu       sync.RWMutex
+	writeSem      chan struct{}
 }
 
 func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailService) (*Indexer, error) {
@@ -46,6 +57,8 @@ func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailServ
 		watcher:       watcher,
 		ctx:           ctx,
 		cancel:        cancel,
+		activeScans:   make(map[string]context.CancelFunc),
+		writeSem:      make(chan struct{}, 4), // Limit to 4 concurrent writes/processes
 	}
 
 	indexer.wg.Add(1)
@@ -69,11 +82,48 @@ func (i *Indexer) ScanAll() {
 }
 
 func (i *Indexer) ScanFolder(folder config.FolderConfig) {
+	i.scansMu.Lock()
+	if _, exists := i.activeScans[folder.Path]; exists {
+		i.scansMu.Unlock()
+		return // already scanning
+	}
+	ctx, cancel := context.WithCancel(i.ctx)
+	i.activeScans[folder.Path] = cancel
+	i.scansMu.Unlock()
+
+	defer func() {
+		i.scansMu.Lock()
+		delete(i.activeScans, folder.Path)
+		i.scansMu.Unlock()
+		if app := application.Get(); app != nil && app.Event != nil {
+			app.Event.Emit("indexing:end", folder.Path)
+		}
+	}()
+
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("indexing:start", folder.Path)
+	}
+
+	status := ScanStatus{
+		FolderPath: folder.Path,
+		IsRunning:  true,
+	}
+
+	// First pass: count files for progress if needed, or just increment
+	// For simplicity, we'll increment and emit as we go.
+	// Some users might prefer an initial count.
+
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
+		select {
+		case <-ctx.Done():
+			return filepath.SkipDir
+		default:
+		}
+
 		if err != nil {
 			return nil // skip errors
 		}
-		
+
 		if d.IsDir() {
 			if path != folder.Path && folder.ScanMode == config.ScanModeNormal {
 				return filepath.SkipDir
@@ -85,7 +135,15 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 			return nil
 		}
 
-		i.processFile(path)
+		if i.isImageFile(path) {
+			i.processFile(path)
+			status.ProcessedFiles++
+			if status.ProcessedFiles%10 == 0 { // Emit every 10 files to avoid event flood
+				if app := application.Get(); app != nil && app.Event != nil {
+					app.Event.Emit("indexing:progress", status)
+				}
+			}
+		}
 		return nil
 	})
 
@@ -94,12 +152,30 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 	}
 }
 
-func (i *Indexer) processFile(path string) {
+func (i *Indexer) StopScan(folderPath string) {
+	i.scansMu.RLock()
+	cancel, exists := i.activeScans[folderPath]
+	i.scansMu.RUnlock()
+	if exists {
+		cancel()
+	}
+}
+
+func (i *Indexer) isImageFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+	return ext == ".png" || ext == ".jpg" || ext == ".jpeg"
+}
+
+func (i *Indexer) processFile(path string) {
+	if !i.isImageFile(path) {
 		return
 	}
 
+	// Acquire semaphore
+	i.writeSem <- struct{}{}
+	defer func() { <-i.writeSem }()
+
+	ext := strings.ToLower(filepath.Ext(path))
 	info, err := os.Stat(path)
 	if err != nil {
 		return
@@ -156,7 +232,7 @@ func (i *Indexer) processFile(path string) {
 	}
 }
 
-// calculateFastHash computes a fast hash using leading 64KB and file size 
+// calculateFastHash computes a fast hash using leading 64KB and file size
 // to avoid stalling on large image headers
 func (i *Indexer) calculateFastHash(path string, info os.FileInfo) (string, error) {
 	f, err := os.Open(path)
@@ -167,10 +243,10 @@ func (i *Indexer) calculateFastHash(path string, info os.FileInfo) (string, erro
 
 	buf := make([]byte, 64*1024)
 	n, _ := io.ReadFull(f, buf)
-	
+
 	h := sha256.New()
 	h.Write(buf[:n])
-	
+
 	size := fmt.Sprintf("%d", info.Size())
 	h.Write([]byte(size))
 
@@ -187,23 +263,23 @@ func (i *Indexer) watchLoop() {
 			if !ok {
 				return
 			}
-			
+
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) {
 				time.Sleep(100 * time.Millisecond) // simple debounce
-				
+
 				info, err := os.Stat(event.Name)
 				if err == nil {
 					if info.IsDir() {
 						cfg := i.configManager.GetConfig()
 						isWalkMode := false
-						
+
 						for _, folder := range cfg.Folders {
 							if strings.HasPrefix(event.Name, folder.Path) && folder.ScanMode == config.ScanModeWalk {
 								isWalkMode = true
 								break
 							}
 						}
-						
+
 						if isWalkMode {
 							i.watcher.Add(event.Name)
 							go i.ScanFolder(config.FolderConfig{Path: event.Name, ScanMode: config.ScanModeWalk})

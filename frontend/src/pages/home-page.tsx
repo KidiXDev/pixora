@@ -1,5 +1,6 @@
 import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { MetadataInspector } from '@/components/gallery/metadata-inspector';
+import { FullImageViewer } from '@/components/gallery/full-image-viewer';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useKeyboardNavigation } from '@/hooks/use-keyboard-navigation';
 
@@ -9,9 +10,17 @@ export default function HomePage() {
   
   return (
     <div className="flex h-full w-full bg-background relative overflow-hidden">
-      {/* Main Virtualized Grid */}
-      <div className={`transition-all duration-300 ease-in-out h-full ${selectedImageId ? 'w-2/3 border-r border-border/50' : 'w-full'}`}>
-        <GalleryGrid />
+      {/* Main Content Area (Grid / Full Image) */}
+      <div className={`transition-all duration-300 ease-in-out h-full relative ${selectedImageId ? 'w-2/3 border-r border-border/50' : 'w-full'}`}>
+        {/* We keep grid in DOM always to preserve scroll state */}
+        <div className={`absolute inset-0 transition-opacity duration-300 ${selectedImageId ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <GalleryGrid />
+        </div>
+        
+        {/* Full Image Viewer overlay */}
+        <div className={`absolute inset-0 transition-opacity duration-300 ${selectedImageId ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <FullImageViewer />
+        </div>
       </div>
 
       {/* Metadata Slide-in Panel */}

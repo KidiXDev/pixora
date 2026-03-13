@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Settings, LayoutGrid, LayoutList, LayoutPanelLeft } from 'lucide-react';
+import { Search, Settings, LayoutGrid, LayoutList, LayoutPanelLeft, Loader2 } from 'lucide-react';
 import { useGalleryStore } from '../../stores/gallery-store';
+import { useIndexingStore } from '@/stores/indexing-store';
 import { Input } from '../ui/input';
 import { useDebounce } from 'use-debounce';
 
 export function TopBar() {
   const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } = useGalleryStore();
+  const { activeScans, getTotalProcessed } = useIndexingStore();
   const location = useLocation();
   
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [debouncedQuery] = useDebounce(localQuery, 300);
+
+  const isIndexing = Object.values(activeScans).length > 0;
+  const totalProcessed = getTotalProcessed();
 
   useEffect(() => {
     setSearchQuery(debouncedQuery);
@@ -33,6 +38,12 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
+        {isIndexing && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary border border-primary/30 mr-2 text-xs font-medium animate-in fade-in zoom-in duration-300">
+            <Loader2 size={14} className="animate-spin" />
+            {totalProcessed > 0 ? `Indexing ${totalProcessed} files...` : 'Indexing...'}
+          </div>
+        )}
         {location.pathname === '/' && (
           <div className="flex items-center gap-1 rounded-md bg-input/50 p-1 border border-white/5 mr-4">
             <button

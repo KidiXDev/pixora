@@ -1,26 +1,23 @@
 import { useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useGalleryStore } from '@/stores/gallery-store';
-import { GetImages } from '../../../bindings/pixora/internal/services/galleryservice';
 import { ImageTile } from './image-tile';
+import { Loader2 } from 'lucide-react';
 
 export function GalleryGrid() {
-  const { images, setImages, searchQuery, layoutMode, selectedImageId, setSelectedImageId } = useGalleryStore();
+  const { 
+    images, searchQuery, layoutMode, 
+    selectedImageId, setSelectedImageId, 
+    fetchImages, fetchNextPage, hasMore, isLoading 
+  } = useGalleryStore();
   const parentRef = useRef<HTMLDivElement>(null);
   
   // Columns based on layout mode
   const columns = layoutMode === 'compact' ? 6 : layoutMode === 'comfortable' ? 4 : 3;
 
   useEffect(() => {
-    // Initial fetch
-    let active = true;
-    GetImages(searchQuery, 0, 100).then((res: { images?: unknown[]; totalCount?: number } | null) => {
-      if (active && res) {
-        setImages((res.images as import('../../../bindings/pixora/internal/db/models').ImageRecord[]) || [], res.totalCount || 0);
-      }
-    });
-    return () => { active = false; };
-  }, [searchQuery, setImages]);
+    fetchImages();
+  }, [searchQuery, fetchImages]);
 
   // Virtualizer for the grid rows
   const rowVirtualizer = useVirtualizer({
@@ -29,6 +26,18 @@ export function GalleryGrid() {
     estimateSize: () => (layoutMode === 'compact' ? 140 : layoutMode === 'comfortable' ? 200 : 260),
     overscan: 5,
   });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  // Infinite scroll detection
+  useEffect(() => {
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+
+    if (lastItem.index >= Math.ceil(images.length / columns) - 2 && hasMore && !isLoading) {
+      fetchNextPage();
+    }
+  }, [virtualItems, images.length, columns, hasMore, isLoading, fetchNextPage]);
 
   return (
     <div ref={parentRef} className="h-full w-full overflow-auto p-4 custom-scrollbar">
@@ -78,6 +87,11 @@ export function GalleryGrid() {
               })}
             </div>
           ))}
+        </div>
+      )}
+      {isLoading && (
+        <div className="flex justify-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       )}
     </div>

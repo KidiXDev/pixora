@@ -10,6 +10,7 @@ import { useConfigStore } from '@/stores/config-store';
 import { Dialogs } from '@wailsio/runtime';
 import { FolderPlus, Info, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useConfirmation } from '@/components/providers/confirmation-provider';
 import {
   FolderConfig,
   ScanMode
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const { config, loadConfig, addFolder, removeFolder, isLoading } =
     useConfigStore();
   const [newMode, setNewMode] = useState<ScanMode>(ScanMode.ScanModeNormal);
+  const confirm = useConfirmation();
 
   useEffect(() => {
     loadConfig();
@@ -132,7 +134,16 @@ export default function SettingsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeFolder(folder.path)}
+                      onClick={async () => {
+                        const isConfirmed = await confirm.confirm({
+                          title: "Remove Folder",
+                          description: "Are you sure you want to remove this folder? All associated cached data will be deleted from the database.",
+                          variant: "destructive"
+                        });
+                        if (isConfirmed) {
+                          removeFolder(folder.path);
+                        }
+                      }}
                       className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
                     >
                       <Trash2 size={18} />

@@ -43,10 +43,16 @@ func New() (*DB, error) {
 	dbPath := filepath.Join(pixoraDir, "pixora.db")
 
 	// Open database with foreign keys and WAL mode for better concurrency
-	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	// Added busy_timeout to handle "database is locked" errors
+	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_busy_timeout=5000"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+
+	// Limit to 1 open connection to avoid concurrent writers conflicting on the lock,
+	// while WAL mode allows concurrent readers.
+	db.SetMaxOpenConns(1)
 
 	if err := db.Ping(); err != nil {
 		return nil, err
@@ -151,6 +157,14 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 func (d *DB) RemoveImage(ctx context.Context, path string) error {
 	query := `DELETE FROM images WHERE path = ?;`
 	_, err := d.db.ExecContext(ctx, query, path)
+	return err
+}
+
+// RemoveImagesByFolder removes all images that start with the given folder path.
+func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) error {
+	query := `DELETE FROM images WHERE path LIKE ?;`
+	searchPath := folderPath + "%"
+	_, err := d.db.ExecContext(ctx, query, searchPath)
 	return err
 }
 

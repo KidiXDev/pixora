@@ -57,8 +57,6 @@ func main() {
 	}
 	defer indexer.Close()
 
-	// Initial scan in background
-	go indexer.ScanAll()
 
 	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer)
 
@@ -126,10 +124,15 @@ func main() {
 	go func() {
 		for {
 			now := time.Now().Format(time.RFC1123)
-			app.Event.Emit("time", now)
+			if app.Event != nil {
+				app.Event.Emit("time", now)
+			}
 			time.Sleep(time.Second)
 		}
 	}()
+
+	// Initial scan in background once app is ready
+	go indexer.ScanAll()
 
 	// Run the application. This blocks until the application has been exited.
 	err = app.Run()

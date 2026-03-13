@@ -39,11 +39,24 @@ export function GetImages(query: string, offset: number, limit: number): $Cancel
 }
 
 /**
- * RemoveFolder removes a supervised folder. (Note: we aren't purging indexed images here immediately,
- * though we could implement a cleanup routine later).
+ * OpenExternally opens a file using the default OS application
+ */
+export function OpenExternally(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2481728976, path);
+}
+
+/**
+ * RemoveFolder removes a supervised folder and purges indexed images immediately.
  */
 export function RemoveFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(3664983788, path);
+}
+
+/**
+ * ShowInFolder opens the file explorer and selects the file
+ */
+export function ShowInFolder(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3474754050, path);
 }
 
 // Private type creation functions
