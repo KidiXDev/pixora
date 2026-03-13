@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useGalleryStore } from '@/stores/gallery-store';
-import { Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
+import { useState } from 'react';
 import {
   OpenExternally,
   ShowInFolder
@@ -8,15 +9,17 @@ import {
 
 export function MetadataInspector() {
   const { images, selectedImageId, setSelectedImageId } = useGalleryStore();
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   if (!selectedImageId) return null;
 
   const image = images.find((img) => img.ID === selectedImageId);
   if (!image) return null;
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
-    // Could add a toast here
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const openDirectory = async () => {
@@ -102,9 +105,9 @@ export function MetadataInspector() {
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0"
-              onClick={() => copyToClipboard(image.Prompt)}
+              onClick={() => copyToClipboard(image.Prompt, 'prompt')}
             >
-              <Copy size={12} />
+              {copiedId === 'prompt' ? <Check size={12} /> : <Copy size={12} />}
             </Button>
           </div>
           <div className="text-sm bg-muted/30 p-3 rounded-lg border border-white/5 break-all font-sans leading-relaxed">
@@ -121,9 +124,15 @@ export function MetadataInspector() {
                 variant="ghost"
                 size="sm"
                 className="h-6 w-6 p-0"
-                onClick={() => copyToClipboard(image.NegativePrompt)}
+                onClick={() =>
+                  copyToClipboard(image.NegativePrompt, 'negative')
+                }
               >
-                <Copy size={12} />
+                {copiedId === 'negative' ? (
+                  <Check size={12} />
+                ) : (
+                  <Copy size={12} />
+                )}
               </Button>
             </div>
             <div className="text-sm bg-destructive/5 text-destructive-foreground/80 p-3 rounded-lg border border-destructive/10 break-all font-sans leading-relaxed">
@@ -159,10 +168,14 @@ export function MetadataInspector() {
               <span className="font-mono truncate">{image.Seed || '-'}</span>
               {image.Seed && (
                 <button
-                  onClick={() => copyToClipboard(image.Seed)}
+                  onClick={() => copyToClipboard(image.Seed, 'seed')}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
                 >
-                  <Copy size={12} />
+                  {copiedId === 'seed' ? (
+                    <Check size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
                 </button>
               )}
             </div>
@@ -196,10 +209,14 @@ export function MetadataInspector() {
               </span>
               {image.Hash && (
                 <button
-                  onClick={() => copyToClipboard(image.Hash)}
+                  onClick={() => copyToClipboard(image.Hash, 'hash')}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
                 >
-                  <Copy size={12} />
+                  {copiedId === 'hash' ? (
+                    <Check size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
                 </button>
               )}
             </div>
@@ -218,11 +235,11 @@ export function MetadataInspector() {
             lines.push(
               `Steps: 20, Sampler: ${image.Sampler}, CFG scale: ${image.CfgScale}, Seed: ${image.Seed}, Size: ${image.Width}x${image.Height}, Model: ${image.Model}`
             );
-            copyToClipboard(lines.join('\n'));
+            copyToClipboard(lines.join('\n'), 'all');
           }}
         >
-          <Copy size={14} />
-          Copy Generation Data
+          {copiedId === 'all' ? <Check size={14} /> : <Copy size={14} />}
+          {copiedId === 'all' ? 'Copied!' : 'Copy Generation Data'}
         </Button>
       </div>
     </div>

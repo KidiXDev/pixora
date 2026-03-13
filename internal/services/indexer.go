@@ -2,22 +2,23 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"pixora/internal/config"
 	"pixora/internal/db"
 	"pixora/internal/parser"
 
+	"github.com/zeebo/xxh3"
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -27,6 +28,11 @@ type ScanStatus struct {
 	ProcessedFiles int    `json:"processedFiles"`
 	TotalFiles     int    `json:"totalFiles"`
 	IsRunning      bool   `json:"isRunning"`
+}
+
+type thumbnailJob struct {
+	path string
+	hash string
 }
 
 type Indexer struct {
@@ -40,6 +46,8 @@ type Indexer struct {
 	activeScans   map[string]context.CancelFunc
 	scansMu       sync.RWMutex
 	writeSem      chan struct{}
+	thumbSem      chan struct{}
+	thumbJobs     chan thumbnailJob
 }
 
 func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailService) (*Indexer, error) {
@@ -58,11 +66,19 @@ func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailServ
 		ctx:           ctx,
 		cancel:        cancel,
 		activeScans:   make(map[string]context.CancelFunc),
-		writeSem:      make(chan struct{}, 4), // Limit to 4 concurrent writes/processes
+		writeSem:      make(chan struct{}, max(4, min(runtime.NumCPU(), 12))),
+		thumbSem:      make(chan struct{}, max(2, min(runtime.NumCPU()/2, 4))),
+		thumbJobs:     make(chan thumbnailJob, 256),
 	}
 
 	indexer.wg.Add(1)
 	go indexer.watchLoop()
+
+	thumbWorkers := max(2, min(runtime.NumCPU()/2, 4))
+	for range make([]struct{}, thumbWorkers) {
+		indexer.wg.Add(1)
+		go indexer.thumbnailWorker()
+	}
 
 	return indexer, nil
 }
@@ -109,11 +125,62 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 		IsRunning:  true,
 	}
 
-	// First pass: count files for progress if needed, or just increment
-	// For simplicity, we'll increment and emit as we go.
-	// Some users might prefer an initial count.
+	knownStates, err := i.database.GetImageFileStatesByFolder(ctx, folder.Path)
+	if err != nil {
+		log.Printf("Failed preloading file states for %s: %v", folder.Path, err)
+		knownStates = map[string]db.ImageRecord{}
+	}
 
-	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
+	workerCount := max(2, min(runtime.NumCPU(), cap(i.writeSem)))
+	paths := make(chan string, workerCount*4)
+	var processed atomic.Int64
+	var totalFiles atomic.Int64
+	var lastEmitNs atomic.Int64 // nanosecond timestamp of last progress emit
+	var workers sync.WaitGroup
+
+	// emitProgress fires at most once every 50 ms using a CAS gate so only
+	// one goroutine wins the race and the event bus is never flooded.
+	emitProgress := func() {
+		now := time.Now().UnixNano()
+		last := lastEmitNs.Load()
+		const minIntervalNs = 50_000_000 // 50 ms
+		if now-last >= minIntervalNs && lastEmitNs.CompareAndSwap(last, now) {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("indexing:progress", ScanStatus{
+					FolderPath:     folder.Path,
+					ProcessedFiles: int(processed.Load()),
+					TotalFiles:     int(totalFiles.Load()),
+					IsRunning:      true,
+				})
+			}
+		}
+	}
+
+	for range make([]struct{}, workerCount) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for path := range paths {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				var stored *db.ImageRecord
+				if img, ok := knownStates[path]; ok {
+					copy := img
+					stored = &copy
+				}
+
+				i.processFile(path, stored)
+				processed.Add(1)
+				emitProgress()
+			}
+		}()
+	}
+
+	err = filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
 		select {
 		case <-ctx.Done():
 			return filepath.SkipDir
@@ -136,16 +203,23 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 		}
 
 		if i.isImageFile(path) {
-			i.processFile(path)
-			status.ProcessedFiles++
-			if status.ProcessedFiles%10 == 0 { // Emit every 10 files to avoid event flood
-				if app := application.Get(); app != nil && app.Event != nil {
-					app.Event.Emit("indexing:progress", status)
-				}
+			totalFiles.Add(1)
+			select {
+			case <-ctx.Done():
+				return filepath.SkipDir
+			case paths <- path:
 			}
 		}
 		return nil
 	})
+	close(paths)
+	workers.Wait()
+	status.ProcessedFiles = int(processed.Load())
+	status.TotalFiles = int(totalFiles.Load())
+	status.IsRunning = false
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("indexing:progress", status)
+	}
 
 	if err != nil {
 		log.Printf("Failed scanning folder %s: %v", folder.Path, err)
@@ -161,25 +235,44 @@ func (i *Indexer) StopScan(folderPath string) {
 	}
 }
 
+// StopAllScans cancels all currently running folder scans.
+func (i *Indexer) StopAllScans() {
+	i.scansMu.RLock()
+	cancels := make([]context.CancelFunc, 0, len(i.activeScans))
+	for _, cancel := range i.activeScans {
+		cancels = append(cancels, cancel)
+	}
+	i.scansMu.RUnlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
 func (i *Indexer) isImageFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".png" || ext == ".jpg" || ext == ".jpeg"
 }
 
-func (i *Indexer) processFile(path string) {
+func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 	if !i.isImageFile(path) {
 		return
 	}
-
-	// Acquire semaphore
-	i.writeSem <- struct{}{}
-	defer func() { <-i.writeSem }()
 
 	ext := strings.ToLower(filepath.Ext(path))
 	info, err := os.Stat(path)
 	if err != nil {
 		return
 	}
+
+	modifiedUnixNs := info.ModTime().UnixNano()
+	if stored != nil && stored.FileSize == info.Size() && stored.ModifiedUnixNs == modifiedUnixNs {
+		return
+	}
+
+	// Acquire semaphore only when a write is actually needed.
+	i.writeSem <- struct{}{}
+	defer func() { <-i.writeSem }()
 
 	hash, err := i.calculateFastHash(path, info)
 	if err != nil {
@@ -207,6 +300,8 @@ func (i *Indexer) processFile(path string) {
 	record := db.ImageRecord{
 		Path:           path,
 		Hash:           hash,
+		FileSize:       info.Size(),
+		ModifiedUnixNs: modifiedUnixNs,
 		Prompt:         prompt,
 		NegativePrompt: negPrompt,
 		Model:          model,
@@ -224,16 +319,16 @@ func (i *Indexer) processFile(path string) {
 		return
 	}
 
-	// Generate thumbnail (this is bound to be slower, so we do it asynchronously for very large scans, but fits fine here)
-	_, err = i.thumbnailSvc.Generate(path, hash)
-	if err != nil {
-		// Log but don't fail parsing
-		log.Printf("Failed generating thumbnail for %s: %v", path, err)
+	select {
+	case <-i.ctx.Done():
+		return
+	case i.thumbJobs <- thumbnailJob{path: path, hash: hash}:
 	}
 }
 
-// calculateFastHash computes a fast hash using leading 64KB and file size
-// to avoid stalling on large image headers
+// calculateFastHash computes a fast hash using leading 64KB and file size.
+// xxh3 is used instead of SHA-256 — it is extremely fast and sufficient for
+// a non-security cache key.
 func (i *Indexer) calculateFastHash(path string, info os.FileInfo) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -244,13 +339,11 @@ func (i *Indexer) calculateFastHash(path string, info os.FileInfo) (string, erro
 	buf := make([]byte, 64*1024)
 	n, _ := io.ReadFull(f, buf)
 
-	h := sha256.New()
+	h := xxh3.New()
 	h.Write(buf[:n])
+	h.Write([]byte(fmt.Sprintf("%d", info.Size())))
 
-	size := fmt.Sprintf("%d", info.Size())
-	h.Write([]byte(size))
-
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return fmt.Sprintf("%016x", h.Sum64()), nil
 }
 
 func (i *Indexer) watchLoop() {
@@ -285,11 +378,18 @@ func (i *Indexer) watchLoop() {
 							go i.ScanFolder(config.FolderConfig{Path: event.Name, ScanMode: config.ScanModeWalk})
 						}
 					} else {
-						i.processFile(event.Name)
+						i.processFile(event.Name, nil)
 					}
 				}
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				i.database.RemoveImage(context.Background(), event.Name)
+				hash, err := i.database.RemoveImageAndGetHash(context.Background(), event.Name)
+				if err != nil {
+					log.Printf("Failed removing image %s from DB: %v", event.Name, err)
+					continue
+				}
+				if err := i.thumbnailSvc.Delete(hash); err != nil {
+					log.Printf("Failed removing thumbnail for %s: %v", event.Name, err)
+				}
 			}
 		case err, ok := <-i.watcher.Errors:
 			if !ok {
@@ -298,4 +398,40 @@ func (i *Indexer) watchLoop() {
 			log.Println("error:", err)
 		}
 	}
+}
+
+func (i *Indexer) thumbnailWorker() {
+	defer i.wg.Done()
+
+	for {
+		select {
+		case <-i.ctx.Done():
+			return
+		case job := <-i.thumbJobs:
+			if job.path == "" || job.hash == "" {
+				continue
+			}
+
+			i.thumbSem <- struct{}{}
+			_, err := i.thumbnailSvc.Generate(job.path, job.hash)
+			<-i.thumbSem
+			if err != nil {
+				log.Printf("Failed generating thumbnail for %s: %v", job.path, err)
+			}
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

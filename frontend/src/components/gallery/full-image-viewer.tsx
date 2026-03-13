@@ -1,12 +1,19 @@
 import { useGalleryStore } from '@/stores/gallery-store';
+import { useEffect } from 'react';
 
 export function FullImageViewer() {
-  const { images, selectedImageId } = useGalleryStore();
-  
-  if (!selectedImageId) return null;
+  const { images, selectedImageId, setSelectedImageId, isLoading } =
+    useGalleryStore();
 
   const image = images.find((img) => img.ID === selectedImageId);
-  if (!image) return null;
+
+  useEffect(() => {
+    if (selectedImageId && !image && !isLoading) {
+      setSelectedImageId(null);
+    }
+  }, [selectedImageId, image, isLoading, setSelectedImageId]);
+
+  if (!selectedImageId || !image) return null;
 
   return (
     <div className="relative w-full h-full bg-black/95 flex flex-col">
@@ -17,11 +24,11 @@ export function FullImageViewer() {
         </div>
       </div>
 
-      <div className="flex-1 w-full h-full p-8 flex items-center justify-center overflow-hidden">
+      <div className="flex-1 w-full h-full p-8 flex items-center justify-center">
         <img
           src={`/image/?path=${encodeURIComponent(image.Path)}`}
           alt="Full preview"
-          className="max-w-full max-h-screen object-contain select-none shadow-2xl rounded-sm"
+          className="max-w-full max-h-full object-contain select-none shadow-2xl rounded-sm"
           draggable={false}
           onError={(e) => {
             const target = e.target as HTMLImageElement;

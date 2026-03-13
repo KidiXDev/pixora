@@ -3,14 +3,19 @@ import { Link, useLocation } from 'react-router-dom';
 import { Search, Settings, LayoutGrid, LayoutList, LayoutPanelLeft, Loader2 } from 'lucide-react';
 import { useGalleryStore } from '../../stores/gallery-store';
 import { useIndexingStore } from '@/stores/indexing-store';
+import { useTabsStore } from '@/stores/tabs-store';
 import { Input } from '../ui/input';
 import { useDebounce } from 'use-debounce';
 
 export function TopBar() {
   const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } = useGalleryStore();
   const { activeScans, getTotalProcessed } = useIndexingStore();
+  const { tabs, activeTabId } = useTabsStore();
   const location = useLocation();
   
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const showControls = location.pathname === '/' && activeTab && activeTab.path;
+
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [debouncedQuery] = useDebounce(localQuery, 300);
 
@@ -24,14 +29,14 @@ export function TopBar() {
   return (
     <div className="flex h-12 w-full shrink-0 items-center justify-between border-b border-border bg-card/50 backdrop-blur-md px-4 text-card-foreground transition-all">
       <div className="flex flex-1 items-center gap-4">
-        {location.pathname === '/' && (
-          <div className="relative w-64 group">
+        {showControls && (
+          <div className="relative w-full max-w-[256px] group transition-all duration-300 focus-within:max-w-[400px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <Input
               placeholder="Search prompts, models..."
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
-              className="pl-9 bg-input/50 border-white/5 focus-visible:ring-1 focus-visible:ring-primary h-9 transition-all hover:bg-input/70"
+              className="pl-9 bg-muted/30 border-transparent focus-visible:ring-1 focus-visible:ring-primary/50 h-9 transition-all hover:bg-muted/50 rounded-lg text-sm"
             />
           </div>
         )}
@@ -44,7 +49,7 @@ export function TopBar() {
             {totalProcessed > 0 ? `Indexing ${totalProcessed} files...` : 'Indexing...'}
           </div>
         )}
-        {location.pathname === '/' && (
+        {showControls && (
           <div className="flex items-center gap-1 rounded-md bg-input/50 p-1 border border-white/5 mr-4">
             <button
               onClick={() => setLayoutMode('compact')}

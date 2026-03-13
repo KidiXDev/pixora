@@ -62,3 +62,35 @@ func (s *ThumbnailService) Generate(originalPath string, hash string) (string, e
 func (s *ThumbnailService) CacheDir() string {
 	return s.cacheDir
 }
+
+func (s *ThumbnailService) Delete(hash string) error {
+	if hash == "" {
+		return nil
+	}
+
+	err := os.Remove(filepath.Join(s.cacheDir, hash+".jpg"))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
+}
+
+func (s *ThumbnailService) DeleteMany(hashes []string) error {
+	for _, hash := range hashes {
+		if err := s.Delete(hash); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ClearCache removes and recreates the thumbnail cache directory.
+func (s *ThumbnailService) ClearCache() error {
+	if err := os.RemoveAll(s.cacheDir); err != nil {
+		return err
+	}
+
+	return os.MkdirAll(s.cacheDir, 0755)
+}

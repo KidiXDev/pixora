@@ -4,5 +4,6 @@
 export {
     AppConfig,
     FolderConfig,
-    ScanMode
+    ScanMode,
+    TabConfig
 } from "./models.js";

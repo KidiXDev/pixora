@@ -7,11 +7,15 @@ import { Create as $Create } from "@wailsio/runtime";
 
 export class AppConfig {
     "folders": FolderConfig[];
+    "tabs": TabConfig[];
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
         if (!("folders" in $$source)) {
             this["folders"] = [];
+        }
+        if (!("tabs" in $$source)) {
+            this["tabs"] = [];
         }
 
         Object.assign(this, $$source);
@@ -22,9 +26,13 @@ export class AppConfig {
      */
     static createFrom($$source: any = {}): AppConfig {
         const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
+        }
+        if ("tabs" in $$parsedSource) {
+            $$parsedSource["tabs"] = $$createField1_0($$parsedSource["tabs"]);
         }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
     }
@@ -33,6 +41,7 @@ export class AppConfig {
 export class FolderConfig {
     "path": string;
     "scanMode": ScanMode;
+    "alias": string;
 
     /** Creates a new FolderConfig instance. */
     constructor($$source: Partial<FolderConfig> = {}) {
@@ -41,6 +50,9 @@ export class FolderConfig {
         }
         if (!("scanMode" in $$source)) {
             this["scanMode"] = ScanMode.$zero;
+        }
+        if (!("alias" in $$source)) {
+            this["alias"] = "";
         }
 
         Object.assign(this, $$source);
@@ -65,6 +77,45 @@ export enum ScanMode {
     ScanModeWalk = "walk",
 };
 
+export class TabConfig {
+    "id": string;
+    "label": string;
+
+    /**
+     * empty means all
+     */
+    "path": string;
+    "isWalk": boolean;
+
+    /** Creates a new TabConfig instance. */
+    constructor($$source: Partial<TabConfig> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("isWalk" in $$source)) {
+            this["isWalk"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TabConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TabConfig {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TabConfig($$parsedSource as Partial<TabConfig>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = FolderConfig.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = TabConfig.createFrom;
+const $$createType3 = $Create.Array($$createType2);

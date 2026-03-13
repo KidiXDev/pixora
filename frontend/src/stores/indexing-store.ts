@@ -17,18 +17,43 @@ interface IndexingState {
 
 export const useIndexingStore = create<IndexingState>((set, get) => ({
   activeScans: {},
-  upsertScan: (status) => set((state) => ({
-    activeScans: { ...state.activeScans, [status.folderPath]: status }
-  })),
-  startScan: (folderPath) => set((state) => ({
-    activeScans: { 
-      ...state.activeScans, 
-      [folderPath]: { folderPath, processedFiles: 0, totalFiles: 0, isRunning: true } 
+  upsertScan: (status) => {
+    // Ignore malformed event payloads to keep state updates safe.
+    if (!status?.folderPath) return;
+
+    // If the scan finished, treat it as a removal (belt-and-suspenders with indexing:end).
+    if (!status.isRunning) {
+      set((state) => {
+        const { [status.folderPath]: _, ...rest } = state.activeScans;
+        return { activeScans: rest };
+      });
+      return;
     }
-  })),
-  removeScan: (folderPath) => set((state) => {
-    const { [folderPath]: _, ...rest } = state.activeScans;
-    return { activeScans: rest };
-  }),
-  getTotalProcessed: () => Object.values(get().activeScans).reduce((acc, s) => acc + s.processedFiles, 0),
+
+    set((state) => ({
+      activeScans: { ...state.activeScans, [status.folderPath]: status }
+    }));
+  },
+  startScan: (folderPath) =>
+    set((state) => ({
+      activeScans: {
+        ...state.activeScans,
+        [folderPath]: {
+          folderPath,
+          processedFiles: 0,
+          totalFiles: 0,
+          isRunning: true
+        }
+      }
+    })),
+  removeScan: (folderPath) =>
+    set((state) => {
+      const { [folderPath]: _, ...rest } = state.activeScans;
+      return { activeScans: rest };
+    }),
+  getTotalProcessed: () =>
+    Object.values(get().activeScans).reduce(
+      (acc, s) => acc + s.processedFiles,
+      0
+    )
 }));

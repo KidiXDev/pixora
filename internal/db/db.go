@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -18,6 +19,8 @@ type ImageRecord struct {
 	ID             int64
 	Path           string
 	Hash           string
+	FileSize       int64
+	ModifiedUnixNs int64
 	Prompt         string
 	NegativePrompt string
 	Model          string
@@ -72,6 +75,8 @@ func (d *DB) initSchema() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		path TEXT UNIQUE NOT NULL,
 		hash TEXT NOT NULL,
+		file_size INTEGER NOT NULL DEFAULT 0,
+		modified_unix_ns INTEGER NOT NULL DEFAULT 0,
 		prompt TEXT,
 		negative_prompt TEXT,
 		model TEXT,
@@ -115,20 +120,60 @@ func (d *DB) initSchema() error {
 	`
 
 	_, err := d.db.Exec(schema)
+	if err != nil {
+		return err
+	}
+
+	if err := d.ensureImagesColumn("file_size", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
+	return d.ensureImagesColumn("modified_unix_ns", "INTEGER NOT NULL DEFAULT 0")
+}
+
+func (d *DB) ensureImagesColumn(name string, definition string) error {
+	rows, err := d.db.Query(`PRAGMA table_info(images);`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var colName string
+		var colType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &colName, &colType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if colName == name {
+			return nil
+		}
+	}
+
+	_, err = d.db.Exec(`ALTER TABLE images ADD COLUMN ` + name + ` ` + definition)
 	return err
 }
 
 func (d *DB) Close() error {
+	if _, err := d.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE);`); err != nil {
+		return err
+	}
+
 	return d.db.Close()
 }
 
 // InsertOrUpdateImage adds or updates an image in the database.
 func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, error) {
 	query := `
-		INSERT INTO images (path, hash, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO images (path, hash, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			hash=excluded.hash,
+			file_size=excluded.file_size,
+			modified_unix_ns=excluded.modified_unix_ns,
 			prompt=excluded.prompt,
 			negative_prompt=excluded.negative_prompt,
 			model=excluded.model,
@@ -137,20 +182,73 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 			cfg_scale=excluded.cfg_scale,
 			width=excluded.width,
 			height=excluded.height
+		WHERE
+			images.hash IS NOT excluded.hash OR
+			images.file_size IS NOT excluded.file_size OR
+			images.modified_unix_ns IS NOT excluded.modified_unix_ns OR
+			images.prompt IS NOT excluded.prompt OR
+			images.negative_prompt IS NOT excluded.negative_prompt OR
+			images.model IS NOT excluded.model OR
+			images.sampler IS NOT excluded.sampler OR
+			images.seed IS NOT excluded.seed OR
+			images.cfg_scale IS NOT excluded.cfg_scale OR
+			images.width IS NOT excluded.width OR
+			images.height IS NOT excluded.height
 		RETURNING id;
 	`
 
 	var id int64
 	err := d.db.QueryRowContext(ctx, query,
-		img.Path, img.Hash, img.Prompt, img.NegativePrompt, img.Model, img.Sampler,
+		img.Path, img.Hash, img.FileSize, img.ModifiedUnixNs, img.Prompt, img.NegativePrompt, img.Model, img.Sampler,
 		img.Seed, img.CfgScale, img.Width, img.Height,
 	).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		err = d.db.QueryRowContext(ctx, `SELECT id FROM images WHERE path = ?`, img.Path).Scan(&id)
+	}
 
 	if err != nil {
 		return 0, err
 	}
 
 	return id, nil
+}
+
+func (d *DB) GetImageFileState(ctx context.Context, path string) (*ImageRecord, error) {
+	var img ImageRecord
+	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, file_size, modified_unix_ns FROM images WHERE path = ?`, path).Scan(
+		&img.ID,
+		&img.Path,
+		&img.Hash,
+		&img.FileSize,
+		&img.ModifiedUnixNs,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &img, nil
+}
+
+func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) (map[string]ImageRecord, error) {
+	rows, err := d.db.QueryContext(ctx, `SELECT id, path, hash, file_size, modified_unix_ns FROM images WHERE path LIKE ?`, folderPath+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	states := make(map[string]ImageRecord)
+	for rows.Next() {
+		var img ImageRecord
+		if err := rows.Scan(&img.ID, &img.Path, &img.Hash, &img.FileSize, &img.ModifiedUnixNs); err != nil {
+			return nil, err
+		}
+		states[img.Path] = img
+	}
+
+	return states, nil
 }
 
 // RemoveImage removes an image by path and returns its ID if it existed.
@@ -160,44 +258,127 @@ func (d *DB) RemoveImage(ctx context.Context, path string) error {
 	return err
 }
 
+func (d *DB) RemoveImageAndGetHash(ctx context.Context, path string) (string, error) {
+	var hash string
+	err := d.db.QueryRowContext(ctx, `SELECT hash FROM images WHERE path = ?`, path).Scan(&hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+
+	if err := d.RemoveImage(ctx, path); err != nil {
+		return "", err
+	}
+
+	return hash, nil
+}
+
 // RemoveImagesByFolder removes all images that start with the given folder path.
-func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) error {
-	query := `DELETE FROM images WHERE path LIKE ?;`
+func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) ([]string, error) {
 	searchPath := folderPath + "%"
-	_, err := d.db.ExecContext(ctx, query, searchPath)
+
+	rows, err := d.db.QueryContext(ctx, `SELECT hash FROM images WHERE path LIKE ?`, searchPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	hashes := []string{}
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, hash)
+	}
+
+	if _, err := d.db.ExecContext(ctx, `DELETE FROM images WHERE path LIKE ?;`, searchPath); err != nil {
+		return nil, err
+	}
+
+	return hashes, nil
+}
+
+// ClearImages removes all indexed image rows.
+func (d *DB) ClearImages(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `DELETE FROM images;`)
 	return err
 }
 
-// SearchImages retrieves images from the database, optionally filtering with FTS5.
-func (d *DB) SearchImages(ctx context.Context, query string, offset, limit int) ([]ImageRecord, int, error) {
+func (d *DB) CheckpointWAL(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE);`)
+	return err
+}
+
+// SearchImages retrieves images from the database, optionally filtering with FTS5 and folder path.
+func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, offset, limit int) ([]ImageRecord, int, error) {
 	var total int
 	var countQuery string
 	var rowsQuery string
 	var args []interface{}
+	var countArgs []interface{}
+
+	query = strings.TrimSpace(query)
+
+	whereClause := ""
+	if folderPath != "" {
+		whereClause = " WHERE path LIKE ?"
+	}
 
 	if query == "" {
-		countQuery = `SELECT COUNT(*) FROM images`
-		rowsQuery = `SELECT id, path, hash, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at 
-					 FROM images ORDER BY added_at DESC LIMIT ? OFFSET ?`
-		args = []interface{}{limit, offset}
-		err := d.db.QueryRowContext(ctx, countQuery).Scan(&total)
+		countQuery = "SELECT COUNT(*) FROM images" + whereClause
+		if folderPath != "" {
+			countArgs = append(countArgs, folderPath+"%")
+		}
+
+		rowsQuery = "SELECT id, path, hash, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images"
+		if whereClause != "" {
+			rowsQuery += whereClause
+			args = append(args, folderPath+"%")
+		}
+		rowsQuery += " ORDER BY added_at DESC LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+
+		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 		if err != nil {
 			return nil, 0, err
 		}
 	} else {
 		// FTS5 MATCH
-		countQuery = `SELECT COUNT(*) FROM images_fts WHERE images_fts MATCH ?`
+		searchStr := buildFTSQuery(query)
+		if searchStr == "" {
+			return d.SearchImages(ctx, "", folderPath, offset, limit)
+		}
+
+		countQuery = "SELECT COUNT(*) FROM images_fts WHERE images_fts MATCH ?"
+		countArgs = nil
+		countArgs = append(countArgs, searchStr)
+
+		if folderPath != "" {
+			// Joining with images table to filter by path
+			countQuery = `SELECT COUNT(*) FROM images_fts f 
+						 JOIN images i ON f.rowid = i.id 
+						 WHERE images_fts MATCH ? AND i.path LIKE ?`
+			countArgs = append(countArgs, folderPath+"%")
+		}
+
 		rowsQuery = `SELECT i.id, i.path, i.hash, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at 
 					 FROM images_fts f 
 					 JOIN images i ON f.rowid = i.id 
-					 WHERE images_fts MATCH ? 
-					 ORDER BY rank, i.added_at DESC LIMIT ? OFFSET ?`
-		
-		// format query to avoid sql injection or bad MATCH syntax
-		searchStr := "\"" + query + "*\""
-		
-		args = []interface{}{searchStr, limit, offset}
-		err := d.db.QueryRowContext(ctx, countQuery, searchStr).Scan(&total)
+					 WHERE images_fts MATCH ?`
+
+		args = append(args, searchStr)
+		if folderPath != "" {
+			rowsQuery += " AND i.path LIKE ?"
+			args = append(args, folderPath+"%")
+		}
+
+		rowsQuery += " ORDER BY rank, i.added_at DESC LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+
+		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -222,4 +403,36 @@ func (d *DB) SearchImages(ctx context.Context, query string, offset, limit int) 
 	}
 
 	return images, total, nil
+}
+
+func buildFTSQuery(raw string) string {
+	tokens := strings.Fields(raw)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	built := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		clean := sanitizeFTSToken(t)
+		if clean == "" {
+			continue
+		}
+		built = append(built, clean+"*")
+	}
+
+	if len(built) == 0 {
+		return ""
+	}
+
+	return strings.Join(built, " AND ")
+}
+
+func sanitizeFTSToken(token string) string {
+	var b strings.Builder
+	for _, r := range token {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

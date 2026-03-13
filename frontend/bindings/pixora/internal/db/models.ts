@@ -13,6 +13,8 @@ export class ImageRecord {
     "ID": number;
     "Path": string;
     "Hash": string;
+    "FileSize": number;
+    "ModifiedUnixNs": number;
     "Prompt": string;
     "NegativePrompt": string;
     "Model": string;
@@ -33,6 +35,12 @@ export class ImageRecord {
         }
         if (!("Hash" in $$source)) {
             this["Hash"] = "";
+        }
+        if (!("FileSize" in $$source)) {
+            this["FileSize"] = 0;
+        }
+        if (!("ModifiedUnixNs" in $$source)) {
+            this["ModifiedUnixNs"] = 0;
         }
         if (!("Prompt" in $$source)) {
             this["Prompt"] = "";

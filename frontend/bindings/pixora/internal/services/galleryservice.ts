@@ -21,6 +21,13 @@ export function AddFolder(path: string, mode: config$0.ScanMode): $CancellablePr
 }
 
 /**
+ * ClearIndexAndReindex clears indexed image data and thumbnail cache, then starts a fresh scan.
+ */
+export function ClearIndexAndReindex(): $CancellablePromise<void> {
+    return $Call.ByID(1114111755);
+}
+
+/**
  * GetConfig returns the application configuration.
  */
 export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
@@ -30,10 +37,10 @@ export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
 }
 
 /**
- * GetImages returns a paginated list of images, optionally matching a search query.
+ * GetImages returns a paginated list of images, optionally matching a search query and filtered by folder.
  */
-export function GetImages(query: string, offset: number, limit: number): $CancellablePromise<$models.PaginatedImages | null> {
-    return $Call.ByID(3312439230, query, offset, limit).then(($result: any) => {
+export function GetImages(query: string, folderPath: string, offset: number, limit: number): $CancellablePromise<$models.PaginatedImages | null> {
+    return $Call.ByID(3312439230, query, folderPath, offset, limit).then(($result: any) => {
         return $$createType2($result);
     });
 }
@@ -53,10 +60,24 @@ export function RemoveFolder(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetTabs updates the tabs configuration.
+ */
+export function SetTabs(tabs: config$0.TabConfig[]): $CancellablePromise<void> {
+    return $Call.ByID(1347256724, tabs);
+}
+
+/**
  * ShowInFolder opens the file explorer and selects the file
  */
 export function ShowInFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(3474754050, path);
+}
+
+/**
+ * UpdateFolderAlias updates the alias for a supervised folder.
+ */
+export function UpdateFolderAlias(path: string, alias: string): $CancellablePromise<void> {
+    return $Call.ByID(3730665955, path, alias);
 }
 
 // Private type creation functions

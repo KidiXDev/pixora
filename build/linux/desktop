@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A pixora application
+Name=Pixora
+Comment=pixora
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/pixora.exe %u
+Exec=/usr/local/bin/pixora %u
 Terminal=false
 Type=Application
-Icon=pixora.exe
+Icon=pixora
 Categories=Utility;
-StartupWMClass=pixora.exe
+StartupWMClass=pixora
 
  

@@ -22,10 +22,10 @@ export const ImageTile = memo(function ImageTile({
 
   const heightClass =
     layoutMode === 'compact'
-      ? 'h-32'
+      ? 'h-40'
       : layoutMode === 'comfortable'
-        ? 'h-48'
-        : 'h-64';
+        ? 'h-64'
+        : 'h-80';
 
   const handleDoubleClick = () => {
     // Open the original image in the system's default viewer
@@ -46,10 +46,9 @@ export const ImageTile = memo(function ImageTile({
         <img
           src={`/thumbs/${image.Hash}.jpg`}
           alt={image.Path.split('\\').pop()?.split('/').pop() || 'Image'}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
           loading="lazy"
           onError={(e) => {
-            // Fallback if thumb fails to load
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
             target.nextElementSibling?.classList.remove('hidden');

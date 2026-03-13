@@ -1,39 +1,54 @@
 import { useGalleryStore } from '@/stores/gallery-store';
+import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LayoutGrid } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { ImageTile } from './image-tile';
+import { TabSetup } from './tab-setup';
 
 export function GalleryGrid() {
+  const { searchQuery, fetchImages } = useGalleryStore();
+  const { tabs, activeTabId } = useTabsStore();
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  useEffect(() => {
+    fetchImages(true);
+  }, [searchQuery, activeTabId, fetchImages]);
+
+  // If we have an active tab but no path, show the setup screen
+  if (activeTab && !activeTab.path) {
+    return <TabSetup />;
+  }
+
+  return <ImageGrid activeTabId={activeTabId} searchQuery={searchQuery} />;
+}
+
+function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; searchQuery: string }) {
   const {
     images,
-    searchQuery,
     layoutMode,
     selectedImageId,
     setSelectedImageId,
-    fetchImages,
     fetchNextPage,
     hasMore,
-    isLoading
+    isLoading,
   } = useGalleryStore();
+
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Columns based on layout mode
   const columns =
-    layoutMode === 'compact' ? 6 : layoutMode === 'comfortable' ? 4 : 3;
-
-  useEffect(() => {
-    fetchImages();
-  }, [searchQuery, fetchImages]);
+    layoutMode === 'compact' ? 10 : layoutMode === 'comfortable' ? 7 : 5;
 
   // Virtualizer for the grid rows
   const rowVirtualizer = useVirtualizer({
     count: Math.ceil(images.length / columns),
     getScrollElement: () => parentRef.current,
     estimateSize: () =>
-      layoutMode === 'compact' ? 140 : layoutMode === 'comfortable' ? 200 : 260,
+      layoutMode === 'compact' ? 176 : layoutMode === 'comfortable' ? 272 : 336,
     overscan: 10,
-    scrollMargin: 10
+    scrollMargin: 10,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
@@ -50,25 +65,47 @@ export function GalleryGrid() {
     ) {
       fetchNextPage();
     }
-  }, [virtualItems, images.length, columns, hasMore, isLoading, fetchNextPage]);
+  }, [
+    virtualItems,
+    images.length,
+    columns,
+    hasMore,
+    isLoading,
+    fetchNextPage,
+    activeTabId,
+  ]);
 
   return (
     <div
       ref={parentRef}
       className="h-full w-full overflow-auto p-4 custom-scrollbar"
     >
-      {images.length === 0 ? (
-        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-          {searchQuery
-            ? 'No images found matching your search.'
-            : 'Your gallery is empty. Add folders in settings.'}
+      {images.length === 0 && !isLoading ? (
+        <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
+          <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+            <LayoutGrid size={40} className="text-muted-foreground/40" />
+          </div>
+          <h3 className="text-xl font-semibold text-foreground mb-2">
+            {!activeTabId
+              ? 'Welcome to Pixora'
+              : searchQuery
+              ? 'No Results'
+              : 'Folder is Empty'}
+          </h3>
+          <p className="max-w-xs mb-8">
+            {!activeTabId
+              ? 'Start browsing your AI generated art by creating your first folder tab.'
+              : searchQuery
+              ? `We couldn't find any images matching "${searchQuery}" in this folder.`
+              : 'This folder is being indexed or contains no supported image formats.'}
+          </p>
         </div>
       ) : (
         <div
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
             width: '100%',
-            position: 'relative'
+            position: 'relative',
           }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => (
@@ -80,7 +117,7 @@ export function GalleryGrid() {
                 left: 0,
                 width: '100%',
                 height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`
+                transform: `translateY(${virtualRow.start}px)`,
               }}
               className="flex gap-4 pb-4"
             >

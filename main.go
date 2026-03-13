@@ -5,6 +5,8 @@ import (
 	_ "embed"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"pixora/internal/config"
 	"pixora/internal/db"
 	"pixora/internal/services"
@@ -57,8 +59,17 @@ func main() {
 	}
 	defer indexer.Close()
 
-
 	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer)
+
+	// Log app data directories so they are easy to locate during development/debugging.
+	if appDataDir, err := os.UserConfigDir(); err == nil {
+		log.Printf("[pixora] Config dir  : %s", filepath.Join(appDataDir, "pixora"))
+		log.Printf("[pixora] Database    : %s", filepath.Join(appDataDir, "pixora", "pixora.db"))
+	}
+	if cacheDir, err := os.UserCacheDir(); err == nil {
+		log.Printf("[pixora] Thumb cache : %s", filepath.Join(cacheDir, "pixora", "thumbs"))
+	}
+	log.Printf("[pixora] Thumb cache (svc): %s", thumbSvc.CacheDir())
 
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
@@ -67,7 +78,7 @@ func main() {
 	// 'Mac' options tailor the application when running an macOS.
 	app := application.New(application.Options{
 		Name:        "pixora",
-		Description: "High Performance Image Browser For AI Gen",
+		Description: "pixora",
 		Services: []application.Service{
 			application.NewService(gallerySvc),
 			application.NewService(&services.GreetService{}), // can be removed eventually

@@ -17,11 +17,19 @@ const (
 type FolderConfig struct {
 	Path     string   `json:"path"`
 	ScanMode ScanMode `json:"scanMode"`
+	Alias    string   `json:"alias"`
+}
+
+type TabConfig struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Path   string `json:"path"` // empty means all
+	IsWalk bool   `json:"isWalk"`
 }
 
 type AppConfig struct {
 	Folders []FolderConfig `json:"folders"`
-	// Additional UI/App preferences can be added here
+	Tabs    []TabConfig    `json:"tabs"` 
 }
 
 type Manager struct {
@@ -46,6 +54,7 @@ func NewManager() (*Manager, error) {
 		configPath: configPath,
 		config: AppConfig{
 			Folders: []FolderConfig{},
+			Tabs:    []TabConfig{},
 		},
 	}
 
@@ -118,3 +127,23 @@ func (m *Manager) RemoveFolder(path string) error {
 
 	return m.Save()
 }
+
+func (m *Manager) SetTabs(tabs []TabConfig) error {
+	m.mu.Lock()
+	m.config.Tabs = tabs
+	m.mu.Unlock()
+	return m.Save()
+}
+
+func (m *Manager) UpdateFolderAlias(path string, alias string) error {
+	m.mu.Lock()
+	for i, f := range m.config.Folders {
+		if f.Path == path {
+			m.config.Folders[i].Alias = alias
+			break
+		}
+	}
+	m.mu.Unlock()
+	return m.Save()
+}
+

@@ -42,6 +42,8 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 
 	metadata := &ImageMetadata{}
 	var paramsStr string
+	haveSize := false
+	haveParams := false
 
 	// Basic chunk parser
 	for {
@@ -62,7 +64,17 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			break
 		}
 
-		if string(chunkType) == "tEXt" {
+		if string(chunkType) == "IHDR" {
+			data := make([]byte, length)
+			if _, err := io.ReadFull(f, data); err != nil {
+				return nil, err
+			}
+			if len(data) >= 8 {
+				metadata.Width = int(binary.BigEndian.Uint32(data[0:4]))
+				metadata.Height = int(binary.BigEndian.Uint32(data[4:8]))
+				haveSize = true
+			}
+		} else if string(chunkType) == "tEXt" {
 			data := make([]byte, length)
 			if _, err := io.ReadFull(f, data); err != nil {
 				return nil, err
@@ -73,6 +85,7 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 				text := string(parts[1])
 				if keyword == "parameters" {
 					paramsStr = text
+					haveParams = true
 				}
 			}
 		} else if string(chunkType) == "iTXt" {
@@ -97,6 +110,7 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 					}
 					if textStart > 0 && textStart < len(data) {
 						paramsStr = string(data[textStart:])
+						haveParams = true
 					}
 				}
 			}
@@ -109,6 +123,10 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 		// Skip CRC
 		if _, err := f.Seek(4, io.SeekCurrent); err != nil {
 			return nil, err
+		}
+
+		if haveSize && haveParams {
+			break
 		}
 	}
 

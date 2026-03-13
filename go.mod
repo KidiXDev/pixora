@@ -6,6 +6,7 @@ require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.74
+	github.com/zeebo/xxh3 v1.1.0
 	modernc.org/sqlite v1.44.3
 )
 
