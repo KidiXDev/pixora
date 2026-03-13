@@ -1,3 +1,6 @@
+import { QueryProvider } from '@/components/providers/query-provider';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -5,6 +8,11 @@ import './global.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <QueryProvider>
+      <TooltipProvider>
+        <App />
+        <Toaster />
+      </TooltipProvider>
+    </QueryProvider>
   </React.StrictMode>
 );
