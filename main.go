@@ -37,7 +37,7 @@ func main() {
 	// 'Mac' options tailor the application when running an macOS.
 	app := application.New(application.Options{
 		Name:        "pixora",
-		Description: "A demo of using raw HTML & CSS",
+		Description: "High Performance Image Browser For AI Gen",
 		Services: []application.Service{
 			application.NewService(&services.GreetService{}),
 		},
@@ -55,7 +55,12 @@ func main() {
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Pixora - High Performance Image Browser For AI Gen",
+		Title:     "Pixora - High Performance Image Browser For AI Gen",
+		Frameless: true,
+		Width:     1280,
+		Height:    720,
+		MinWidth:  1280,
+		MinHeight: 720,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
