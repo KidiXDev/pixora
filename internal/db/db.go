@@ -348,7 +348,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 			countArgs = append(countArgs, folderPath+"%")
 		}
 
-		rowsQuery = "SELECT id, path, hash, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images"
+		rowsQuery = "SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images"
 		if whereClause != "" {
 			rowsQuery += whereClause
 			if folderPath != "" {
@@ -385,7 +385,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 						 WHERE images_fts MATCH ? AND i.thumb_ready = 1`
 		}
 
-		rowsQuery = `SELECT i.id, i.path, i.hash, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at 
+		rowsQuery = `SELECT i.id, i.path, i.hash, i.thumb_ready, i.file_size, i.modified_unix_ns, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at 
 					 FROM images_fts f 
 					 JOIN images i ON f.rowid = i.id 
 					 WHERE images_fts MATCH ? AND i.thumb_ready = 1`
@@ -415,8 +415,9 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 	for rows.Next() {
 		var img ImageRecord
 		if err := rows.Scan(
-			&img.ID, &img.Path, &img.Hash, &img.Prompt, &img.NegativePrompt,
-			&img.Model, &img.Sampler, &img.Seed, &img.CfgScale, &img.Width, &img.Height, &img.AddedAt,
+			&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.FileSize, &img.ModifiedUnixNs,
+			&img.Prompt, &img.NegativePrompt, &img.Model, &img.Sampler, &img.Seed, &img.CfgScale,
+			&img.Width, &img.Height, &img.AddedAt,
 		); err != nil {
 			return nil, 0, err
 		}

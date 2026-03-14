@@ -1,6 +1,20 @@
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { useGalleryStore } from '@/stores/gallery-store';
-import { Check, Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
+import {
+  Calendar,
+  Check,
+  Copy,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  Hash,
+  Info,
+  Layers,
+  Maximize,
+  Search,
+  X
+} from 'lucide-react';
 import { useState } from 'react';
 import {
   OpenExternally,
@@ -10,6 +24,7 @@ import {
 export function MetadataInspector() {
   const { images, selectedImageId, setSelectedImageId } = useGalleryStore();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [promptMode, setPromptMode] = useState<'normal' | 'raw'>('normal');
 
   if (!selectedImageId) return null;
 
@@ -29,38 +44,98 @@ export function MetadataInspector() {
   };
 
   const openExternal = async () => {
-    await OpenExternally(image.Path).catch(console.error);
+    if (image.Path) {
+      await OpenExternally(image.Path).catch(console.error);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDate = (date: string | number | Date | null | undefined) => {
+    if (!date) return '-';
+    try {
+      // Handle Go/Wails time representation
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '-';
+      return new Intl.DateTimeFormat('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }).format(d);
+    } catch {
+      return '-';
+    }
   };
 
   const renderPrompt = (prompt: string) => {
     if (!prompt)
       return (
-        <span className="text-muted-foreground italic">No prompt data</span>
+        <span className="text-muted-foreground italic text-xs">
+          No prompt data found
+        </span>
       );
 
-    const parts = prompt.split(/(<[^>]+>|\([^)]+:\d+(?:\.\d+)?\))/g);
+    if (promptMode === 'raw') {
+      return (
+        <div className="text-xs font-mono break-all whitespace-pre-wrap select-text leading-relaxed text-foreground/90">
+          {prompt}
+        </div>
+      );
+    }
 
-    return parts.map((part, i) => {
-      if (part.startsWith('<') && part.endsWith('>')) {
-        return (
-          <span key={i} className="text-primary font-semibold">
-            {part}
-          </span>
-        );
-      }
-      if (part.startsWith('(') && part.endsWith(')')) {
-        return (
-          <span key={i} className="text-chart-2 font-medium">
-            {part}
-          </span>
-        );
-      }
-      return <span key={i}>{part}</span>;
-    });
+    const tags = prompt
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    return (
+      <div className="flex flex-wrap gap-1.5 overflow-hidden">
+        {tags.map((tag, i) => {
+          const parts = tag.split(/(<[^>]+>|\([^)]+:\d+(?:\.\d+)?\))/g);
+          const isSpecial = tag.startsWith('<') || tag.startsWith('(');
+
+          return (
+            <span
+              key={i}
+              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[13px] border transition-colors select-text break-all max-w-full ${
+                isSpecial
+                  ? 'bg-primary/10 border-primary/20 text-primary font-medium'
+                  : 'bg-muted/40 border-white/5 text-foreground/90 hover:bg-muted/60'
+              }`}
+            >
+              <div className="w-full">
+                {parts.map((part, pi) => {
+                  if (part.startsWith('<') && part.endsWith('>')) {
+                    return (
+                      <span key={pi} className="text-primary font-bold">
+                        {part}
+                      </span>
+                    );
+                  }
+                  if (part.startsWith('(') && part.endsWith(')')) {
+                    return (
+                      <span key={pi} className="text-chart-2 font-medium">
+                        {part}
+                      </span>
+                    );
+                  }
+                  return <span key={pi}>{part}</span>;
+                })}
+              </div>
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar">
+    <div className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar select-none">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-card-foreground">
           Generation Data
@@ -70,7 +145,8 @@ export function MetadataInspector() {
             variant="ghost"
             size="icon"
             onClick={openExternal}
-            title="Open Image Extenally"
+            title="Open Image Externally"
+            className="hover:bg-primary/10 hover:text-primary transition-colors"
           >
             <ExternalLink size={16} />
           </Button>
@@ -79,6 +155,7 @@ export function MetadataInspector() {
             size="icon"
             onClick={openDirectory}
             title="Show in Folder"
+            className="hover:bg-primary/10 hover:text-primary transition-colors"
           >
             <FolderOpen size={16} />
           </Button>
@@ -87,40 +164,69 @@ export function MetadataInspector() {
             size="icon"
             onClick={() => setSelectedImageId(null)}
             title="Close Inspector"
+            className="hover:bg-destructive/10 hover:text-destructive transition-colors"
           >
             <X size={18} />
           </Button>
         </div>
       </div>
 
-      <div className="space-y-6">
-        {/* Prompt */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm font-medium text-muted-foreground select-none">
-            <span>Prompt</span>
+      <div className="space-y-8">
+        {/* Prompt Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-sm font-medium text-muted-foreground px-1">
+            <div className="flex items-center gap-2">
+              <FileText size={14} />
+              <span>Prompt</span>
+              <div className="flex items-center bg-muted/40 rounded-md p-0.5 border border-white/5 ml-1">
+                <button
+                  onClick={() => setPromptMode('normal')}
+                  className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all ${
+                    promptMode === 'normal'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Normal
+                </button>
+                <button
+                  onClick={() => setPromptMode('raw')}
+                  className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all ${
+                    promptMode === 'raw'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Raw
+                </button>
+              </div>
+            </div>
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary"
               onClick={() => copyToClipboard(image.Prompt, 'prompt')}
             >
               {copiedId === 'prompt' ? <Check size={12} /> : <Copy size={12} />}
             </Button>
           </div>
-          <div className="text-sm bg-muted/30 p-3 rounded-lg border border-white/5 break-all font-sans leading-relaxed">
+          <div className="text-sm bg-muted/20 p-4 rounded-xl border border-white/5 leading-relaxed shadow-inner overflow-hidden">
             {renderPrompt(image.Prompt)}
           </div>
         </div>
 
-        {/* Negative Prompt */}
+        {/* Negative Prompt Section */}
         {image.NegativePrompt && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm font-medium text-muted-foreground select-none">
-              <span>Negative Prompt</span>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm font-medium text-muted-foreground px-1">
+              <div className="flex items-center gap-2">
+                <Info size={14} className="text-destructive/70" />
+                <span>Negative Prompt</span>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
                 onClick={() =>
                   copyToClipboard(image.NegativePrompt, 'negative')
                 }
@@ -132,41 +238,56 @@ export function MetadataInspector() {
                 )}
               </Button>
             </div>
-            <div className="text-sm bg-destructive/5 text-destructive-foreground/80 p-3 rounded-lg border border-destructive/10 break-all font-sans leading-relaxed">
+            <div className="text-sm bg-destructive/5 text-foreground/80 p-4 rounded-xl border border-destructive/10 leading-relaxed italic break-all overflow-hidden">
               {image.NegativePrompt}
             </div>
           </div>
         )}
 
         {/* Parameters Grid */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              Model
-            </span>
-            <span
-              className="font-medium truncate"
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-muted/20 p-3 rounded-xl border border-white/5 group hover:border-primary/20 transition-all">
+            <div className="flex items-center gap-1.5 mb-1.5 text-muted-foreground">
+              <Layers size={13} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Model
+              </span>
+            </div>
+            <div
+              className="font-medium text-sm truncate select-text"
               title={image.Model || 'Unknown'}
             >
               {image.Model || '-'}
-            </span>
+            </div>
           </div>
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              Sampler
-            </span>
-            <span className="font-medium truncate">{image.Sampler || '-'}</span>
+
+          <div className="bg-muted/20 p-3 rounded-xl border border-white/5 group hover:border-primary/20 transition-all">
+            <div className="flex items-center gap-1.5 mb-1.5 text-muted-foreground">
+              <Search size={13} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Sampler
+              </span>
+            </div>
+            <div className="font-medium text-sm truncate select-text">
+              {image.Sampler || '-'}
+            </div>
           </div>
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              Seed
-            </span>
-            <div className="flex items-center justify-between group">
-              <span className="font-mono truncate">{image.Seed || '-'}</span>
+
+          <div className="bg-muted/20 p-3 rounded-xl border border-white/5 group hover:border-primary/20 transition-all">
+            <div className="flex items-center gap-1.5 mb-1.5 text-muted-foreground">
+              <Hash size={13} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Seed
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="font-mono text-xs truncate select-text">
+                {image.Seed || '-'}
+              </div>
               {image.Seed && (
                 <button
                   onClick={() => copyToClipboard(image.Seed, 'seed')}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all ml-2"
                 >
                   {copiedId === 'seed' ? (
                     <Check size={12} />
@@ -177,67 +298,118 @@ export function MetadataInspector() {
               )}
             </div>
           </div>
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              CFG Scale
-            </span>
-            <span className="font-mono">
-              {image.CfgScale ? image.CfgScale.toFixed(1) : '-'}
-            </span>
-          </div>
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              Dimensions
-            </span>
-            <span className="font-mono">
-              {image.Width}x{image.Height}
-            </span>
-          </div>
-          <div className="bg-muted/30 p-2.5 rounded-md border border-white/5 flex flex-col">
-            <span className="text-xs text-muted-foreground mb-1 select-none">
-              Hash
-            </span>
-            <div className="flex items-center justify-between group">
-              <span
-                className="font-mono truncate max-w-[80px]"
-                title={image.Hash}
-              >
-                {image.Hash?.substring(0, 10)}
+
+          <div className="bg-muted/20 p-3 rounded-xl border border-white/5 group hover:border-primary/20 transition-all">
+            <div className="flex items-center gap-1.5 mb-1.5 text-muted-foreground">
+              <Info size={13} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                CFG Scale
               </span>
-              {image.Hash && (
-                <button
-                  onClick={() => copyToClipboard(image.Hash, 'hash')}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-                >
-                  {copiedId === 'hash' ? (
-                    <Check size={12} />
-                  ) : (
-                    <Copy size={12} />
-                  )}
-                </button>
-              )}
+            </div>
+            <div className="font-mono text-sm select-text">
+              {image.CfgScale ? image.CfgScale.toFixed(1) : '-'}
             </div>
           </div>
         </div>
 
-        {/* Copy All Button */}
-        <Button
-          variant="outline"
-          className="w-full gap-2 mt-4 bg-muted/20 border-white/10 hover:bg-muted/50"
-          onClick={() => {
-            const lines = [];
-            if (image.Prompt) lines.push(image.Prompt);
-            if (image.NegativePrompt)
-              lines.push(`Negative prompt: ${image.NegativePrompt}`);
-            lines.push(
-              `Steps: 20, Sampler: ${image.Sampler}, CFG scale: ${image.CfgScale}, Seed: ${image.Seed}, Size: ${image.Width}x${image.Height}, Model: ${image.Model}`
-            );
-            copyToClipboard(lines.join('\n'), 'all');
-          }}
-        >
-          {copiedId === 'all' ? <Check size={14} /> : <Copy size={14} />}
-          {copiedId === 'all' ? 'Copied!' : 'Copy Generation Data'}
-        </Button>
+        <Separator className="bg-white/5" />
+
+        {/* File Details Section */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em] px-1">
+            File Details
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm px-1">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Maximize size={13} />
+                <span className="text-xs">Dimensions</span>
+              </div>
+              <div className="font-medium">
+                {image.Width} × {image.Height}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Info size={13} />
+                <span className="text-xs">File Size</span>
+              </div>
+              <div className="font-medium">{formatBytes(image.FileSize)}</div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Calendar size={13} />
+                <span className="text-xs">Added Date</span>
+              </div>
+              <div className="font-medium text-xs">
+                {formatDate(image.AddedAt)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Hash size={13} />
+                <span className="text-xs">File Hash</span>
+              </div>
+              <div className="flex items-center gap-2 group">
+                <div className="font-mono text-[10px] text-muted-foreground truncate max-w-[80px]">
+                  {image.Hash}
+                </div>
+                {image.Hash && (
+                  <button
+                    onClick={() => copyToClipboard(image.Hash, 'hash')}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all"
+                  >
+                    {copiedId === 'hash' ? (
+                      <Check size={11} />
+                    ) : (
+                      <Copy size={11} />
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-muted/10 p-3 rounded-lg border border-white/5 space-y-1 mt-2">
+            <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+              <FolderOpen size={13} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">
+                Full Path
+              </span>
+            </div>
+            <div
+              className="text-[11px] font-mono break-all text-muted-foreground/80 select-text leading-tight"
+              title={image.Path}
+            >
+              {image.Path}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2 bg-primary/5 border-primary/10 hover:bg-primary/10 text-xs py-5"
+            onClick={() => {
+              const lines = [];
+              if (image.Prompt) lines.push(image.Prompt);
+              if (image.NegativePrompt)
+                lines.push(`Negative prompt: ${image.NegativePrompt}`);
+              lines.push(
+                `Steps: 20, Sampler: ${image.Sampler}, CFG scale: ${image.CfgScale}, Seed: ${image.Seed}, Size: ${image.Width}x${image.Height}, Model: ${image.Model}`
+              );
+              copyToClipboard(lines.join('\n'), 'all');
+            }}
+          >
+            {copiedId === 'all' ? <Check size={14} /> : <Copy size={14} />}
+            {copiedId === 'all' ? 'Copied Full Metadata' : 'Copy All Parameters'}
+          </Button>
+        </div>
       </div>
     </div>
   );
