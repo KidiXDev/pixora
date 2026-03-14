@@ -11,9 +11,20 @@ import (
 	"pixora/internal/db"
 	"pixora/internal/services"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+const (
+	defaultWindowWidth  = 1280
+	defaultWindowHeight = 720
+	windowStateNormal   = "normal"
+	windowStateMin      = "minimised"
+	windowStateMax      = "maximised"
+	windowStateFull     = "fullscreen"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -109,18 +120,14 @@ func main() {
 		},
 	})
 
-	// Create a new window with the necessary options.
-	// 'Title' is the title of the window.
-	// 'Mac' options tailor the window when running on macOS.
-	// 'BackgroundColour' is the background colour of the window.
-	// 'URL' is the URL that will be loaded into the webview.
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Pixora - High Performance Image Browser For AI Gen",
-		Frameless: true,
-		Width:     1280,
-		Height:    720,
-		MinWidth:  1280,
-		MinHeight: 720,
+	windowOptions := application.WebviewWindowOptions{
+		Title:         "Pixora - High Performance Image Browser For AI Gen",
+		Frameless:     true,
+		DisableResize: false,
+		Width:         defaultWindowWidth,
+		Height:        defaultWindowHeight,
+		MinWidth:      defaultWindowWidth,
+		MinHeight:     defaultWindowHeight,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -128,7 +135,18 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(27, 38, 54),
 		URL:              "/",
-	})
+	}
+
+	windowConfig := cfgMgr.GetConfig().Window
+	applyPersistedWindowOptions(&windowOptions, windowConfig)
+
+	// Create a new window with the necessary options.
+	// 'Title' is the title of the window.
+	// 'Mac' options tailor the window when running on macOS.
+	// 'BackgroundColour' is the background colour of the window.
+	// 'URL' is the URL that will be loaded into the webview.
+	mainWindow := app.Window.NewWithOptions(windowOptions)
+	bindWindowPersistence(mainWindow, cfgMgr, windowConfig)
 
 	// Create a goroutine that emits an event containing the current time every second.
 	// The frontend can listen to this event and update the UI accordingly.
@@ -152,4 +170,184 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func applyPersistedWindowOptions(options *application.WebviewWindowOptions, windowCfg config.WindowConfig) {
+	if windowCfg.HasNormalBounds {
+		options.Width = maxInt(windowCfg.NormalBounds.Width, options.MinWidth)
+		options.Height = maxInt(windowCfg.NormalBounds.Height, options.MinHeight)
+	} else if windowCfg.HasBounds {
+		options.Width = maxInt(windowCfg.Bounds.Width, options.MinWidth)
+		options.Height = maxInt(windowCfg.Bounds.Height, options.MinHeight)
+	}
+
+	if windowCfg.HasBounds {
+		options.InitialPosition = application.WindowXY
+		options.X = windowCfg.Bounds.X
+		options.Y = windowCfg.Bounds.Y
+	}
+
+	options.StartState = windowStateToStartState(windowCfg.State)
+}
+
+func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Manager, initial config.WindowConfig) {
+	var (
+		mu      sync.Mutex
+		current = initial
+		timer   *time.Timer
+	)
+
+	if current.State == "" {
+		current.State = windowStateNormal
+	}
+
+	saveNow := func() {
+		mu.Lock()
+		snapshot := current
+		mu.Unlock()
+
+		if err := cfgMgr.SetWindow(snapshot); err != nil {
+			log.Printf("[pixora] Failed to persist window state: %v", err)
+		}
+	}
+
+	queueSave := func() {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if timer == nil {
+			timer = time.AfterFunc(200*time.Millisecond, saveNow)
+			return
+		}
+
+		timer.Reset(200 * time.Millisecond)
+	}
+
+	updateState := func(state string) {
+		mu.Lock()
+		current.State = state
+		mu.Unlock()
+		queueSave()
+	}
+
+	updateBounds := func(updateNormal bool) {
+		bounds := window.Bounds()
+
+		mu.Lock()
+		current.Bounds = config.WindowBounds{
+			X:      bounds.X,
+			Y:      bounds.Y,
+			Width:  bounds.Width,
+			Height: bounds.Height,
+		}
+		current.HasBounds = true
+
+		if updateNormal {
+			current.NormalBounds = current.Bounds
+			current.HasNormalBounds = true
+		}
+		mu.Unlock()
+
+		queueSave()
+	}
+
+	currentWindowState := func() string {
+		switch {
+		case window.IsFullscreen():
+			return windowStateFull
+		case window.IsMaximised():
+			return windowStateMax
+		case window.IsMinimised():
+			return windowStateMin
+		default:
+			return windowStateNormal
+		}
+	}
+
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(event *application.WindowEvent) {
+		updateState(currentWindowState())
+		if !window.IsFullscreen() && !window.IsMaximised() && !window.IsMinimised() {
+			updateBounds(true)
+			window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+		}
+	})
+
+	window.OnWindowEvent(events.Common.WindowDidMove, func(event *application.WindowEvent) {
+		if window.IsFullscreen() || window.IsMaximised() || window.IsMinimised() {
+			return
+		}
+
+		updateState(windowStateNormal)
+		updateBounds(true)
+	})
+
+	window.OnWindowEvent(events.Common.WindowDidResize, func(event *application.WindowEvent) {
+		if window.IsFullscreen() || window.IsMaximised() || window.IsMinimised() {
+			return
+		}
+
+		updateState(windowStateNormal)
+		updateBounds(true)
+	})
+
+	window.OnWindowEvent(events.Common.WindowMaximise, func(event *application.WindowEvent) {
+		updateState(windowStateMax)
+	})
+
+	window.OnWindowEvent(events.Common.WindowUnMaximise, func(event *application.WindowEvent) {
+		updateState(windowStateNormal)
+		updateBounds(true)
+		window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+	})
+
+	window.OnWindowEvent(events.Common.WindowFullscreen, func(event *application.WindowEvent) {
+		updateState(windowStateFull)
+	})
+
+	window.OnWindowEvent(events.Common.WindowUnFullscreen, func(event *application.WindowEvent) {
+		updateState(windowStateNormal)
+		updateBounds(true)
+		window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+	})
+
+	window.OnWindowEvent(events.Common.WindowMinimise, func(event *application.WindowEvent) {
+		updateState(windowStateMin)
+	})
+
+	window.OnWindowEvent(events.Common.WindowUnMinimise, func(event *application.WindowEvent) {
+		state := currentWindowState()
+		updateState(state)
+		if state == windowStateNormal {
+			updateBounds(true)
+			window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+		}
+	})
+
+	window.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if !window.IsFullscreen() && !window.IsMaximised() && !window.IsMinimised() {
+			updateBounds(true)
+		}
+		updateState(currentWindowState())
+		saveNow()
+	})
+}
+
+func windowStateToStartState(state string) application.WindowState {
+	switch strings.ToLower(state) {
+	case windowStateMin:
+		return application.WindowStateMinimised
+	case windowStateMax:
+		return application.WindowStateMaximised
+	case windowStateFull:
+		return application.WindowStateFullscreen
+	default:
+		return application.WindowStateNormal
+	}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

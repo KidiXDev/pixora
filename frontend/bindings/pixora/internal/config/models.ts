@@ -8,6 +8,7 @@ import { Create as $Create } from "@wailsio/runtime";
 export class AppConfig {
     "folders": FolderConfig[];
     "tabs": TabConfig[];
+    "window": WindowConfig;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -16,6 +17,9 @@ export class AppConfig {
         }
         if (!("tabs" in $$source)) {
             this["tabs"] = [];
+        }
+        if (!("window" in $$source)) {
+            this["window"] = (new WindowConfig());
         }
 
         Object.assign(this, $$source);
@@ -27,12 +31,16 @@ export class AppConfig {
     static createFrom($$source: any = {}): AppConfig {
         const $$createField0_0 = $$createType1;
         const $$createField1_0 = $$createType3;
+        const $$createField2_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
         }
         if ("tabs" in $$parsedSource) {
             $$parsedSource["tabs"] = $$createField1_0($$parsedSource["tabs"]);
+        }
+        if ("window" in $$parsedSource) {
+            $$parsedSource["window"] = $$createField2_0($$parsedSource["window"]);
         }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
     }
@@ -114,8 +122,88 @@ export class TabConfig {
     }
 }
 
+export class WindowBounds {
+    "x": number;
+    "y": number;
+    "width": number;
+    "height": number;
+
+    /** Creates a new WindowBounds instance. */
+    constructor($$source: Partial<WindowBounds> = {}) {
+        if (!("x" in $$source)) {
+            this["x"] = 0;
+        }
+        if (!("y" in $$source)) {
+            this["y"] = 0;
+        }
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WindowBounds instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WindowBounds {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WindowBounds($$parsedSource as Partial<WindowBounds>);
+    }
+}
+
+export class WindowConfig {
+    "state": string;
+    "bounds": WindowBounds;
+    "hasBounds": boolean;
+    "normalBounds": WindowBounds;
+    "hasNormalBounds": boolean;
+
+    /** Creates a new WindowConfig instance. */
+    constructor($$source: Partial<WindowConfig> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("bounds" in $$source)) {
+            this["bounds"] = (new WindowBounds());
+        }
+        if (!("hasBounds" in $$source)) {
+            this["hasBounds"] = false;
+        }
+        if (!("normalBounds" in $$source)) {
+            this["normalBounds"] = (new WindowBounds());
+        }
+        if (!("hasNormalBounds" in $$source)) {
+            this["hasNormalBounds"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WindowConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WindowConfig {
+        const $$createField1_0 = $$createType5;
+        const $$createField3_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("bounds" in $$parsedSource) {
+            $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
+        }
+        if ("normalBounds" in $$parsedSource) {
+            $$parsedSource["normalBounds"] = $$createField3_0($$parsedSource["normalBounds"]);
+        }
+        return new WindowConfig($$parsedSource as Partial<WindowConfig>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = FolderConfig.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = TabConfig.createFrom;
 const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = WindowConfig.createFrom;
+const $$createType5 = WindowBounds.createFrom;

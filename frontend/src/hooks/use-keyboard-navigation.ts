@@ -7,7 +7,10 @@ export function useKeyboardNavigation() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if user is typing in an input
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
         return;
       }
 
@@ -19,7 +22,9 @@ export function useKeyboardNavigation() {
         return;
       }
 
-      const currentIndex = images.findIndex((img) => img.ID === selectedImageId);
+      const currentIndex = images.findIndex(
+        (img) => img.ID === selectedImageId
+      );
       if (currentIndex === -1) return;
 
       let nextIndex = currentIndex;
@@ -33,14 +38,6 @@ export function useKeyboardNavigation() {
           break;
         case 'Escape':
           setSelectedImageId(null);
-          break;
-        case 'f':
-        case 'F':
-          if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
-          } else {
-            document.exitFullscreen().catch(() => {});
-          }
           break;
       }
 

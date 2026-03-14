@@ -54,16 +54,23 @@ function ImageGrid({
     const el = parentRef.current;
     if (!el) return;
 
+    let rafId: number;
     const updateWidth = () => {
-      setContainerWidth(el.clientWidth);
+      if (el) setContainerWidth(el.clientWidth);
     };
 
     updateWidth();
 
-    const observer = new ResizeObserver(updateWidth);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateWidth);
+    });
     observer.observe(el);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
   }, []);
 
   const columns = useMemo(() => {
@@ -133,81 +140,83 @@ function ImageGrid({
   ]);
 
   return (
-    <div
-      ref={parentRef}
-      className="h-full w-full overflow-auto p-4 custom-scrollbar"
-    >
-      {images.length === 0 && !isLoading ? (
-        <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
-          <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
-            <LayoutGrid size={40} className="text-muted-foreground/40" />
-          </div>
-          <h3 className="text-xl font-semibold text-foreground mb-2">
-            {!activeTabId
-              ? 'Welcome to Pixora'
-              : searchQuery
-                ? 'No Results'
-                : 'Folder is Empty'}
-          </h3>
-          <p className="max-w-xs mb-8">
-            {!activeTabId
-              ? 'Start browsing your AI generated art by creating your first folder tab.'
-              : searchQuery
-                ? `We couldn't find any images matching "${searchQuery}" in this folder.`
-                : 'This folder is being indexed or contains no supported image formats.'}
-          </p>
-        </div>
-      ) : (
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative'
-          }}
-        >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => (
-            <div
-              key={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`
-              }}
-              className="flex gap-4 pb-4"
-            >
-              {Array.from({ length: columns }).map((_, columnIndex) => {
-                const imageIndex = virtualRow.index * columns + columnIndex;
-                const image = images[imageIndex];
-
-                if (!image) {
-                  return (
-                    <div key={`empty-${columnIndex}`} className="flex-1" />
-                  );
-                }
-
-                return (
-                  <div key={image.ID} className="flex-1">
-                    <ImageTile
-                      image={image}
-                      isSelected={selectedImageId === image.ID}
-                      onClick={() => setSelectedImageId(image.ID)}
-                      layoutMode={layoutMode}
-                    />
-                  </div>
-                );
-              })}
+    <div className="h-full w-full pr-1">
+      <div
+        ref={parentRef}
+        className="h-full w-full overflow-y-auto p-4 custom-scrollbar"
+      >
+        {images.length === 0 && !isLoading ? (
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
+            <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+              <LayoutGrid size={40} className="text-muted-foreground/40" />
             </div>
-          ))}
-        </div>
-      )}
-      {isLoading && (
-        <div className="flex justify-center p-8">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      )}
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              {!activeTabId
+                ? 'Welcome to Pixora'
+                : searchQuery
+                  ? 'No Results'
+                  : 'Folder is Empty'}
+            </h3>
+            <p className="max-w-xs mb-8">
+              {!activeTabId
+                ? 'Start browsing your AI generated art by creating your first folder tab.'
+                : searchQuery
+                  ? `We couldn't find any images matching "${searchQuery}" in this folder.`
+                  : 'This folder is being indexed or contains no supported image formats.'}
+            </p>
+          </div>
+        ) : (
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative'
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`
+                }}
+                className="flex gap-4 pb-4"
+              >
+                {Array.from({ length: columns }).map((_, columnIndex) => {
+                  const imageIndex = virtualRow.index * columns + columnIndex;
+                  const image = images[imageIndex];
+
+                  if (!image) {
+                    return (
+                      <div key={`empty-${columnIndex}`} className="flex-1" />
+                    );
+                  }
+
+                  return (
+                    <div key={image.ID} className="flex-1">
+                      <ImageTile
+                        image={image}
+                        isSelected={selectedImageId === image.ID}
+                        onClick={() => setSelectedImageId(image.ID)}
+                        layoutMode={layoutMode}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+        {isLoading && (
+          <div className="flex justify-center p-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -97,8 +97,12 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Select
-                value={newMode}
-                onValueChange={(v) => setNewMode(v as ScanMode)}
+                value={newMode.charAt(0).toUpperCase() + newMode.slice(1)}
+                onValueChange={(v) =>
+                  setNewMode(
+                    (v.charAt(0).toLowerCase() + v.slice(1)) as ScanMode
+                  )
+                }
               >
                 <SelectTrigger className="w-30">
                   <SelectValue />

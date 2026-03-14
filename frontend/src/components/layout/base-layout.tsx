@@ -6,7 +6,7 @@ export function BaseLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <Titlebar />
       <TabNavigation />
-      <div className="flex-1 overflow-auto">{children}</div>
+      <div className="flex-1 overflow-hidden relative">{children}</div>
     </div>
   );
 }

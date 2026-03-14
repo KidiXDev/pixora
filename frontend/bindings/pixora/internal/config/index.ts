@@ -5,5 +5,7 @@ export {
     AppConfig,
     FolderConfig,
     ScanMode,
-    TabConfig
+    TabConfig,
+    WindowBounds,
+    WindowConfig
 } from "./models.js";

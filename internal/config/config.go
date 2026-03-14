@@ -27,9 +27,25 @@ type TabConfig struct {
 	IsWalk bool   `json:"isWalk"`
 }
 
+type WindowBounds struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type WindowConfig struct {
+	State           string       `json:"state"`
+	Bounds          WindowBounds `json:"bounds"`
+	HasBounds       bool         `json:"hasBounds"`
+	NormalBounds    WindowBounds `json:"normalBounds"`
+	HasNormalBounds bool         `json:"hasNormalBounds"`
+}
+
 type AppConfig struct {
 	Folders []FolderConfig `json:"folders"`
-	Tabs    []TabConfig    `json:"tabs"` 
+	Tabs    []TabConfig    `json:"tabs"`
+	Window  WindowConfig   `json:"window"`
 }
 
 type Manager struct {
@@ -55,6 +71,9 @@ func NewManager() (*Manager, error) {
 		config: AppConfig{
 			Folders: []FolderConfig{},
 			Tabs:    []TabConfig{},
+			Window: WindowConfig{
+				State: "normal",
+			},
 		},
 	}
 
@@ -74,7 +93,12 @@ func (m *Manager) Load() error {
 		return err
 	}
 
-	return json.Unmarshal(data, &m.config)
+	if err := json.Unmarshal(data, &m.config); err != nil {
+		return err
+	}
+
+	m.ensureDefaultsLocked()
+	return nil
 }
 
 func (m *Manager) Save() error {
@@ -93,6 +117,14 @@ func (m *Manager) GetConfig() AppConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.config
+}
+
+func (m *Manager) SetWindow(window WindowConfig) error {
+	m.mu.Lock()
+	m.config.Window = window
+	m.mu.Unlock()
+
+	return m.Save()
 }
 
 func (m *Manager) AddFolder(path string, mode ScanMode) error {
@@ -147,3 +179,16 @@ func (m *Manager) UpdateFolderAlias(path string, alias string) error {
 	return m.Save()
 }
 
+func (m *Manager) ensureDefaultsLocked() {
+	if m.config.Folders == nil {
+		m.config.Folders = []FolderConfig{}
+	}
+
+	if m.config.Tabs == nil {
+		m.config.Tabs = []TabConfig{}
+	}
+
+	if m.config.Window.State == "" {
+		m.config.Window.State = "normal"
+	}
+}
