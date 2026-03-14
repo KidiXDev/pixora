@@ -8,9 +8,11 @@ import {
   ClearIndexAndReindex,
   GetConfig,
   RemoveFolder,
+  SetDevMode,
   UpdateFolderAlias
 } from '../../bindings/pixora/internal/services/galleryservice';
 import { useGalleryStore } from './gallery-store';
+import { useTabsStore } from './tabs-store';
 
 interface ConfigState {
   config: AppConfig | null;
@@ -59,8 +61,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       set({ config });
 
       // Keep open tabs, but detach them from the removed folder path.
-      const tabsModule = await import('./tabs-store');
-      const tabsStore = tabsModule.useTabsStore.getState();
+      const tabsStore = useTabsStore.getState();
       const affectedTabIds =
         await tabsStore.clearFolderFromTabs(normalizedPath);
 
@@ -85,25 +86,22 @@ export const useConfigStore = create<ConfigState>((set) => ({
       const config = await GetConfig();
       set({ config });
 
-      // Dynamically load useTabsStore to avoid circular imports and trigger an immediate tab rename
-      import('./tabs-store').then((module) => {
-        const tabsStore = module.useTabsStore.getState();
-        const newTabs = tabsStore.tabs.map((t) => {
-          if (t.path === path) {
-            const fallbackLabel = path.split(/[/\\]/).pop() || 'Tab';
-            return { ...t, label: alias || fallbackLabel };
-          }
-          return t;
-        });
-        tabsStore.saveTabs(newTabs);
+      // Use useTabsStore to trigger an immediate tab rename
+      const tabsStore = useTabsStore.getState();
+      const newTabs = tabsStore.tabs.map((t) => {
+        if (t.path === path) {
+          const fallbackLabel = path.split(/[/\\]/).pop() || 'Tab';
+          return { ...t, label: alias || fallbackLabel };
+        }
+        return t;
       });
+      tabsStore.saveTabs(newTabs);
     } catch (e) {
       console.error('Failed to update folder alias', e);
     }
   },
   setDevMode: async (enabled) => {
     try {
-      const { SetDevMode } = await import('../../bindings/pixora/internal/services/galleryservice');
       await SetDevMode(enabled);
       // reload
       const config = await GetConfig();
