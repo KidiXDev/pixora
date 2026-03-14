@@ -315,76 +315,93 @@ export function MetadataInspector() {
         <Separator className="bg-white/5" />
 
         {/* File Details Section */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em] px-1">
-            File Details
-          </h3>
-          <div className="grid grid-cols-2 gap-4 text-sm px-1">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Maximize size={13} />
-                <span className="text-xs">Dimensions</span>
-              </div>
-              <div className="font-medium">
-                {image.Width} × {image.Height}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Info size={13} />
-                <span className="text-xs">File Size</span>
-              </div>
-              <div className="font-medium">{formatBytes(image.FileSize)}</div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Calendar size={13} />
-                <span className="text-xs">Added Date</span>
-              </div>
-              <div className="font-medium text-xs">
-                {formatDate(image.AddedAt)}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Hash size={13} />
-                <span className="text-xs">File Hash</span>
-              </div>
-              <div className="flex items-center gap-2 group">
-                <div className="font-mono text-[10px] text-muted-foreground truncate max-w-[80px]">
-                  {image.Hash}
-                </div>
-                {image.Hash && (
-                  <button
-                    onClick={() => copyToClipboard(image.Hash, 'hash')}
-                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all"
-                  >
-                    {copiedId === 'hash' ? (
-                      <Check size={11} />
-                    ) : (
-                      <Copy size={11} />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-1 h-3 bg-primary rounded-full" />
+            <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+              File Registry
+            </h3>
           </div>
 
-          <div className="bg-muted/10 p-3 rounded-lg border border-white/5 space-y-1 mt-2">
-            <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-              <FolderOpen size={13} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">
-                Full Path
-              </span>
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="space-y-1.5 group">
+                <div className="flex items-center gap-1.5 text-muted-foreground/60 group-hover:text-foreground transition-colors">
+                  <Maximize size={11} />
+                  <span className="text-[10px] font-bold uppercase">Size</span>
+                </div>
+                <div className="font-bold tabular-nums">
+                  {image.Width}{' '}
+                  <span className="text-muted-foreground font-normal">×</span>{' '}
+                  {image.Height}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 group">
+                <div className="flex items-center gap-1.5 text-muted-foreground/60 group-hover:text-foreground transition-colors">
+                  <Info size={11} />
+                  <span className="text-[10px] font-bold uppercase">
+                    Weight
+                  </span>
+                </div>
+                <div className="font-bold tabular-nums">
+                  {formatBytes(image.FileSize)}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 group">
+                <div className="flex items-center gap-1.5 text-muted-foreground/60 group-hover:text-foreground transition-colors">
+                  <Calendar size={11} />
+                  <span className="text-[10px] font-bold uppercase">
+                    Archived
+                  </span>
+                </div>
+                <div
+                  className="font-bold text-[11px] truncate"
+                  title={formatDate(image.AddedAt)}
+                >
+                  {formatDate(image.AddedAt)}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 group">
+                <div className="flex items-center gap-1.5 text-muted-foreground/60 group-hover:text-foreground transition-colors">
+                  <Hash size={11} />
+                  <span className="text-[10px] font-bold uppercase">Hash</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="font-mono text-[10px] text-muted-foreground truncate max-w-[80px]">
+                    {image.Hash}
+                  </div>
+                  {image.Hash && (
+                    <button
+                      onClick={() => copyToClipboard(image.Hash, 'hash')}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/5 text-muted-foreground hover:text-primary transition-all active:scale-90"
+                    >
+                      {copiedId === 'hash' ? (
+                        <Check size={11} className="text-green-500" />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div
-              className="text-[11px] font-mono break-all text-muted-foreground/80 select-text leading-tight"
-              title={image.Path}
-            >
-              {image.Path}
+
+            <div className="pt-3 border-t border-white/5 space-y-2 group">
+              <div className="flex items-center gap-1.5 text-muted-foreground/60 group-hover:text-foreground transition-colors">
+                <FolderOpen size={11} />
+                <span className="text-[10px] font-bold uppercase tracking-widest">
+                  File Path
+                </span>
+              </div>
+              <div
+                className="text-[11px] font-mono break-all text-muted-foreground/70 group-hover:text-foreground/90 transition-colors select-all leading-tight p-3 rounded-xl bg-black/20 border border-white/5"
+                title={image.Path}
+              >
+                {image.Path}
+              </div>
             </div>
           </div>
         </div>
@@ -407,7 +424,9 @@ export function MetadataInspector() {
             }}
           >
             {copiedId === 'all' ? <Check size={14} /> : <Copy size={14} />}
-            {copiedId === 'all' ? 'Copied Full Metadata' : 'Copy All Parameters'}
+            {copiedId === 'all'
+              ? 'Copied Full Metadata'
+              : 'Copy All Parameters'}
           </Button>
         </div>
       </div>

@@ -1,5 +1,5 @@
-import { Window } from "@wailsio/runtime";
-import { X, Minus, Square } from "lucide-react";
+import { Window } from '@wailsio/runtime';
+import { Minus, Square, X } from 'lucide-react';
 
 export function Titlebar() {
   const handleMinimize = () => {
@@ -17,12 +17,13 @@ export function Titlebar() {
   return (
     <div
       className="flex h-10 w-full shrink-0 items-center justify-between border-b border-white/10 bg-background text-foreground shadow-sm"
-      style={{ "--wails-draggable": "drag" } as React.CSSProperties}
+      style={{ '--wails-draggable': 'drag' } as React.CSSProperties}
     >
-      <div className="flex items-center px-4 font-semibold text-sm">
-        Pixora
-      </div>
-      <div className="flex h-full" style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}>
+      <div className="flex items-center px-4 font-semibold text-sm">Pixora</div>
+      <div
+        className="flex h-full"
+        style={{ '--wails-draggable': 'no-drag' } as React.CSSProperties}
+      >
         <button
           onClick={handleMinimize}
           className="flex h-full w-12 items-center justify-center hover:bg-muted transition-colors"

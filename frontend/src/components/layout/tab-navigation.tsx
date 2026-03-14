@@ -1,5 +1,7 @@
+import { SETTINGS_TAB_PATH, isPageTabPath } from '@/lib/tab-pages';
 import { cn } from '@/lib/utils';
 import { useGalleryStore } from '@/stores/gallery-store';
+import { useIndexingStore } from '@/stores/indexing-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import {
   DndContext,
@@ -21,9 +23,23 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Folder, LayoutGrid, Plus, X } from 'lucide-react';
+import {
+  Folder,
+  LayoutGrid,
+  LayoutList,
+  LayoutPanelLeft,
+  Loader2,
+  Plus,
+  Search,
+  Settings,
+  X
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useDebounce } from 'use-debounce';
 import { TabConfig } from '../../../bindings/pixora/internal/config/models';
+import { Input } from '../ui/input';
+import { Separator } from '../ui/separator';
 
 // ── Sortable Tab Item ────────────────────────────────────────────────────────
 
@@ -61,7 +77,7 @@ function SortableTab({
       {...attributes}
       {...listeners}
       className={cn(
-        'group relative flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
+        'group relative overflow-y-hidden flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
         isActive
           ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
           : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
@@ -156,8 +172,33 @@ export function TabNavigation() {
     addTab,
     reorderTabs
   } = useTabsStore();
-  const { fetchImages } = useGalleryStore();
+  const {
+    fetchImages,
+    searchQuery,
+    setSearchQuery,
+    layoutMode,
+    setLayoutMode
+  } = useGalleryStore();
+  const { activeScans, getTotalProcessed } = useIndexingStore();
+  const location = useLocation();
+
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [localQuery, setLocalQuery] = useState(searchQuery);
+  const [debouncedQuery] = useDebounce(localQuery, 300);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const showControls =
+    location.pathname === '/' &&
+    activeTab &&
+    activeTab.path &&
+    !isPageTabPath(activeTab.path);
+
+  const isIndexing = Object.values(activeScans).length > 0;
+  const totalProcessed = getTotalProcessed();
+
+  useEffect(() => {
+    setSearchQuery(debouncedQuery);
+  }, [debouncedQuery, setSearchQuery]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -199,6 +240,18 @@ export function TabNavigation() {
     await addTab({ label: 'New Tab', path: '', isWalk: true });
   };
 
+  const handleOpenSettingsTab = async () => {
+    const existingSettingsTab = tabs.find(
+      (tab) => tab.path === SETTINGS_TAB_PATH
+    );
+    if (existingSettingsTab) {
+      setActiveTabId(existingSettingsTab.id);
+      return;
+    }
+
+    await addTab({ label: 'Settings', path: SETTINGS_TAB_PATH, isWalk: false });
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   };
@@ -224,29 +277,109 @@ export function TabNavigation() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-11 w-full items-center gap-1 bg-background/80 backdrop-blur-xl px-2 border-b border-border/40 overflow-x-auto overflow-y-hidden no-scrollbar scroll-smooth">
-        <SortableContext
-          items={tabs.map((t) => t.id)}
-          strategy={horizontalListSortingStrategy}
-        >
-          {tabs.map((tab) => (
-            <SortableTab
-              key={tab.id}
-              tab={tab}
-              isActive={activeTabId === tab.id}
-              onTabChange={handleTabChange}
-              onRemove={removeTab}
-            />
-          ))}
-        </SortableContext>
+      <div className="flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden">
+        {/* Scrollable Tabs Area */}
+        <div className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar scroll-smooth">
+          <SortableContext
+            items={tabs.map((t) => t.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {tabs.map((tab) => (
+              <SortableTab
+                key={tab.id}
+                tab={tab}
+                isActive={activeTabId === tab.id}
+                onTabChange={handleTabChange}
+                onRemove={removeTab}
+              />
+            ))}
+          </SortableContext>
 
-        <button
-          onClick={handleAddTab}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-1 shrink-0"
-          title="Add Folder Tab"
-        >
-          <Plus size={16} />
-        </button>
+          <button
+            onClick={handleAddTab}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-1 shrink-0"
+            title="Add Folder Tab"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+
+        {/* Separator */}
+        <Separator
+          orientation="vertical"
+          className="h-full mx-2 bg-border/80"
+        />
+
+        {/* Fixed Right Controls */}
+        <div className="flex items-center gap-2 px-2 shrink-0 ml-1 animate-in fade-in slide-in-from-right-4 duration-500">
+          {isIndexing && (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 mr-1 text-[10px] font-semibold tracking-tight uppercase animate-in fade-in zoom-in duration-300">
+              <Loader2 size={12} className="animate-spin" />
+              {totalProcessed > 0 ? totalProcessed : ''}
+            </div>
+          )}
+
+          {showControls && (
+            <>
+              <div className="relative group transition-all duration-300 w-40 focus-within:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <Input
+                  placeholder="Search gallery..."
+                  value={localQuery}
+                  onChange={(e) => setLocalQuery(e.target.value)}
+                  className="pl-8 h-8 bg-muted/30 border-transparent focus-visible:ring-1 focus-visible:ring-primary/40 text-xs rounded-lg"
+                />
+              </div>
+
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5 border border-border/10">
+                <button
+                  onClick={() => setLayoutMode('compact')}
+                  className={cn(
+                    'p-1 px-1.5 rounded-md transition-all',
+                    layoutMode === 'compact'
+                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  title="Compact"
+                >
+                  <LayoutGrid size={13} />
+                </button>
+                <button
+                  onClick={() => setLayoutMode('comfortable')}
+                  className={cn(
+                    'p-1 px-1.5 rounded-md transition-all',
+                    layoutMode === 'comfortable'
+                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  title="Comfortable"
+                >
+                  <LayoutList size={13} />
+                </button>
+                <button
+                  onClick={() => setLayoutMode('spacious')}
+                  className={cn(
+                    'p-1 px-1.5 rounded-md transition-all',
+                    layoutMode === 'spacious'
+                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  title="Spacious"
+                >
+                  <LayoutPanelLeft size={13} />
+                </button>
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={handleOpenSettingsTab}
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Settings"
+          >
+            <Settings size={16} />
+          </button>
+        </div>
       </div>
 
       <DragOverlay dropAnimation={{ duration: 180, easing: 'ease' }}>

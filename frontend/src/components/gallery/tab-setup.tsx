@@ -193,7 +193,7 @@ export function TabSetup() {
 
   return (
     <ScrollArea className="h-full w-full bg-background">
-      <div className="flex flex-col items-center px-6 py-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="flex flex-col items-center px-6 py-10">
         <div className="max-w-xl w-full space-y-8 pb-20">
           <div className="flex items-end justify-between px-1 border-b border-border/40 pb-6">
             <div className="space-y-1.5">
