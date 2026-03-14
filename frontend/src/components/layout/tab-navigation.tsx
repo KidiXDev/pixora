@@ -24,11 +24,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  Copy,
   Folder,
   LayoutGrid,
   LayoutList,
   LayoutPanelLeft,
   Loader2,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -38,6 +40,13 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 import { TabConfig } from '../../../bindings/pixora/internal/config/models';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '../ui/context-menu';
 import { Input } from '../ui/input';
 import { Separator } from '../ui/separator';
 
@@ -47,13 +56,21 @@ interface SortableTabProps {
   tab: TabConfig;
   isActive: boolean;
   onTabChange: (id: string) => void;
+  onRename: (id: string, nextLabel: string) => Promise<void>;
+  onDuplicate: (id: string) => Promise<void>;
+  onCloseOthers: (id: string) => Promise<void>;
   onRemove: (id: string) => void;
+  canCloseOthers: boolean;
 }
 
 function SortableTab({
   tab,
   isActive,
   onTabChange,
+  onRename,
+  onDuplicate,
+  onCloseOthers,
+  canCloseOthers,
   onRemove
 }: SortableTabProps) {
   const {
@@ -64,6 +81,19 @@ function SortableTab({
     transition,
     isDragging: isSortableDragging
   } = useSortable({ id: tab.id });
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [labelDraft, setLabelDraft] = useState(tab.label);
+
+  useEffect(() => {
+    setLabelDraft(tab.label);
+  }, [tab.label]);
+
+  const commitRename = async () => {
+    const nextLabel = labelDraft.trim();
+    setIsRenaming(false);
+    if (!nextLabel || nextLabel === tab.label) return;
+    await onRename(tab.id, nextLabel);
+  };
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -71,61 +101,140 @@ function SortableTab({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        'group relative overflow-y-hidden flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
-        isActive
-          ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
-          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-        isSortableDragging && 'opacity-40 ring-1 ring-dashed ring-border'
-      )}
-      onClick={() => onTabChange(tab.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onTabChange(tab.id);
-        }
-      }}
-      tabIndex={0}
-      role="tab"
-      aria-selected={isActive}
-    >
-      {tab.path ? (
-        <Folder
-          size={14}
-          className={cn('shrink-0 transition-transform duration-300')}
-        />
-      ) : (
-        <LayoutGrid
-          size={14}
-          className={cn('shrink-0 transition-transform duration-300')}
-        />
-      )}
-      <span className="truncate text-xs font-semibold tracking-tight">
-        {tab.label}
-      </span>
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <div
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          className={cn(
+            'group relative overflow-y-hidden flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
+            isActive
+              ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
+              : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+            isSortableDragging && 'opacity-40 ring-1 ring-dashed ring-border',
+            isRenaming && 'cursor-default active:cursor-default'
+          )}
+          onClick={() => {
+            if (isRenaming) return;
+            onTabChange(tab.id);
+          }}
+          onKeyDown={(e) => {
+            if (isRenaming) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onTabChange(tab.id);
+            }
+          }}
+          tabIndex={0}
+          role="tab"
+          aria-selected={isActive}
+        >
+          {tab.path ? (
+            <Folder
+              size={14}
+              className={cn('shrink-0 transition-transform duration-300')}
+            />
+          ) : (
+            <LayoutGrid
+              size={14}
+              className={cn('shrink-0 transition-transform duration-300')}
+            />
+          )}
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove(tab.id);
-        }}
-        className={cn(
-          'ml-auto rounded-full p-0.5 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100',
-          isActive && 'opacity-40'
-        )}
-      >
-        <X size={12} />
-      </button>
+          {isRenaming ? (
+            <Input
+              value={labelDraft}
+              onChange={(e) => setLabelDraft(e.target.value)}
+              className="h-6 text-xs px-1.5"
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setLabelDraft(tab.label);
+                  setIsRenaming(false);
+                }
+              }}
+              onBlur={() => {
+                commitRename();
+              }}
+            />
+          ) : (
+            <span className="truncate text-xs font-semibold tracking-tight">
+              {tab.label}
+            </span>
+          )}
 
-      {isActive && (
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-0.75 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all duration-300" />
-      )}
-    </div>
+          {!isRenaming && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(tab.id);
+              }}
+              className={cn(
+                'ml-auto rounded-full p-0.5 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100',
+                isActive && 'opacity-40'
+              )}
+            >
+              <X size={12} />
+            </button>
+          )}
+
+          {isActive && (
+            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-0.75 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all duration-300" />
+          )}
+        </div>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent className="w-48" sideOffset={6}>
+        <ContextMenuItem disabled className="text-xs font-medium opacity-80">
+          {tab.label}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={() => {
+            setIsRenaming(true);
+          }}
+        >
+          <Pencil size={14} />
+          Rename Tab
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={async () => {
+            await onDuplicate(tab.id);
+          }}
+        >
+          <Copy size={14} />
+          Duplicate Tab
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={!canCloseOthers}
+          onClick={async () => {
+            if (!canCloseOthers) return;
+            await onCloseOthers(tab.id);
+          }}
+        >
+          <X size={14} />
+          Close Other Tabs
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          variant="destructive"
+          onClick={() => {
+            onRemove(tab.id);
+          }}
+        >
+          <X size={14} />
+          Close Tab
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -169,6 +278,7 @@ export function TabNavigation() {
     setActiveTabId,
     fetchTabs,
     removeTab,
+    updateTab,
     addTab,
     reorderTabs
   } = useTabsStore();
@@ -240,6 +350,35 @@ export function TabNavigation() {
     await addTab({ label: 'New Tab', path: '', isWalk: true });
   };
 
+  const handleRenameTab = async (id: string, nextLabel: string) => {
+    const targetTab = tabs.find((t) => t.id === id);
+    if (!targetTab) return;
+    await updateTab({
+      ...targetTab,
+      label: nextLabel
+    });
+  };
+
+  const handleDuplicateTab = async (id: string) => {
+    const targetTab = tabs.find((t) => t.id === id);
+    if (!targetTab) return;
+
+    const baseLabel = (targetTab.label || 'New Tab').trim();
+    await addTab({
+      label: `${baseLabel} Copy`,
+      path: targetTab.path,
+      isWalk: targetTab.isWalk
+    });
+  };
+
+  const handleCloseOtherTabs = async (id: string) => {
+    const tabsToClose = tabs.filter((t) => t.id !== id);
+    for (const tab of tabsToClose) {
+      await removeTab(tab.id);
+    }
+    setActiveTabId(id);
+  };
+
   const handleOpenSettingsTab = async () => {
     const existingSettingsTab = tabs.find(
       (tab) => tab.path === SETTINGS_TAB_PATH
@@ -290,6 +429,10 @@ export function TabNavigation() {
                 tab={tab}
                 isActive={activeTabId === tab.id}
                 onTabChange={handleTabChange}
+                onRename={handleRenameTab}
+                onDuplicate={handleDuplicateTab}
+                onCloseOthers={handleCloseOtherTabs}
+                canCloseOthers={tabs.length > 1}
                 onRemove={removeTab}
               />
             ))}

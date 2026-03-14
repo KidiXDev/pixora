@@ -370,7 +370,7 @@ export function MetadataInspector() {
                   <span className="text-[10px] font-bold uppercase">Hash</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="font-mono text-[10px] text-muted-foreground truncate max-w-[80px]">
+                  <div className="font-mono text-[10px] text-muted-foreground truncate max-w-20">
                     {image.Hash}
                   </div>
                   {image.Hash && (

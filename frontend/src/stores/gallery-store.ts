@@ -11,6 +11,8 @@ interface GalleryState {
   totalImages: number;
   searchQuery: string;
   selectedImageId: number | null;
+  compareImageIds: [number, number] | null;
+  compareSlider: number;
   layoutMode: LayoutMode;
   offset: number;
   limit: number;
@@ -20,6 +22,10 @@ interface GalleryState {
   setImages: (images: ImageRecord[], total: number) => void;
   setSearchQuery: (query: string) => void;
   setSelectedImageId: (id: number | null) => void;
+  setCompareSlider: (value: number) => void;
+  startCompare: (firstId: number, secondId: number) => void;
+  closeCompare: () => void;
+  swapCompareImages: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
   fetchImages: (clear?: boolean) => Promise<void>;
   fetchNextPage: () => Promise<void>;
@@ -30,6 +36,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   totalImages: 0,
   searchQuery: '',
   selectedImageId: null,
+  compareImageIds: null,
+  compareSlider: 50,
   layoutMode: 'comfortable',
   offset: 0,
   limit: 100,
@@ -42,7 +50,33 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     set({ searchQuery });
     get().fetchImages(true);
   },
-  setSelectedImageId: (selectedImageId) => set({ selectedImageId }),
+  setSelectedImageId: (selectedImageId) =>
+    set({
+      selectedImageId,
+      ...(selectedImageId !== null
+        ? { compareImageIds: null, compareSlider: 50 }
+        : {})
+    }),
+  setCompareSlider: (value) => {
+    const next = Math.max(0, Math.min(100, value));
+    set({ compareSlider: next });
+  },
+  startCompare: (firstId, secondId) => {
+    if (firstId === secondId) return;
+
+    set({
+      selectedImageId: null,
+      compareImageIds: [firstId, secondId],
+      compareSlider: 50
+    });
+  },
+  closeCompare: () => set({ compareImageIds: null, compareSlider: 50 }),
+  swapCompareImages: () => {
+    const compareImageIds = get().compareImageIds;
+    if (!compareImageIds) return;
+
+    set({ compareImageIds: [compareImageIds[1], compareImageIds[0]] });
+  },
   setLayoutMode: (layoutMode) => set({ layoutMode }),
 
   fetchImages: async (clear = false) => {
@@ -54,7 +88,15 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const { tabs, activeTabId } = useTabsStore.getState();
 
     if (!activeTabId) {
-      set({ images: [], totalImages: 0, isLoading: false, hasMore: false });
+      set({
+        images: [],
+        totalImages: 0,
+        selectedImageId: null,
+        compareImageIds: null,
+        compareSlider: 50,
+        isLoading: false,
+        hasMore: false
+      });
       return;
     }
 
@@ -67,6 +109,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         images: [],
         totalImages: 0,
         selectedImageId: null,
+        compareImageIds: null,
+        compareSlider: 50,
         isLoading: false,
         hasMore: false
       });
@@ -83,6 +127,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
             images: [],
             totalImages: 0,
             selectedImageId: null,
+            compareImageIds: null,
+            compareSlider: 50,
             offset: 0,
             hasMore: true
           }

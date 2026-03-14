@@ -2,7 +2,15 @@ import { useEffect } from 'react';
 import { useGalleryStore } from '../stores/gallery-store';
 
 export function useKeyboardNavigation() {
-  const { images, selectedImageId, setSelectedImageId } = useGalleryStore();
+  const {
+    images,
+    selectedImageId,
+    compareImageIds,
+    compareSlider,
+    setSelectedImageId,
+    setCompareSlider,
+    closeCompare
+  } = useGalleryStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -11,6 +19,25 @@ export function useKeyboardNavigation() {
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA'
       ) {
+        return;
+      }
+
+      if (compareImageIds) {
+        switch (e.key) {
+          case 'ArrowRight':
+            setCompareSlider(compareSlider + 2);
+            e.preventDefault();
+            break;
+          case 'ArrowLeft':
+            setCompareSlider(compareSlider - 2);
+            e.preventDefault();
+            break;
+          case 'Escape':
+            closeCompare();
+            e.preventDefault();
+            break;
+        }
+
         return;
       }
 
@@ -50,5 +77,13 @@ export function useKeyboardNavigation() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [images, selectedImageId, setSelectedImageId]);
+  }, [
+    closeCompare,
+    compareImageIds,
+    compareSlider,
+    images,
+    selectedImageId,
+    setCompareSlider,
+    setSelectedImageId
+  ]);
 }

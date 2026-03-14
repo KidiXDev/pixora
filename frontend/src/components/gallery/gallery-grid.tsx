@@ -43,6 +43,7 @@ function ImageGrid({
     layoutMode,
     selectedImageId,
     setSelectedImageId,
+    startCompare,
     fetchNextPage,
     hasMore,
     isLoading
@@ -50,6 +51,10 @@ function ImageGrid({
 
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [draggingImageId, setDraggingImageId] = useState<number | null>(null);
+  const [comparePickImageId, setComparePickImageId] = useState<number | null>(
+    null
+  );
 
   useEffect(() => {
     const el = parentRef.current;
@@ -117,6 +122,15 @@ function ImageGrid({
 
     return () => cancelAnimationFrame(raf1);
   }, [selectedImageId, columns, rowVirtualizer]);
+
+  useEffect(() => {
+    if (comparePickImageId === null) return;
+
+    const exists = images.some((img) => img.ID === comparePickImageId);
+    if (!exists) {
+      setComparePickImageId(null);
+    }
+  }, [comparePickImageId, images]);
 
   // Infinite scroll detection
   useEffect(() => {
@@ -205,6 +219,35 @@ function ImageGrid({
                         isSelected={selectedImageId === image.ID}
                         onClick={() => setSelectedImageId(image.ID)}
                         layoutMode={layoutMode}
+                        draggingImageId={draggingImageId}
+                        isCompareDragging={draggingImageId !== null}
+                        isCompareDragSource={draggingImageId === image.ID}
+                        onCompareDragStart={(imageId) =>
+                          setDraggingImageId(imageId)
+                        }
+                        onCompareDragEnd={() => setDraggingImageId(null)}
+                        onCompareDrop={(sourceId, targetId) => {
+                          setDraggingImageId(null);
+                          setComparePickImageId(null);
+                          if (sourceId !== targetId) {
+                            startCompare(sourceId, targetId);
+                          }
+                        }}
+                        isCompareQuickSource={comparePickImageId === image.ID}
+                        onCompareQuickPick={(targetId) => {
+                          if (comparePickImageId === null) {
+                            setComparePickImageId(targetId);
+                            return;
+                          }
+
+                          if (comparePickImageId === targetId) {
+                            setComparePickImageId(null);
+                            return;
+                          }
+
+                          setComparePickImageId(null);
+                          startCompare(comparePickImageId, targetId);
+                        }}
                       />
                     </div>
                   );
