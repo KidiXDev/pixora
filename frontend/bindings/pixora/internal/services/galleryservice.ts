@@ -7,6 +7,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as application$0 from "../../../github.com/wailsapp/wails/v3/pkg/application/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -60,6 +63,13 @@ export function RemoveFolder(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetDevMode updates the dev mode setting.
+ */
+export function SetDevMode(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3111825936, enabled);
+}
+
+/**
  * SetTabs updates the tabs configuration.
  */
 export function SetTabs(tabs: config$0.TabConfig[]): $CancellablePromise<void> {
@@ -67,10 +77,24 @@ export function SetTabs(tabs: config$0.TabConfig[]): $CancellablePromise<void> {
 }
 
 /**
+ * SetWindow sets the main window for the service.
+ */
+export function SetWindow(window: application$0.WebviewWindow | null): $CancellablePromise<void> {
+    return $Call.ByID(3517996620, window);
+}
+
+/**
  * ShowInFolder opens the file explorer and selects the file
  */
 export function ShowInFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(3474754050, path);
+}
+
+/**
+ * ToggleDevTools opens or closes the developer tools.
+ */
+export function ToggleDevTools(): $CancellablePromise<void> {
+    return $Call.ByID(1248833658);
 }
 
 /**

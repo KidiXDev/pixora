@@ -1,3 +1,4 @@
+import { ScrollablePage } from '@/components/layout/scrollable-page';
 import { useConfirmation } from '@/components/providers/confirmation-provider';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,11 +8,12 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useConfigStore } from '@/stores/config-store';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { Dialogs } from '@wailsio/runtime';
-import { Folder, FolderPlus, Info, Trash2 } from 'lucide-react';
+import { Folder, FolderPlus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ScanMode } from '../../bindings/pixora/internal/config/models';
 
@@ -22,6 +24,7 @@ export default function SettingsPage() {
     addFolder,
     removeFolder,
     clearIndexAndReindex,
+    setDevMode,
     isLoading: configLoading
   } = useConfigStore();
   const { fetchImages } = useGalleryStore();
@@ -77,167 +80,170 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="container mx-auto p-4 md:p-8 max-w-4xl animate-in fade-in duration-500">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your image indexing and application preferences.
-        </p>
-      </div>
+    <ScrollablePage className="p-4 md:p-8">
+      <div className="container mx-auto max-w-4xl animate-in fade-in duration-500">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage your image indexing and application preferences.
+          </p>
+        </div>
 
-      <div className="space-y-8">
-        {/* Watched Folders Section */}
-        <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h2 className="text-xl font-semibold">Watched Folders</h2>
-              <p className="text-sm text-muted-foreground">
-                Directories currently being scanned for images.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Select
-                value={newMode.charAt(0).toUpperCase() + newMode.slice(1)}
-                onValueChange={(v) =>
-                  setNewMode(
-                    (v.charAt(0).toLowerCase() + v.slice(1)) as ScanMode
-                  )
-                }
-              >
-                <SelectTrigger className="w-30">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ScanMode.ScanModeNormal}>
-                    Normal
-                  </SelectItem>
-                  <SelectItem value={ScanMode.ScanModeWalk}>
-                    Walk Array
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={handleAddFolderClick}
-                size="sm"
-                className="gap-2"
-              >
-                <FolderPlus size={16} />
-                Add Folder
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            {configLoading ? (
-              <div className="p-12 text-center text-muted-foreground">
-                Loading configurations...
-              </div>
-            ) : config?.folders?.length === 0 ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
-                <Folder size={40} className="mb-4 opacity-10" />
-                <p>No watched folders configured.</p>
-                <p className="text-xs mt-1">
-                  Folders added here or via Tabs will appear in this list.
+        <div className="space-y-8">
+          {/* Watched Folders Section */}
+          <section className="space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-xl font-semibold">Watched Folders</h2>
+                <p className="text-sm text-muted-foreground">
+                  Directories currently being scanned for images.
                 </p>
               </div>
-            ) : (
-              <div className="divide-y divide-border/50">
-                {config?.folders?.map((folder) => (
-                  <div
-                    key={folder.path}
-                    className="flex items-center justify-between p-4 hover:bg-muted/10 transition-colors"
-                  >
-                    <div className="flex flex-col gap-1 overflow-hidden pr-4">
-                      <div className="font-medium truncate text-sm">
-                        {folder.path}
-                      </div>
-                      <div className="flex items-center text-xs text-muted-foreground gap-2">
-                        <span
-                          className={cn(
-                            'px-1.5 py-0.5 rounded text-[10px] uppercase font-bold',
-                            folder.scanMode === 'walk'
-                              ? 'bg-primary/10 text-primary border border-primary/20'
-                              : 'bg-muted text-muted-foreground border border-border'
-                          )}
-                        >
-                          {folder.scanMode}
-                        </span>
-                        <span>
-                          {folder.scanMode === 'walk'
-                            ? 'Recursive indexing'
-                            : 'Flat directory'}
-                        </span>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        confirm
-                          .confirm({
-                            title: 'Stop Watching Folder',
-                            description:
-                              'Are you sure? This will remove images from this folder from your gallery index.',
-                            variant: 'destructive'
-                          })
-                          .then((ok) => {
-                            if (ok) removeFolder(folder.path);
-                          })
-                      }
-                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
-                ))}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Select
+                  value={newMode.charAt(0).toUpperCase() + newMode.slice(1)}
+                  onValueChange={(v) =>
+                    setNewMode(
+                      (v.charAt(0).toLowerCase() + v.slice(1)) as ScanMode
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-30">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ScanMode.ScanModeNormal}>
+                      Normal
+                    </SelectItem>
+                    <SelectItem value={ScanMode.ScanModeWalk}>
+                      Walk Array
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleAddFolderClick}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <FolderPlus size={16} />
+                  Add Folder
+                </Button>
               </div>
-            )}
-          </div>
-        </section>
+            </div>
 
-        {/* Indexing Reset Section */}
-        <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="font-semibold text-destructive">
-                Clear Indexing Data
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Removes indexing cache and indexed image metadata, then starts a
-                full re-index for all watched folders.
-              </p>
+            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+              {configLoading ? (
+                <div className="p-12 text-center text-muted-foreground">
+                  Loading configurations...
+                </div>
+              ) : config?.folders?.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
+                  <Folder size={40} className="mb-4 opacity-10" />
+                  <p>No watched folders configured.</p>
+                  <p className="text-xs mt-1">
+                    Folders added here or via Tabs will appear in this list.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {config?.folders?.map((folder) => (
+                    <div
+                      key={folder.path}
+                      className="flex items-center justify-between p-4 hover:bg-muted/10 transition-colors"
+                    >
+                      <div className="flex flex-col gap-1 overflow-hidden pr-4">
+                        <div className="font-medium truncate text-sm">
+                          {folder.path}
+                        </div>
+                        <div className="flex items-center text-xs text-muted-foreground gap-2">
+                          <span
+                            className={cn(
+                              'px-1.5 py-0.5 rounded text-[10px] uppercase font-bold',
+                              folder.scanMode === 'walk'
+                                ? 'bg-primary/10 text-primary border border-primary/20'
+                                : 'bg-muted text-muted-foreground border border-border'
+                            )}
+                          >
+                            {folder.scanMode}
+                          </span>
+                          <span>
+                            {folder.scanMode === 'walk'
+                              ? 'Recursive indexing'
+                              : 'Flat directory'}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          confirm
+                            .confirm({
+                              title: 'Stop Watching Folder',
+                              description:
+                                'Are you sure? This will remove images from this folder from your gallery index.',
+                              variant: 'destructive'
+                            })
+                            .then((ok) => {
+                              if (ok) removeFolder(folder.path);
+                            })
+                        }
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <Button
-              variant="destructive"
-              onClick={handleClearIndexingClick}
-              disabled={isClearingIndex}
-              className="gap-2"
-            >
-              <Trash2 size={16} />
-              {isClearingIndex ? 'Clearing...' : 'Clear & Re-index'}
-            </Button>
-          </div>
-        </section>
+          </section>
 
-        {/* Info Section */}
-        <section className="rounded-xl border border-border bg-card p-6 border-dashed">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <Info className="text-primary" size={20} />
+          {/* Developer Settings Section */}
+          <section className="rounded-xl border border-border bg-card p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="font-semibold">Developer Mode</h3>
+                <p className="text-sm text-muted-foreground">
+                  Enables developer tools. When on, pressing{' '}
+                  <kbd className="font-sans px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-bold">
+                    F12
+                  </kbd>{' '}
+                  will open dev tools.
+                </p>
+              </div>
+              <Switch
+                checked={config?.devMode || false}
+                onCheckedChange={(checked) => setDevMode(checked)}
+              />
             </div>
-            <div>
-              <h3 className="font-semibold mb-1">About Tabs & Folders</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Pixora allows you to organize your images using **Tabs**. When
-                you add a new tab, you select a folder which is then
-                automatically "watched" and indexed. Removing a tab will stop
-                watching that specific folder if no other tabs are referencing
-                it.
-              </p>
+          </section>
+
+          {/* Indexing Reset Section */}
+          <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-destructive">
+                  Clear Indexing Data
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Removes indexing cache and indexed image metadata, then starts
+                  a full re-index for all watched folders.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={handleClearIndexingClick}
+                disabled={isClearingIndex}
+                className="gap-2"
+              >
+                <Trash2 size={16} />
+                {isClearingIndex ? 'Clearing...' : 'Clear & Re-index'}
+              </Button>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
-    </div>
+    </ScrollablePage>
   );
 }

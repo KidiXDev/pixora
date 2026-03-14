@@ -20,6 +20,7 @@ interface ConfigState {
   addFolder: (path: string, mode: ScanMode) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   updateFolderAlias: (path: string, alias: string) => Promise<void>;
+  setDevMode: (enabled: boolean) => Promise<void>;
   clearIndexAndReindex: () => Promise<void>;
 }
 
@@ -98,6 +99,17 @@ export const useConfigStore = create<ConfigState>((set) => ({
       });
     } catch (e) {
       console.error('Failed to update folder alias', e);
+    }
+  },
+  setDevMode: async (enabled) => {
+    try {
+      const { SetDevMode } = await import('../../bindings/pixora/internal/services/galleryservice');
+      await SetDevMode(enabled);
+      // reload
+      const config = await GetConfig();
+      set({ config });
+    } catch (e) {
+      console.error('Failed to set dev mode', e);
     }
   },
 

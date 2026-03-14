@@ -6,12 +6,15 @@ import (
 	"pixora/internal/config"
 	"pixora/internal/db"
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type GalleryService struct {
 	db      *db.DB
 	config  *config.Manager
 	indexer *Indexer
+	window  *application.WebviewWindow
 }
 
 func NewGalleryService(database *db.DB, cfg *config.Manager, idx *Indexer) *GalleryService {
@@ -106,6 +109,23 @@ func (s *GalleryService) SetTabs(tabs []config.TabConfig) error {
 // UpdateFolderAlias updates the alias for a supervised folder.
 func (s *GalleryService) UpdateFolderAlias(path string, alias string) error {
 	return s.config.UpdateFolderAlias(path, alias)
+}
+
+// SetDevMode updates the dev mode setting.
+func (s *GalleryService) SetDevMode(enabled bool) error {
+	return s.config.SetDevMode(enabled)
+}
+
+// SetWindow sets the main window for the service.
+func (s *GalleryService) SetWindow(window *application.WebviewWindow) {
+	s.window = window
+}
+
+// ToggleDevTools opens or closes the developer tools.
+func (s *GalleryService) ToggleDevTools() {
+	if s.window != nil {
+		s.window.OpenDevTools()
+	}
 }
 
 // ClearIndexAndReindex clears indexed image data and thumbnail cache, then starts a fresh scan.

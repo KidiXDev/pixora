@@ -9,6 +9,7 @@ export class AppConfig {
     "folders": FolderConfig[];
     "tabs": TabConfig[];
     "window": WindowConfig;
+    "devMode": boolean;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -20,6 +21,9 @@ export class AppConfig {
         }
         if (!("window" in $$source)) {
             this["window"] = (new WindowConfig());
+        }
+        if (!("devMode" in $$source)) {
+            this["devMode"] = false;
         }
 
         Object.assign(this, $$source);

@@ -121,6 +121,7 @@ func main() {
 	})
 
 	windowOptions := application.WebviewWindowOptions{
+		Name:          "main",
 		Title:         "Pixora - High Performance Image Browser For AI Gen",
 		Frameless:     true,
 		DisableResize: false,
@@ -147,6 +148,7 @@ func main() {
 	// 'URL' is the URL that will be loaded into the webview.
 	mainWindow := app.Window.NewWithOptions(windowOptions)
 	bindWindowPersistence(mainWindow, cfgMgr, windowConfig)
+	gallerySvc.SetWindow(mainWindow)
 
 	// Create a goroutine that emits an event containing the current time every second.
 	// The frontend can listen to this event and update the UI accordingly.

@@ -5,6 +5,7 @@ import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LayoutGrid, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollablePage } from '../layout/scrollable-page';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
 
@@ -140,11 +141,12 @@ function ImageGrid({
   ]);
 
   return (
-    <div className="h-full w-full pr-1">
-      <div
-        ref={parentRef}
-        className="h-full w-full overflow-y-auto p-4 custom-scrollbar"
-      >
+    <ScrollablePage
+      ref={parentRef}
+      className="p-4 custom-scrollbar"
+      containerClassName="h-full w-full"
+    >
+      <div className="h-full w-full">
         {images.length === 0 && !isLoading ? (
           <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
             <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
@@ -217,6 +219,6 @@ function ImageGrid({
           </div>
         )}
       </div>
-    </div>
+    </ScrollablePage>
   );
 }

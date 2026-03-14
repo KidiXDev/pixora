@@ -46,6 +46,7 @@ type AppConfig struct {
 	Folders []FolderConfig `json:"folders"`
 	Tabs    []TabConfig    `json:"tabs"`
 	Window  WindowConfig   `json:"window"`
+	DevMode bool           `json:"devMode"`
 }
 
 type Manager struct {
@@ -143,6 +144,13 @@ func (m *Manager) AddFolder(path string, mode ScanMode) error {
 	}
 	m.mu.Unlock()
 
+	return m.Save()
+}
+
+func (m *Manager) SetDevMode(enabled bool) error {
+	m.mu.Lock()
+	m.config.DevMode = enabled
+	m.mu.Unlock()
 	return m.Save()
 }
 

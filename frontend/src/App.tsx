@@ -2,6 +2,8 @@ import { ConfirmationProvider } from '@/components/providers/confirmation-provid
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './routes';
+import { useConfigStore } from './stores/config-store';
+import { ToggleDevTools } from '../bindings/pixora/internal/services/galleryservice';
 
 function App() {
   useEffect(() => {
@@ -14,9 +16,21 @@ function App() {
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F12') {
+        const config = useConfigStore.getState().config;
+        if (config?.devMode) {
+          e.preventDefault();
+          ToggleDevTools();
+        }
+      }
+    };
+
     document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
