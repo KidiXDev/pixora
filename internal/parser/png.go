@@ -2,10 +2,13 @@ package parser
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -42,6 +45,8 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 
 	metadata := &ImageMetadata{}
 	var paramsStr string
+	var promptJSON string
+	var workflowJSON string
 	haveSize := false
 	haveParams := false
 
@@ -83,9 +88,15 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			if len(parts) == 2 {
 				keyword := string(parts[0])
 				text := string(parts[1])
-				if keyword == "parameters" {
+				switch keyword {
+				case "parameters":
 					paramsStr = text
 					haveParams = true
+				case "prompt":
+					promptJSON = text
+					parseComfyPromptJSON(promptJSON, metadata)
+				case "workflow":
+					workflowJSON = text
 				}
 			}
 		} else if string(chunkType) == "iTXt" {
@@ -93,25 +104,17 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			if _, err := io.ReadFull(f, data); err != nil {
 				return nil, err
 			}
-			parts := bytes.SplitN(data, []byte{0}, 2)
-			if len(parts) >= 2 {
-				keyword := string(parts[0])
-				if keyword == "parameters" {
-					textStart := 0
-					nullCount := 0
-					for i := len(keyword) + 1; i < len(data); i++ {
-						if data[i] == 0 {
-							nullCount++
-							if nullCount == 3 {
-								textStart = i + 1
-								break
-							}
-						}
-					}
-					if textStart > 0 && textStart < len(data) {
-						paramsStr = string(data[textStart:])
-						haveParams = true
-					}
+			keyword, text, err := parseITXtChunk(data)
+			if err == nil {
+				switch keyword {
+				case "parameters":
+					paramsStr = text
+					haveParams = true
+				case "prompt":
+					promptJSON = text
+					parseComfyPromptJSON(promptJSON, metadata)
+				case "workflow":
+					workflowJSON = text
 				}
 			}
 		} else {
@@ -133,9 +136,260 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 	if paramsStr != "" {
 		metadata.Raw = paramsStr
 		parseA1111Parameters(paramsStr, metadata)
+	} else {
+		if promptJSON != "" {
+			metadata.Raw = promptJSON
+		}
+		if metadata.Raw == "" && workflowJSON != "" {
+			metadata.Raw = workflowJSON
+		}
 	}
 
 	return metadata, nil
+}
+
+func parseITXtChunk(data []byte) (string, string, error) {
+	i := bytes.IndexByte(data, 0)
+	if i <= 0 {
+		return "", "", fmt.Errorf("invalid iTXt chunk: missing keyword")
+	}
+
+	keyword := string(data[:i])
+	pos := i + 1
+	if pos+2 > len(data) {
+		return "", "", fmt.Errorf("invalid iTXt chunk: truncated compression fields")
+	}
+
+	compressionFlag := data[pos]
+	compressionMethod := data[pos+1]
+	_ = compressionMethod
+	pos += 2
+
+	langEnd := bytes.IndexByte(data[pos:], 0)
+	if langEnd < 0 {
+		return "", "", fmt.Errorf("invalid iTXt chunk: missing language terminator")
+	}
+	pos += langEnd + 1
+
+	translatedEnd := bytes.IndexByte(data[pos:], 0)
+	if translatedEnd < 0 {
+		return "", "", fmt.Errorf("invalid iTXt chunk: missing translated keyword terminator")
+	}
+	pos += translatedEnd + 1
+
+	if pos > len(data) {
+		return "", "", fmt.Errorf("invalid iTXt chunk: missing text")
+	}
+
+	textData := data[pos:]
+	if compressionFlag == 1 {
+		zr, err := zlib.NewReader(bytes.NewReader(textData))
+		if err != nil {
+			return "", "", err
+		}
+		defer zr.Close()
+
+		decoded, err := io.ReadAll(zr)
+		if err != nil {
+			return "", "", err
+		}
+		return keyword, string(decoded), nil
+	}
+
+	return keyword, string(textData), nil
+}
+
+func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+		return
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &root); err != nil {
+		return
+	}
+
+	nodes := root
+	if promptNode, ok := root["prompt"]; ok {
+		if promptMap, ok := asMap(promptNode); ok {
+			nodes = promptMap
+		}
+	}
+
+	clipTexts := make(map[string]string)
+	nodeInputs := make(map[string]map[string]any)
+	positiveRef := ""
+	negativeRef := ""
+	latentRef := ""
+
+	for nodeID, nodeVal := range nodes {
+		nodeMap, ok := asMap(nodeVal)
+		if !ok {
+			continue
+		}
+		inputs, _ := asMap(nodeMap["inputs"])
+		nodeInputs[nodeID] = inputs
+
+		classType := asString(nodeMap["class_type"])
+		switch classType {
+		case "CLIPTextEncode":
+			if text := asString(inputs["text"]); text != "" {
+				clipTexts[nodeID] = text
+			}
+		case "CheckpointLoaderSimple":
+			if metadata.Model == "" {
+				metadata.Model = asString(inputs["ckpt_name"])
+			}
+		case "KSampler", "KSamplerAdvanced":
+			if metadata.Sampler == "" {
+				if sampler := asString(inputs["sampler_name"]); sampler != "" {
+					metadata.Sampler = sampler
+				} else {
+					metadata.Sampler = asString(inputs["sampler"])
+				}
+			}
+			if metadata.Seed == "" {
+				if seed, ok := asInt64String(inputs["seed"]); ok {
+					metadata.Seed = seed
+				}
+			}
+			if metadata.CfgScale == 0 {
+				if cfg, ok := asFloat64(inputs["cfg"]); ok {
+					metadata.CfgScale = cfg
+				}
+			}
+			if positiveRef == "" {
+				positiveRef = extractNodeRefID(inputs["positive"])
+			}
+			if negativeRef == "" {
+				negativeRef = extractNodeRefID(inputs["negative"])
+			}
+			if latentRef == "" {
+				latentRef = extractNodeRefID(inputs["latent_image"])
+			}
+		case "EmptyLatentImage":
+			if metadata.Width == 0 {
+				if width, ok := asInt(inputs["width"]); ok {
+					metadata.Width = width
+				}
+			}
+			if metadata.Height == 0 {
+				if height, ok := asInt(inputs["height"]); ok {
+					metadata.Height = height
+				}
+			}
+		}
+	}
+
+	if metadata.Prompt == "" && positiveRef != "" {
+		metadata.Prompt = strings.TrimSpace(clipTexts[positiveRef])
+	}
+	if metadata.NegativePrompt == "" && negativeRef != "" {
+		metadata.NegativePrompt = strings.TrimSpace(clipTexts[negativeRef])
+	}
+
+	if (metadata.Width == 0 || metadata.Height == 0) && latentRef != "" {
+		if latentInputs, ok := nodeInputs[latentRef]; ok {
+			if metadata.Width == 0 {
+				if width, ok := asInt(latentInputs["width"]); ok {
+					metadata.Width = width
+				}
+			}
+			if metadata.Height == 0 {
+				if height, ok := asInt(latentInputs["height"]); ok {
+					metadata.Height = height
+				}
+			}
+		}
+	}
+}
+
+func asMap(v any) (map[string]any, bool) {
+	m, ok := v.(map[string]any)
+	return m, ok
+}
+
+func asString(v any) string {
+	s, ok := v.(string)
+	if ok {
+		return s
+	}
+	return ""
+}
+
+func asFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(n, 64)
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func asInt(v any) (int, bool) {
+	f, ok := asFloat64(v)
+	if !ok {
+		return 0, false
+	}
+	return int(f), true
+}
+
+func asInt64String(v any) (string, bool) {
+	switch n := v.(type) {
+	case int:
+		return strconv.Itoa(n), true
+	case int64:
+		return strconv.FormatInt(n, 10), true
+	case float64:
+		return strconv.FormatInt(int64(n), 10), true
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			f, ferr := n.Float64()
+			if ferr != nil {
+				return "", false
+			}
+			return strconv.FormatInt(int64(f), 10), true
+		}
+		return strconv.FormatInt(i, 10), true
+	case string:
+		return strings.TrimSpace(n), strings.TrimSpace(n) != ""
+	default:
+		return "", false
+	}
+}
+
+func extractNodeRefID(v any) string {
+	arr, ok := v.([]any)
+	if !ok || len(arr) == 0 {
+		return ""
+	}
+
+	switch id := arr[0].(type) {
+	case string:
+		return id
+	case float64:
+		return strconv.FormatInt(int64(id), 10)
+	case int:
+		return strconv.Itoa(id)
+	case int64:
+		return strconv.FormatInt(id, 10)
+	default:
+		return ""
+	}
 }
 
 func parseA1111Parameters(params string, metadata *ImageMetadata) {

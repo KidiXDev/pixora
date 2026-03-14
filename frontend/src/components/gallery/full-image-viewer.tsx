@@ -2,8 +2,12 @@ import { useGalleryStore } from '@/stores/gallery-store';
 import { useEffect } from 'react';
 
 export function FullImageViewer() {
-  const { images, selectedImageId, setSelectedImageId, isLoading } =
-    useGalleryStore();
+  const images = useGalleryStore((state) => state.images);
+  const selectedImageId = useGalleryStore((state) => state.selectedImageId);
+  const setSelectedImageId = useGalleryStore(
+    (state) => state.setSelectedImageId
+  );
+  const isLoading = useGalleryStore((state) => state.isLoading);
 
   const image = images.find((img) => img.ID === selectedImageId);
 

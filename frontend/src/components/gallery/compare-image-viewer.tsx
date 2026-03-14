@@ -4,8 +4,10 @@ import { MoveHorizontal } from 'lucide-react';
 import { useRef } from 'react';
 
 export function CompareImageViewer() {
-  const { images, compareImageIds, compareSlider, setCompareSlider } =
-    useGalleryStore();
+  const images = useGalleryStore((state) => state.images);
+  const compareImageIds = useGalleryStore((state) => state.compareImageIds);
+  const compareSlider = useGalleryStore((state) => state.compareSlider);
+  const setCompareSlider = useGalleryStore((state) => state.setCompareSlider);
   const frameRef = useRef<HTMLDivElement>(null);
 
   if (!compareImageIds) return null;

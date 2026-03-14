@@ -36,7 +36,7 @@ import {
   Settings,
   X
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 import { TabConfig } from '../../../bindings/pixora/internal/config/models';
@@ -63,7 +63,7 @@ interface SortableTabProps {
   canCloseOthers: boolean;
 }
 
-function SortableTab({
+const SortableTab = memo(function SortableTab({
   tab,
   isActive,
   onTabChange,
@@ -95,10 +95,13 @@ function SortableTab({
     await onRename(tab.id, nextLabel);
   };
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition
-  };
+  const style = useMemo(
+    () => ({
+      transform: CSS.Transform.toString(transform),
+      transition
+    }),
+    [transform, transition]
+  );
 
   return (
     <ContextMenu>
@@ -236,7 +239,7 @@ function SortableTab({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});
 
 // ── Drag Overlay (ghost tab while dragging) ──────────────────────────────────
 
@@ -296,7 +299,10 @@ export function TabNavigation() {
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [debouncedQuery] = useDebounce(localQuery, 300);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.id === activeTabId),
+    [tabs, activeTabId]
+  );
   const showControls =
     location.pathname === '/' &&
     activeTab &&
@@ -341,45 +347,57 @@ export function TabNavigation() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTabId, removeTab]);
 
-  const handleTabChange = (id: string) => {
-    setActiveTabId(id);
-    fetchImages(true);
-  };
+  const handleTabChange = useCallback(
+    (id: string) => {
+      setActiveTabId(id);
+      fetchImages(true);
+    },
+    [setActiveTabId, fetchImages]
+  );
 
-  const handleAddTab = async () => {
+  const handleAddTab = useCallback(async () => {
     await addTab({ label: 'New Tab', path: '', isWalk: true });
-  };
+  }, [addTab]);
 
-  const handleRenameTab = async (id: string, nextLabel: string) => {
-    const targetTab = tabs.find((t) => t.id === id);
-    if (!targetTab) return;
-    await updateTab({
-      ...targetTab,
-      label: nextLabel
-    });
-  };
+  const handleRenameTab = useCallback(
+    async (id: string, nextLabel: string) => {
+      const targetTab = tabs.find((t) => t.id === id);
+      if (!targetTab) return;
+      await updateTab({
+        ...targetTab,
+        label: nextLabel
+      });
+    },
+    [tabs, updateTab]
+  );
 
-  const handleDuplicateTab = async (id: string) => {
-    const targetTab = tabs.find((t) => t.id === id);
-    if (!targetTab) return;
+  const handleDuplicateTab = useCallback(
+    async (id: string) => {
+      const targetTab = tabs.find((t) => t.id === id);
+      if (!targetTab) return;
 
-    const baseLabel = (targetTab.label || 'New Tab').trim();
-    await addTab({
-      label: `${baseLabel} Copy`,
-      path: targetTab.path,
-      isWalk: targetTab.isWalk
-    });
-  };
+      const baseLabel = (targetTab.label || 'New Tab').trim();
+      await addTab({
+        label: `${baseLabel} Copy`,
+        path: targetTab.path,
+        isWalk: targetTab.isWalk
+      });
+    },
+    [tabs, addTab]
+  );
 
-  const handleCloseOtherTabs = async (id: string) => {
-    const tabsToClose = tabs.filter((t) => t.id !== id);
-    for (const tab of tabsToClose) {
-      await removeTab(tab.id);
-    }
-    setActiveTabId(id);
-  };
+  const handleCloseOtherTabs = useCallback(
+    async (id: string) => {
+      const tabsToClose = tabs.filter((t) => t.id !== id);
+      for (const tab of tabsToClose) {
+        await removeTab(tab.id);
+      }
+      setActiveTabId(id);
+    },
+    [tabs, removeTab, setActiveTabId]
+  );
 
-  const handleOpenSettingsTab = async () => {
+  const handleOpenSettingsTab = useCallback(async () => {
     const existingSettingsTab = tabs.find(
       (tab) => tab.path === SETTINGS_TAB_PATH
     );
@@ -389,25 +407,32 @@ export function TabNavigation() {
     }
 
     await addTab({ label: 'Settings', path: SETTINGS_TAB_PATH, isWalk: false });
-  };
+  }, [tabs, setActiveTabId, addTab]);
 
-  const handleDragStart = (event: DragStartEvent) => {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
-  };
+  }, []);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveId(null);
 
-    if (over && active.id !== over.id) {
-      const oldIndex = tabs.findIndex((t) => t.id === active.id);
-      const newIndex = tabs.findIndex((t) => t.id === over.id);
-      const reordered = arrayMove(tabs, oldIndex, newIndex);
-      reorderTabs(reordered);
-    }
-  };
+      if (over && active.id !== over.id) {
+        const oldIndex = tabs.findIndex((t) => t.id === active.id);
+        const newIndex = tabs.findIndex((t) => t.id === over.id);
+        const reordered = arrayMove(tabs, oldIndex, newIndex);
+        reorderTabs(reordered);
+      }
+    },
+    [tabs, reorderTabs]
+  );
 
-  const draggingTab = activeId ? tabs.find((t) => t.id === activeId) : null;
+  const draggingTab = useMemo(
+    () => (activeId ? tabs.find((t) => t.id === activeId) : null),
+    [activeId, tabs]
+  );
+  const tabIds = useMemo(() => tabs.map((t) => t.id), [tabs]);
 
   return (
     <DndContext
@@ -418,9 +443,9 @@ export function TabNavigation() {
     >
       <div className="flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden">
         {/* Scrollable Tabs Area */}
-        <div className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar scroll-smooth">
+        <div className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar contain-[layout_style_paint]">
           <SortableContext
-            items={tabs.map((t) => t.id)}
+            items={tabIds}
             strategy={horizontalListSortingStrategy}
           >
             {tabs.map((tab) => (
@@ -458,7 +483,7 @@ export function TabNavigation() {
           {isIndexing && (
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 mr-1 text-[10px] font-semibold tracking-tight uppercase animate-in fade-in zoom-in duration-300">
               <Loader2 size={12} className="animate-spin" />
-              {totalProcessed > 0 ? totalProcessed : ''}
+              Indexing {totalProcessed > 0 && `${totalProcessed}`} Files
             </div>
           )}
 

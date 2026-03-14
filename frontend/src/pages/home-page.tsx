@@ -7,7 +7,8 @@ import { useKeyboardNavigation } from '@/hooks/use-keyboard-navigation';
 import { useGalleryStore } from '@/stores/gallery-store';
 
 export default function HomePage() {
-  const { selectedImageId, compareImageIds } = useGalleryStore();
+  const selectedImageId = useGalleryStore((state) => state.selectedImageId);
+  const compareImageIds = useGalleryStore((state) => state.compareImageIds);
   const isCompareMode = Boolean(compareImageIds);
   const hasActiveViewer = Boolean(selectedImageId) || isCompareMode;
 

@@ -6,7 +6,7 @@ import {
   GitCompareArrows,
   Image as ImageIcon
 } from 'lucide-react';
-import { memo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { ImageRecord } from '../../../bindings/pixora/internal/db/models';
 import {
   OpenExternally,
@@ -23,7 +23,7 @@ import {
 interface ImageTileProps {
   image: ImageRecord;
   isSelected: boolean;
-  onClick: () => void;
+  onClick: (imageId: number) => void;
   layoutMode: 'compact' | 'comfortable' | 'spacious';
   draggingImageId?: number | null;
   isCompareDragging?: boolean;
@@ -51,6 +51,10 @@ export const ImageTile = memo(function ImageTile({
 }: ImageTileProps) {
   const [isCompareDropTarget, setIsCompareDropTarget] = useState(false);
   const suppressClickRef = useRef(false);
+  const fileName = useMemo(
+    () => image.Path.split('\\').pop()?.split('/').pop() || 'Image',
+    [image.Path]
+  );
 
   const heightClass =
     layoutMode === 'compact'
@@ -131,7 +135,7 @@ export const ImageTile = memo(function ImageTile({
       return;
     }
 
-    onClick();
+    onClick(image.ID);
   };
 
   return (
@@ -159,7 +163,7 @@ export const ImageTile = memo(function ImageTile({
           <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
             <img
               src={`/thumbs/${image.Hash}.jpg`}
-              alt={image.Path.split('\\').pop()?.split('/').pop() || 'Image'}
+              alt={fileName}
               className="h-full w-full object-contain"
               loading="lazy"
               draggable={false}
@@ -171,9 +175,7 @@ export const ImageTile = memo(function ImageTile({
             />
 
             <div className="absolute bottom-0 left-0 right-0 flex h-16 items-end justify-center bg-linear-to-t from-black/80 to-transparent px-2 pb-2 pt-2 text-center text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
-              <span className="truncate">
-                {image.Path.split('\\').pop()?.split('/').pop()}
-              </span>
+              <span className="truncate">{fileName}</span>
             </div>
           </div>
 
@@ -200,15 +202,6 @@ export const ImageTile = memo(function ImageTile({
             <GitCompareArrows size={12} />
             {isCompareQuickSource ? 'Pick B' : 'Compare'}
           </button>
-
-          {/* Tags / Metadata icons overlay */}
-          <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100">
-            {image.Model && (
-              <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-md">
-                {image.Model}
-              </span>
-            )}
-          </div>
 
           {isCompareDragging && !isCompareDragSource && (
             <div className="absolute top-2 right-2 rounded bg-black/70 px-2 py-1 text-[10px] font-semibold tracking-wide text-white backdrop-blur-sm pointer-events-none">

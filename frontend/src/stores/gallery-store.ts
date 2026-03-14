@@ -46,10 +46,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
   setImages: (images, total) =>
     set({ images, totalImages: total, hasMore: images.length < total }),
-  setSearchQuery: (searchQuery) => {
-    set({ searchQuery });
-    get().fetchImages(true);
-  },
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
   setSelectedImageId: (selectedImageId) =>
     set({
       selectedImageId,

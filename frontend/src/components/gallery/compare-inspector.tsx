@@ -14,8 +14,10 @@ import {
 } from '../../../bindings/pixora/internal/services/galleryservice';
 
 export function CompareInspector() {
-  const { images, compareImageIds, closeCompare, swapCompareImages } =
-    useGalleryStore();
+  const images = useGalleryStore((state) => state.images);
+  const compareImageIds = useGalleryStore((state) => state.compareImageIds);
+  const closeCompare = useGalleryStore((state) => state.closeCompare);
+  const swapCompareImages = useGalleryStore((state) => state.swapCompareImages);
 
   if (!compareImageIds) return null;
 

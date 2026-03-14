@@ -15,20 +15,31 @@ import {
   Search,
   X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   OpenExternally,
   ShowInFolder
 } from '../../../bindings/pixora/internal/services/galleryservice';
 
 export function MetadataInspector() {
-  const { images, selectedImageId, setSelectedImageId } = useGalleryStore();
+  const selectedImageId = useGalleryStore((state) => state.selectedImageId);
+  const setSelectedImageId = useGalleryStore(
+    (state) => state.setSelectedImageId
+  );
+  const image = useGalleryStore(
+    useCallback(
+      (state) =>
+        selectedImageId === null
+          ? null
+          : state.images.find((img) => img.ID === selectedImageId) || null,
+      [selectedImageId]
+    )
+  );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState<'normal' | 'raw'>('normal');
 
   if (!selectedImageId) return null;
 
-  const image = images.find((img) => img.ID === selectedImageId);
   if (!image) return null;
 
   const copyToClipboard = (text: string, id: string) => {

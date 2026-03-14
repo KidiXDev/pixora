@@ -6,9 +6,6 @@ import { router } from './routes';
 import { useConfigStore } from './stores/config-store';
 
 function App() {
-  const [fps, setFps] = useState(0);
-  const rafIdRef = useRef<number | null>(null);
-
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       // Allow context menu only on titlebar (it usually has --wails-draggable)
@@ -37,6 +34,18 @@ function App() {
     };
   }, []);
 
+  return (
+    <ConfirmationProvider>
+      <RouterProvider router={router} />
+      <FpsOverlay />
+    </ConfirmationProvider>
+  );
+}
+
+function FpsOverlay() {
+  const [fps, setFps] = useState(0);
+  const rafIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     let frameCount = 0;
     let lastSampleTime = performance.now();
@@ -45,7 +54,6 @@ function App() {
       frameCount += 1;
       const elapsed = now - lastSampleTime;
 
-      // Sample roughly 4x per second for a smooth, readable real-time counter.
       if (elapsed >= 250) {
         const measuredFps = Math.round((frameCount * 1000) / elapsed);
         setFps(measuredFps);
@@ -73,12 +81,9 @@ function App() {
         : 'text-emerald-400';
 
   return (
-    <ConfirmationProvider>
-      <RouterProvider router={router} />
-      <div className="pointer-events-none fixed bottom-3 right-3 z-9999 rounded-md border border-white/20 bg-black/70 px-2 py-1 font-mono text-xs text-white shadow-lg backdrop-blur-sm">
-        FPS: <span className={fpsColorClass}>{fps}</span>
-      </div>
-    </ConfirmationProvider>
+    <div className="pointer-events-none fixed bottom-3 right-3 z-9999 rounded-md border border-white/20 bg-black/70 px-2 py-1 font-mono text-xs text-white shadow-lg backdrop-blur-sm">
+      FPS: <span className={fpsColorClass}>{fps}</span>
+    </div>
   );
 }
 

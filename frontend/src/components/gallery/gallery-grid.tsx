@@ -4,14 +4,16 @@ import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LayoutGrid, Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollablePage } from '../layout/scrollable-page';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
 
 export function GalleryGrid() {
-  const { searchQuery, fetchImages } = useGalleryStore();
-  const { tabs, activeTabId } = useTabsStore();
+  const searchQuery = useGalleryStore((state) => state.searchQuery);
+  const fetchImages = useGalleryStore((state) => state.fetchImages);
+  const tabs = useTabsStore((state) => state.tabs);
+  const activeTabId = useTabsStore((state) => state.activeTabId);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -38,16 +40,16 @@ function ImageGrid({
   activeTabId: string | null;
   searchQuery: string;
 }) {
-  const {
-    images,
-    layoutMode,
-    selectedImageId,
-    setSelectedImageId,
-    startCompare,
-    fetchNextPage,
-    hasMore,
-    isLoading
-  } = useGalleryStore();
+  const images = useGalleryStore((state) => state.images);
+  const layoutMode = useGalleryStore((state) => state.layoutMode);
+  const selectedImageId = useGalleryStore((state) => state.selectedImageId);
+  const setSelectedImageId = useGalleryStore(
+    (state) => state.setSelectedImageId
+  );
+  const startCompare = useGalleryStore((state) => state.startCompare);
+  const fetchNextPage = useGalleryStore((state) => state.fetchNextPage);
+  const hasMore = useGalleryStore((state) => state.hasMore);
+  const isLoading = useGalleryStore((state) => state.isLoading);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -55,6 +57,7 @@ function ImageGrid({
   const [comparePickImageId, setComparePickImageId] = useState<number | null>(
     null
   );
+  const lastFetchTriggerRowsRef = useRef(-1);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -107,6 +110,9 @@ function ImageGrid({
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalRows = Math.ceil(images.length / columns);
+  const lastVirtualIndex =
+    virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
   useEffect(() => {
     if (selectedImageId) {
@@ -123,36 +129,76 @@ function ImageGrid({
     return () => cancelAnimationFrame(raf1);
   }, [selectedImageId, columns, rowVirtualizer]);
 
+  const imageIdSet = useMemo(
+    () => new Set(images.map((img) => img.ID)),
+    [images]
+  );
+
   useEffect(() => {
     if (comparePickImageId === null) return;
-
-    const exists = images.some((img) => img.ID === comparePickImageId);
-    if (!exists) {
+    if (!imageIdSet.has(comparePickImageId)) {
       setComparePickImageId(null);
     }
-  }, [comparePickImageId, images]);
+  }, [comparePickImageId, imageIdSet]);
+
+  useEffect(() => {
+    lastFetchTriggerRowsRef.current = -1;
+  }, [activeTabId, searchQuery]);
 
   // Infinite scroll detection
   useEffect(() => {
-    const lastItem = virtualItems[virtualItems.length - 1];
-    if (!lastItem) return;
+    if (lastVirtualIndex < 0) return;
+    if (!hasMore || isLoading) return;
+    if (lastVirtualIndex < totalRows - 2) return;
 
-    if (
-      lastItem.index >= Math.ceil(images.length / columns) - 2 &&
-      hasMore &&
-      !isLoading
-    ) {
-      fetchNextPage();
-    }
-  }, [
-    virtualItems,
-    images.length,
-    columns,
-    hasMore,
-    isLoading,
-    fetchNextPage,
-    activeTabId
-  ]);
+    if (lastFetchTriggerRowsRef.current === totalRows) return;
+    lastFetchTriggerRowsRef.current = totalRows;
+    fetchNextPage();
+  }, [lastVirtualIndex, totalRows, hasMore, isLoading, fetchNextPage]);
+
+  const handleTileClick = useCallback(
+    (imageId: number) => {
+      setSelectedImageId(imageId);
+    },
+    [setSelectedImageId]
+  );
+
+  const handleCompareDragStart = useCallback((imageId: number) => {
+    setDraggingImageId(imageId);
+  }, []);
+
+  const handleCompareDragEnd = useCallback(() => {
+    setDraggingImageId(null);
+  }, []);
+
+  const handleCompareDrop = useCallback(
+    (sourceId: number, targetId: number) => {
+      setDraggingImageId(null);
+      setComparePickImageId(null);
+      if (sourceId !== targetId) {
+        startCompare(sourceId, targetId);
+      }
+    },
+    [startCompare]
+  );
+
+  const handleCompareQuickPick = useCallback(
+    (targetId: number) => {
+      setComparePickImageId((prev) => {
+        if (prev === null) {
+          return targetId;
+        }
+
+        if (prev === targetId) {
+          return null;
+        }
+
+        startCompare(prev, targetId);
+        return null;
+      });
+    },
+    [startCompare]
+  );
 
   return (
     <ScrollablePage
@@ -189,7 +235,7 @@ function ImageGrid({
               position: 'relative'
             }}
           >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+            {virtualItems.map((virtualRow) => (
               <div
                 key={virtualRow.index}
                 style={{
@@ -217,37 +263,16 @@ function ImageGrid({
                       <ImageTile
                         image={image}
                         isSelected={selectedImageId === image.ID}
-                        onClick={() => setSelectedImageId(image.ID)}
+                        onClick={handleTileClick}
                         layoutMode={layoutMode}
                         draggingImageId={draggingImageId}
                         isCompareDragging={draggingImageId !== null}
                         isCompareDragSource={draggingImageId === image.ID}
-                        onCompareDragStart={(imageId) =>
-                          setDraggingImageId(imageId)
-                        }
-                        onCompareDragEnd={() => setDraggingImageId(null)}
-                        onCompareDrop={(sourceId, targetId) => {
-                          setDraggingImageId(null);
-                          setComparePickImageId(null);
-                          if (sourceId !== targetId) {
-                            startCompare(sourceId, targetId);
-                          }
-                        }}
+                        onCompareDragStart={handleCompareDragStart}
+                        onCompareDragEnd={handleCompareDragEnd}
+                        onCompareDrop={handleCompareDrop}
                         isCompareQuickSource={comparePickImageId === image.ID}
-                        onCompareQuickPick={(targetId) => {
-                          if (comparePickImageId === null) {
-                            setComparePickImageId(targetId);
-                            return;
-                          }
-
-                          if (comparePickImageId === targetId) {
-                            setComparePickImageId(null);
-                            return;
-                          }
-
-                          setComparePickImageId(null);
-                          startCompare(comparePickImageId, targetId);
-                        }}
+                        onCompareQuickPick={handleCompareQuickPick}
                       />
                     </div>
                   );
