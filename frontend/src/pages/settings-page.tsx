@@ -102,11 +102,12 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Select
                   value={newMode.charAt(0).toUpperCase() + newMode.slice(1)}
-                  onValueChange={(v) =>
+                  onValueChange={(v) => {
+                    if (v == null) return;
                     setNewMode(
                       (v.charAt(0).toLowerCase() + v.slice(1)) as ScanMode
-                    )
-                  }
+                    );
+                  }}
                 >
                   <SelectTrigger className="w-30">
                     <SelectValue />

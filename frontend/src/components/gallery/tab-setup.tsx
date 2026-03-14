@@ -209,11 +209,12 @@ export function TabSetup() {
             <div className="flex items-center gap-2">
               <Select
                 value={scanMode.charAt(0).toUpperCase() + scanMode.slice(1)}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  if (v == null) return;
                   setScanMode(
                     (v.charAt(0).toLowerCase() + v.slice(1)) as ScanMode
-                  )
-                }
+                  );
+                }}
               >
                 <SelectTrigger className="h-8 w-37.5 bg-muted/30 border-transparent shadow-none hover:bg-muted/50 transition-colors">
                   <SelectValue />
