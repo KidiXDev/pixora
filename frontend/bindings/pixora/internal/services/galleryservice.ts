@@ -11,6 +11,9 @@ import * as application$0 from "../../../github.com/wailsapp/wails/v3/pkg/applic
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as db$0 from "../db/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -28,6 +31,13 @@ export function AddFolder(path: string, mode: config$0.ScanMode): $CancellablePr
  */
 export function ClearIndexAndReindex(): $CancellablePromise<void> {
     return $Call.ByID(1114111755);
+}
+
+/**
+ * ClearParserPluginLogs clears the in-memory plugin debug console log buffer.
+ */
+export function ClearParserPluginLogs(): $CancellablePromise<void> {
+    return $Call.ByID(143676958);
 }
 
 /**
@@ -49,10 +59,47 @@ export function GetImages(query: string, folderPath: string, offset: number, lim
 }
 
 /**
+ * InstallParserPlugin installs a plugin from a zip package.
+ */
+export function InstallParserPlugin(zipPath: string): $CancellablePromise<$models.ParserPluginInfo | null> {
+    return $Call.ByID(2873676735, zipPath).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
+/**
+ * ListParserPluginLogs returns recent plugin runtime logs for debugging.
+ */
+export function ListParserPluginLogs(pluginID: string, limit: number): $CancellablePromise<$models.ParserPluginLogEntry[]> {
+    return $Call.ByID(877205903, pluginID, limit).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
+/**
+ * ListParserPlugins returns all parser plugins detected in the plugins directory.
+ */
+export function ListParserPlugins(): $CancellablePromise<$models.ParserPluginInfo[]> {
+    return $Call.ByID(607641509).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+/**
  * OpenExternally opens a file using the default OS application
  */
 export function OpenExternally(path: string): $CancellablePromise<void> {
     return $Call.ByID(2481728976, path);
+}
+
+/**
+ * RefetchImageMetadata reparses metadata for a single image and persists the result.
+ * mode supports: "default" (built-in parser) and "plugin" (built-in + specific plugin override).
+ */
+export function RefetchImageMetadata(path: string, mode: string, pluginID: string): $CancellablePromise<db$0.ImageRecord | null> {
+    return $Call.ByID(2762129337, path, mode, pluginID).then(($result: any) => {
+        return $$createType9($result);
+    });
 }
 
 /**
@@ -63,10 +110,24 @@ export function RemoveFolder(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * RemoveParserPlugin removes an installed plugin directory and state.
+ */
+export function RemoveParserPlugin(pluginID: string): $CancellablePromise<void> {
+    return $Call.ByID(3708498644, pluginID);
+}
+
+/**
  * SetDevMode updates the dev mode setting.
  */
 export function SetDevMode(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(3111825936, enabled);
+}
+
+/**
+ * SetParserPluginEnabled enables or disables a trusted plugin.
+ */
+export function SetParserPluginEnabled(pluginID: string, enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1778698493, pluginID, enabled);
 }
 
 /**
@@ -98,6 +159,20 @@ export function ToggleDevTools(): $CancellablePromise<void> {
 }
 
 /**
+ * TrustParserPlugin marks a plugin as trusted. Trusted plugins can be enabled.
+ */
+export function TrustParserPlugin(pluginID: string): $CancellablePromise<void> {
+    return $Call.ByID(2379761378, pluginID);
+}
+
+/**
+ * UntrustParserPlugin revokes trust and disables the plugin.
+ */
+export function UntrustParserPlugin(pluginID: string): $CancellablePromise<void> {
+    return $Call.ByID(576907323, pluginID);
+}
+
+/**
  * UpdateFolderAlias updates the alias for a supervised folder.
  */
 export function UpdateFolderAlias(path: string, alias: string): $CancellablePromise<void> {
@@ -108,3 +183,10 @@ export function UpdateFolderAlias(path: string, alias: string): $CancellableProm
 const $$createType0 = config$0.AppConfig.createFrom;
 const $$createType1 = $models.PaginatedImages.createFrom;
 const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = $models.ParserPluginInfo.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $models.ParserPluginLogEntry.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $Create.Array($$createType3);
+const $$createType8 = db$0.ImageRecord.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);

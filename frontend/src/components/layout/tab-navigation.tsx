@@ -112,7 +112,7 @@ const SortableTab = memo(function SortableTab({
           {...attributes}
           {...listeners}
           className={cn(
-            'group relative overflow-y-hidden flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
+            'group relative overflow-y-hidden flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-pointer active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
             isActive
               ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
               : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',

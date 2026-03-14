@@ -64,13 +64,18 @@ func main() {
 		log.Fatalf("Failed to initialize thumbnail service: %v", err)
 	}
 
-	indexer, err := services.NewIndexer(cfgMgr, database, thumbSvc)
+	pluginManager, err := services.NewParserPluginManager(filepath.Join(".", "plugins"))
+	if err != nil {
+		log.Fatalf("Failed to initialize parser plugin manager: %v", err)
+	}
+
+	indexer, err := services.NewIndexer(cfgMgr, database, thumbSvc, pluginManager)
 	if err != nil {
 		log.Fatalf("Failed to initialize indexer: %v", err)
 	}
 	defer indexer.Close()
 
-	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer)
+	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer, pluginManager)
 
 	// Log app data directories so they are easy to locate during development/debugging.
 	if appDataDir, err := os.UserConfigDir(); err == nil {

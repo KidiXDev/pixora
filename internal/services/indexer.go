@@ -30,6 +30,13 @@ type ScanStatus struct {
 	IsRunning      bool   `json:"isRunning"`
 }
 
+type MetadataRefetchMode string
+
+const (
+	MetadataRefetchModeDefault MetadataRefetchMode = "default"
+	MetadataRefetchModePlugin  MetadataRefetchMode = "plugin"
+)
+
 type thumbnailJob struct {
 	path string
 	hash string
@@ -45,6 +52,7 @@ type Indexer struct {
 	configManager *config.Manager
 	database      *db.DB
 	thumbnailSvc  *ThumbnailService
+	pluginManager *ParserPluginManager
 	watcher       *fsnotify.Watcher
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -56,7 +64,7 @@ type Indexer struct {
 	thumbJobs     chan thumbnailJob
 }
 
-func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailService) (*Indexer, error) {
+func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailService, pluginManager *ParserPluginManager) (*Indexer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -68,6 +76,7 @@ func NewIndexer(cfgMgr *config.Manager, database *db.DB, thumbSvc *ThumbnailServ
 		configManager: cfgMgr,
 		database:      database,
 		thumbnailSvc:  thumbSvc,
+		pluginManager: pluginManager,
 		watcher:       watcher,
 		ctx:           ctx,
 		cancel:        cancel,
@@ -261,6 +270,7 @@ func (i *Indexer) isImageFile(path string) bool {
 }
 
 func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
+	var refreshMetadata bool
 	if !i.isImageFile(path) {
 		return
 	}
@@ -273,7 +283,10 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 
 	modifiedUnixNs := info.ModTime().UnixNano()
 	if stored != nil && stored.FileSize == info.Size() && stored.ModifiedUnixNs == modifiedUnixNs {
-		if stored.ThumbReady {
+		refreshMetadata = shouldRefreshPNGMetadata(ext, stored)
+		if refreshMetadata {
+			log.Printf("Refreshing stale PNG metadata for %s (missing model)", path)
+		} else if stored.ThumbReady {
 			return
 		}
 
@@ -281,7 +294,7 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 			return
 		}
 
-		if i.thumbnailSvc.Exists(stored.Hash) {
+		if !refreshMetadata && i.thumbnailSvc.Exists(stored.Hash) {
 			if err := i.database.MarkThumbnailReadyByHash(context.Background(), stored.Hash); err != nil {
 				log.Printf("Failed marking existing thumbnail ready for %s: %v", path, err)
 				return
@@ -290,12 +303,14 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 			return
 		}
 
-		select {
-		case <-i.ctx.Done():
+		if !refreshMetadata {
+			select {
+			case <-i.ctx.Done():
+				return
+			case i.thumbJobs <- thumbnailJob{path: path, hash: stored.Hash}:
+			}
 			return
-		case i.thumbJobs <- thumbnailJob{path: path, hash: stored.Hash}:
 		}
-		return
 	}
 
 	// Acquire semaphore only when a write is actually needed.
@@ -312,8 +327,24 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 	var width, height int
 
 	if ext == ".png" {
-		meta, err := parser.ParsePNGMetadata(path)
-		if err == nil && meta != nil {
+		meta, parseCtx, err := parser.ParsePNGMetadataWithContext(path)
+		if err == nil {
+			if meta == nil {
+				meta = &parser.ImageMetadata{}
+			}
+
+			if i.pluginManager != nil {
+				if pluginMeta, _, pluginErr := i.pluginManager.ParsePNG(parseCtx); pluginErr == nil && pluginMeta != nil {
+					meta = mergeParsedMetadata(meta, pluginMeta)
+				} else if pluginErr != nil {
+					log.Printf("Plugin parse failed for %s: %v", path, pluginErr)
+				}
+			}
+
+			if refreshMetadata && meta.Model != "" {
+				log.Printf("Fixed missing model for %s: %s", path, meta.Model)
+			}
+
 			prompt = meta.Prompt
 			negPrompt = meta.NegativePrompt
 			model = meta.Model
@@ -352,6 +383,135 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 		return
 	case i.thumbJobs <- thumbnailJob{path: path, hash: hash}:
 	}
+}
+
+func mergeParsedMetadata(base *parser.ImageMetadata, override *parser.ImageMetadata) *parser.ImageMetadata {
+	if base == nil {
+		base = &parser.ImageMetadata{}
+	}
+	if override == nil {
+		return base
+	}
+
+	result := *base
+	if strings.TrimSpace(override.Prompt) != "" {
+		result.Prompt = strings.TrimSpace(override.Prompt)
+	}
+	if strings.TrimSpace(override.NegativePrompt) != "" {
+		result.NegativePrompt = strings.TrimSpace(override.NegativePrompt)
+	}
+	if strings.TrimSpace(override.Model) != "" {
+		result.Model = strings.TrimSpace(override.Model)
+	}
+	if strings.TrimSpace(override.Sampler) != "" {
+		result.Sampler = strings.TrimSpace(override.Sampler)
+	}
+	if strings.TrimSpace(override.Seed) != "" {
+		result.Seed = strings.TrimSpace(override.Seed)
+	}
+	if override.CfgScale != 0 {
+		result.CfgScale = override.CfgScale
+	}
+	if override.Width > 0 {
+		result.Width = override.Width
+	}
+	if override.Height > 0 {
+		result.Height = override.Height
+	}
+	if strings.TrimSpace(override.Raw) != "" {
+		result.Raw = strings.TrimSpace(override.Raw)
+	}
+
+	return &result
+}
+
+func (i *Indexer) RefetchMetadata(path string, mode MetadataRefetchMode, pluginID string) (*db.ImageRecord, error) {
+	if !i.isImageFile(path) {
+		return nil, fmt.Errorf("unsupported file type")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+
+	hash, err := i.calculateFastHash(path, info)
+	if err != nil {
+		return nil, err
+	}
+
+	record, err := i.database.GetImageByPath(context.Background(), path)
+	if err != nil {
+		return nil, err
+	}
+	if record == nil {
+		record = &db.ImageRecord{Path: path, AddedAt: info.ModTime()}
+	}
+
+	metadata := &parser.ImageMetadata{}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".png" {
+		builtInMeta, parseCtx, parseErr := parser.ParsePNGMetadataWithContext(path)
+		if parseErr == nil && builtInMeta != nil {
+			metadata = builtInMeta
+		}
+
+		if mode == MetadataRefetchModePlugin {
+			if i.pluginManager == nil {
+				return nil, fmt.Errorf("plugin manager unavailable")
+			}
+			pluginMeta, pluginErr := i.pluginManager.ParsePNGWithPlugin(parseCtx, pluginID)
+			if pluginErr != nil {
+				return nil, pluginErr
+			}
+			if pluginMeta != nil {
+				metadata = mergeParsedMetadata(metadata, pluginMeta)
+			}
+		}
+	}
+
+	record.Hash = hash
+	record.FileSize = info.Size()
+	record.ModifiedUnixNs = info.ModTime().UnixNano()
+	record.Prompt = metadata.Prompt
+	record.NegativePrompt = metadata.NegativePrompt
+	record.Model = metadata.Model
+	record.Sampler = metadata.Sampler
+	record.Seed = metadata.Seed
+	record.CfgScale = metadata.CfgScale
+	record.Width = metadata.Width
+	record.Height = metadata.Height
+
+	if record.ID == 0 {
+		if _, err := i.database.InsertOrUpdateImage(context.Background(), *record); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := i.database.UpdateImageMetadataByPath(context.Background(), *record); err != nil {
+			return nil, err
+		}
+	}
+
+	updated, err := i.database.GetImageByPath(context.Background(), path)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return record, nil
+	}
+
+	return updated, nil
+}
+
+func shouldRefreshPNGMetadata(ext string, stored *db.ImageRecord) bool {
+	if stored == nil || ext != ".png" {
+		return false
+	}
+
+	// Only refresh if Model is empty AND Prompt is also empty.
+	// This avoids infinite refresh loops for images that genuinely have no metadata (like screenshots).
+	// If it has a prompt but no model, we assume it was already scanned and no model was found.
+	return strings.TrimSpace(stored.Model) == "" && strings.TrimSpace(stored.Prompt) == ""
 }
 
 // calculateFastHash computes a fast hash using leading 64KB and file size.

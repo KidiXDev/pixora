@@ -15,13 +15,15 @@ type GalleryService struct {
 	config  *config.Manager
 	indexer *Indexer
 	window  *application.WebviewWindow
+	plugins *ParserPluginManager
 }
 
-func NewGalleryService(database *db.DB, cfg *config.Manager, idx *Indexer) *GalleryService {
+func NewGalleryService(database *db.DB, cfg *config.Manager, idx *Indexer, plugins *ParserPluginManager) *GalleryService {
 	return &GalleryService{
 		db:      database,
 		config:  cfg,
 		indexer: idx,
+		plugins: plugins,
 	}
 }
 
@@ -150,4 +152,91 @@ func (s *GalleryService) ClearIndexAndReindex() error {
 	go s.indexer.ScanAll()
 
 	return nil
+}
+
+// ListParserPlugins returns all parser plugins detected in the plugins directory.
+func (s *GalleryService) ListParserPlugins() ([]ParserPluginInfo, error) {
+	if s.plugins == nil {
+		return []ParserPluginInfo{}, nil
+	}
+
+	if err := s.plugins.Reload(); err != nil {
+		return nil, err
+	}
+
+	return s.plugins.List(), nil
+}
+
+// SetParserPluginEnabled enables or disables a trusted plugin.
+func (s *GalleryService) SetParserPluginEnabled(pluginID string, enabled bool) error {
+	if s.plugins == nil {
+		return nil
+	}
+
+	return s.plugins.SetEnabled(pluginID, enabled)
+}
+
+// TrustParserPlugin marks a plugin as trusted. Trusted plugins can be enabled.
+func (s *GalleryService) TrustParserPlugin(pluginID string) error {
+	if s.plugins == nil {
+		return nil
+	}
+
+	return s.plugins.Trust(pluginID, true)
+}
+
+// UntrustParserPlugin revokes trust and disables the plugin.
+func (s *GalleryService) UntrustParserPlugin(pluginID string) error {
+	if s.plugins == nil {
+		return nil
+	}
+
+	return s.plugins.Trust(pluginID, false)
+}
+
+// InstallParserPlugin installs a plugin from a zip package.
+func (s *GalleryService) InstallParserPlugin(zipPath string) (*ParserPluginInfo, error) {
+	if s.plugins == nil {
+		return nil, nil
+	}
+
+	return s.plugins.Install(zipPath)
+}
+
+// RemoveParserPlugin removes an installed plugin directory and state.
+func (s *GalleryService) RemoveParserPlugin(pluginID string) error {
+	if s.plugins == nil {
+		return nil
+	}
+
+	return s.plugins.Remove(pluginID)
+}
+
+// RefetchImageMetadata reparses metadata for a single image and persists the result.
+// mode supports: "default" (built-in parser) and "plugin" (built-in + specific plugin override).
+func (s *GalleryService) RefetchImageMetadata(path string, mode string, pluginID string) (*db.ImageRecord, error) {
+	refetchMode := MetadataRefetchMode(mode)
+	if refetchMode != MetadataRefetchModePlugin {
+		refetchMode = MetadataRefetchModeDefault
+	}
+
+	return s.indexer.RefetchMetadata(path, refetchMode, pluginID)
+}
+
+// ListParserPluginLogs returns recent plugin runtime logs for debugging.
+func (s *GalleryService) ListParserPluginLogs(pluginID string, limit int) []ParserPluginLogEntry {
+	if s.plugins == nil {
+		return []ParserPluginLogEntry{}
+	}
+
+	return s.plugins.ListLogs(pluginID, limit)
+}
+
+// ClearParserPluginLogs clears the in-memory plugin debug console log buffer.
+func (s *GalleryService) ClearParserPluginLogs() {
+	if s.plugins == nil {
+		return
+	}
+
+	s.plugins.ClearLogs()
 }

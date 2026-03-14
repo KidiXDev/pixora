@@ -25,25 +25,58 @@ type ImageMetadata struct {
 	Raw            string // Raw parameter string or Workflow JSON
 }
 
+type MetadataTextEntry struct {
+	Keyword   string `json:"keyword"`
+	Text      string `json:"text"`
+	ChunkType string `json:"chunkType"`
+}
+
+type PNGParseContext struct {
+	FilePath      string              `json:"filePath"`
+	Extension     string              `json:"extension"`
+	Width         int                 `json:"width"`
+	Height        int                 `json:"height"`
+	Raw           string              `json:"raw"`
+	TextByKeyword map[string]string   `json:"textByKeyword"`
+	TextEntries   []MetadataTextEntry `json:"textEntries"`
+}
+
 var pngHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // ParsePNGMetadata parses tEXt and iTXt chunks for A1111/ComfyUI metadata
 func ParsePNGMetadata(path string) (*ImageMetadata, error) {
-	f, err := os.Open(path)
+	metadata, _, err := ParsePNGMetadataWithContext(path)
 	if err != nil {
 		return nil, err
+	}
+
+	return metadata, nil
+}
+
+// ParsePNGMetadataWithContext parses tEXt and iTXt chunks for A1111/ComfyUI metadata
+// and returns a context object that can be used by parser plugins.
+func ParsePNGMetadataWithContext(path string) (*ImageMetadata, *PNGParseContext, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
 	}
 	defer f.Close()
 
 	header := make([]byte, 8)
 	if _, err := io.ReadFull(f, header); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !bytes.Equal(header, pngHeader) {
-		return nil, fmt.Errorf("not a png file")
+		return nil, nil, fmt.Errorf("not a png file")
 	}
 
 	metadata := &ImageMetadata{}
+	ctx := &PNGParseContext{
+		FilePath:      path,
+		Extension:     ".png",
+		TextByKeyword: map[string]string{},
+		TextEntries:   []MetadataTextEntry{},
+	}
 	var paramsStr string
 	var promptJSON string
 	var workflowJSON string
@@ -57,12 +90,12 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return nil, nil, err
 		}
 
 		chunkType := make([]byte, 4)
 		if _, err := io.ReadFull(f, chunkType); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if string(chunkType) == "IEND" {
@@ -72,22 +105,28 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 		if string(chunkType) == "IHDR" {
 			data := make([]byte, length)
 			if _, err := io.ReadFull(f, data); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if len(data) >= 8 {
 				metadata.Width = int(binary.BigEndian.Uint32(data[0:4]))
 				metadata.Height = int(binary.BigEndian.Uint32(data[4:8]))
+				ctx.Width = metadata.Width
+				ctx.Height = metadata.Height
 				haveSize = true
 			}
 		} else if string(chunkType) == "tEXt" {
 			data := make([]byte, length)
 			if _, err := io.ReadFull(f, data); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			parts := bytes.SplitN(data, []byte{0}, 2)
 			if len(parts) == 2 {
 				keyword := string(parts[0])
 				text := string(parts[1])
+				ctx.TextEntries = append(ctx.TextEntries, MetadataTextEntry{Keyword: keyword, Text: text, ChunkType: "tEXt"})
+				if _, exists := ctx.TextByKeyword[keyword]; !exists {
+					ctx.TextByKeyword[keyword] = text
+				}
 				switch keyword {
 				case "parameters":
 					paramsStr = text
@@ -102,10 +141,14 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 		} else if string(chunkType) == "iTXt" {
 			data := make([]byte, length)
 			if _, err := io.ReadFull(f, data); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			keyword, text, err := parseITXtChunk(data)
 			if err == nil {
+				ctx.TextEntries = append(ctx.TextEntries, MetadataTextEntry{Keyword: keyword, Text: text, ChunkType: "iTXt"})
+				if _, exists := ctx.TextByKeyword[keyword]; !exists {
+					ctx.TextByKeyword[keyword] = text
+				}
 				switch keyword {
 				case "parameters":
 					paramsStr = text
@@ -119,13 +162,13 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			}
 		} else {
 			if _, err := f.Seek(int64(length), io.SeekCurrent); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
 		// Skip CRC
 		if _, err := f.Seek(4, io.SeekCurrent); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if haveSize && haveParams {
@@ -144,8 +187,11 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 			metadata.Raw = workflowJSON
 		}
 	}
+	ctx.Raw = metadata.Raw
+	ctx.Width = metadata.Width
+	ctx.Height = metadata.Height
 
-	return metadata, nil
+	return metadata, ctx, nil
 }
 
 func parseITXtChunk(data []byte) (string, string, error) {

@@ -46,6 +46,100 @@ export class PaginatedImages {
     }
 }
 
+export class ParserPluginInfo {
+    "id": string;
+    "name": string;
+    "version": string;
+    "description": string;
+    "author": string;
+    "main": string;
+    "folderPath": string;
+    "status": string;
+    "trusted": boolean;
+    "enabled": boolean;
+    "error": string;
+
+    /** Creates a new ParserPluginInfo instance. */
+    constructor($$source: Partial<ParserPluginInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+        if (!("author" in $$source)) {
+            this["author"] = "";
+        }
+        if (!("main" in $$source)) {
+            this["main"] = "";
+        }
+        if (!("folderPath" in $$source)) {
+            this["folderPath"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("trusted" in $$source)) {
+            this["trusted"] = false;
+        }
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ParserPluginInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ParserPluginInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ParserPluginInfo($$parsedSource as Partial<ParserPluginInfo>);
+    }
+}
+
+export class ParserPluginLogEntry {
+    "timestamp": string;
+    "pluginID": string;
+    "level": string;
+    "message": string;
+
+    /** Creates a new ParserPluginLogEntry instance. */
+    constructor($$source: Partial<ParserPluginLogEntry> = {}) {
+        if (!("timestamp" in $$source)) {
+            this["timestamp"] = "";
+        }
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("level" in $$source)) {
+            this["level"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ParserPluginLogEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ParserPluginLogEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ParserPluginLogEntry($$parsedSource as Partial<ParserPluginLogEntry>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = db$0.ImageRecord.createFrom;
 const $$createType1 = $Create.Array($$createType0);

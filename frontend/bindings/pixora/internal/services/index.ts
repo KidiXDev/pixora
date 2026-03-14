@@ -9,5 +9,7 @@ export {
 };
 
 export {
-    PaginatedImages
+    PaginatedImages,
+    ParserPluginInfo,
+    ParserPluginLogEntry
 } from "./models.js";

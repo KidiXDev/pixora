@@ -222,13 +222,15 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 
 func (d *DB) GetImageFileState(ctx context.Context, path string) (*ImageRecord, error) {
 	var img ImageRecord
-	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns FROM images WHERE path = ?`, path).Scan(
+	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, model, prompt FROM images WHERE path = ?`, path).Scan(
 		&img.ID,
 		&img.Path,
 		&img.Hash,
 		&img.ThumbReady,
 		&img.FileSize,
 		&img.ModifiedUnixNs,
+		&img.Model,
+		&img.Prompt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -239,8 +241,60 @@ func (d *DB) GetImageFileState(ctx context.Context, path string) (*ImageRecord, 
 	return &img, nil
 }
 
+func (d *DB) GetImageByPath(ctx context.Context, path string) (*ImageRecord, error) {
+	var img ImageRecord
+	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images WHERE path = ?`, path).Scan(
+		&img.ID,
+		&img.Path,
+		&img.Hash,
+		&img.ThumbReady,
+		&img.FileSize,
+		&img.ModifiedUnixNs,
+		&img.Prompt,
+		&img.NegativePrompt,
+		&img.Model,
+		&img.Sampler,
+		&img.Seed,
+		&img.CfgScale,
+		&img.Width,
+		&img.Height,
+		&img.AddedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &img, nil
+}
+
+func (d *DB) UpdateImageMetadataByPath(ctx context.Context, img ImageRecord) error {
+	_, err := d.db.ExecContext(ctx, `
+		UPDATE images
+		SET hash = ?, file_size = ?, modified_unix_ns = ?, prompt = ?, negative_prompt = ?, model = ?, sampler = ?, seed = ?, cfg_scale = ?, width = ?, height = ?
+		WHERE path = ?
+	`,
+		img.Hash,
+		img.FileSize,
+		img.ModifiedUnixNs,
+		img.Prompt,
+		img.NegativePrompt,
+		img.Model,
+		img.Sampler,
+		img.Seed,
+		img.CfgScale,
+		img.Width,
+		img.Height,
+		img.Path,
+	)
+
+	return err
+}
+
 func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) (map[string]ImageRecord, error) {
-	rows, err := d.db.QueryContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns FROM images WHERE path LIKE ?`, folderPath+"%")
+	rows, err := d.db.QueryContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, model, prompt FROM images WHERE path LIKE ?`, folderPath+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +303,7 @@ func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) 
 	states := make(map[string]ImageRecord)
 	for rows.Next() {
 		var img ImageRecord
-		if err := rows.Scan(&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.FileSize, &img.ModifiedUnixNs); err != nil {
+		if err := rows.Scan(&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.FileSize, &img.ModifiedUnixNs, &img.Model, &img.Prompt); err != nil {
 			return nil, err
 		}
 		states[img.Path] = img

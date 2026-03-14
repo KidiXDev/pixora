@@ -27,6 +27,7 @@ interface GalleryState {
   closeCompare: () => void;
   swapCompareImages: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
+  updateImageRecord: (image: ImageRecord) => void;
   fetchImages: (clear?: boolean) => Promise<void>;
   fetchNextPage: () => Promise<void>;
 }
@@ -75,6 +76,10 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     set({ compareImageIds: [compareImageIds[1], compareImageIds[0]] });
   },
   setLayoutMode: (layoutMode) => set({ layoutMode }),
+  updateImageRecord: (image) =>
+    set((state) => ({
+      images: state.images.map((img) => (img.ID === image.ID ? image : img))
+    })),
 
   fetchImages: async (clear = false) => {
     const { searchQuery, limit, isLoading } = get();

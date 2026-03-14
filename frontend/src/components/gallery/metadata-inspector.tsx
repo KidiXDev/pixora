@@ -1,5 +1,14 @@
+import { ScrollablePage } from '../layout/scrollable-page';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { useConfigStore } from '@/stores/config-store';
 import { useGalleryStore } from '@/stores/gallery-store';
 import {
   Calendar,
@@ -12,12 +21,14 @@ import {
   Info,
   Layers,
   Maximize,
+  RefreshCw,
   Search,
   X
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   OpenExternally,
+  RefetchImageMetadata,
   ShowInFolder
 } from '../../../bindings/pixora/internal/services/galleryservice';
 
@@ -26,6 +37,9 @@ export function MetadataInspector() {
   const setSelectedImageId = useGalleryStore(
     (state) => state.setSelectedImageId
   );
+  const updateImageRecord = useGalleryStore((state) => state.updateImageRecord);
+  const plugins = useConfigStore((state) => state.plugins);
+  const loadPlugins = useConfigStore((state) => state.loadPlugins);
   const image = useGalleryStore(
     useCallback(
       (state) =>
@@ -37,6 +51,34 @@ export function MetadataInspector() {
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState<'normal' | 'raw'>('normal');
+  const [refetchMode, setRefetchMode] = useState<'default' | 'plugin'>(
+    'default'
+  );
+  const [selectedPluginID, setSelectedPluginID] = useState<string>('');
+  const [isRefetching, setIsRefetching] = useState(false);
+
+  useEffect(() => {
+    loadPlugins();
+  }, [loadPlugins]);
+
+  const availablePlugins = useMemo(
+    () => plugins.filter((p) => p.status === 'enabled'),
+    [plugins]
+  );
+
+  useEffect(() => {
+    if (availablePlugins.length === 0) {
+      setSelectedPluginID('');
+      return;
+    }
+
+    if (
+      !selectedPluginID ||
+      !availablePlugins.some((p) => p.id === selectedPluginID)
+    ) {
+      setSelectedPluginID(availablePlugins[0].id);
+    }
+  }, [availablePlugins, selectedPluginID]);
 
   if (!selectedImageId) return null;
 
@@ -57,6 +99,30 @@ export function MetadataInspector() {
   const openExternal = async () => {
     if (image.Path) {
       await OpenExternally(image.Path).catch(console.error);
+    }
+  };
+
+  const handleRefetchMetadata = async () => {
+    if (!image.Path || isRefetching) return;
+
+    if (refetchMode === 'plugin' && !selectedPluginID) {
+      return;
+    }
+
+    setIsRefetching(true);
+    try {
+      const updated = await RefetchImageMetadata(
+        image.Path,
+        refetchMode,
+        refetchMode === 'plugin' ? selectedPluginID : ''
+      );
+      if (updated) {
+        updateImageRecord(updated);
+      }
+    } catch (e) {
+      console.error('Failed to refetch metadata', e);
+    } finally {
+      setIsRefetching(false);
     }
   };
 
@@ -146,7 +212,7 @@ export function MetadataInspector() {
   };
 
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar select-none">
+    <ScrollablePage className="flex flex-col p-6 select-none">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-card-foreground">
           Generation Data
@@ -417,30 +483,113 @@ export function MetadataInspector() {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2 bg-primary/5 border-primary/10 hover:bg-primary/10 text-xs py-5"
-            onClick={() => {
-              const lines = [];
-              if (image.Prompt) lines.push(image.Prompt);
-              if (image.NegativePrompt)
-                lines.push(`Negative prompt: ${image.NegativePrompt}`);
-              lines.push(
-                `Steps: 20, Sampler: ${image.Sampler}, CFG scale: ${image.CfgScale}, Seed: ${image.Seed}, Size: ${image.Width}x${image.Height}, Model: ${image.Model}`
-              );
-              copyToClipboard(lines.join('\n'), 'all');
-            }}
-          >
-            {copiedId === 'all' ? <Check size={14} /> : <Copy size={14} />}
-            {copiedId === 'all'
-              ? 'Copied Full Metadata'
-              : 'Copy All Parameters'}
-          </Button>
+        {/* Action Buttons & Refetch Section */}
+        <div className="space-y-4 pt-2 pb-4">
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-1 h-3 bg-primary rounded-full" />
+            <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+              Data Operations
+            </h3>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-4">
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wide">
+                  Metadata Refetch Strategy
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  <Select
+                    value={
+                      refetchMode.charAt(0).toUpperCase() + refetchMode.slice(1)
+                    }
+                    onValueChange={(value) =>
+                      setRefetchMode(value as 'default' | 'plugin')
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-black/20 border-white/5 h-9 text-xs transition-colors hover:bg-black/40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="plugin">Plugin</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {refetchMode === 'plugin' && (
+                    <Select
+                      value={selectedPluginID}
+                      onValueChange={(value) => setSelectedPluginID(value)}
+                    >
+                      <SelectTrigger className="w-full bg-black/20 border-white/5 h-9 text-xs transition-colors hover:bg-black/40">
+                        <SelectValue placeholder="Choose enabled plugin" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availablePlugins.length > 0 ? (
+                          availablePlugins.map((plugin) => (
+                            <SelectItem key={plugin.id} value={plugin.id}>
+                              {plugin.name || plugin.id}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="p-2 text-[10px] text-muted-foreground italic text-center">
+                            No enabled plugins found
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                variant="secondary"
+                className="w-full h-10 gap-2 font-semibold text-xs shadow-sm hover:shadow-primary/10 transition-all active:scale-[0.98]"
+                disabled={
+                  isRefetching ||
+                  !image.Path ||
+                  (refetchMode === 'plugin' && !selectedPluginID)
+                }
+                onClick={handleRefetchMetadata}
+              >
+                <RefreshCw
+                  size={14}
+                  className={isRefetching ? 'animate-spin' : ''}
+                />
+                {isRefetching
+                  ? 'Refetching Data...'
+                  : 'Sync Metadata from File'}
+              </Button>
+            </div>
+
+            <div className="pt-3 border-t border-white/5">
+              <Button
+                variant="outline"
+                className="w-full h-9 gap-2 bg-primary/5 border-primary/10 hover:bg-primary/20 hover:border-primary/30 text-xs transition-all active:scale-[0.98]"
+                onClick={() => {
+                  const lines = [];
+                  if (image.Prompt) lines.push(image.Prompt);
+                  if (image.NegativePrompt)
+                    lines.push(`Negative prompt: ${image.NegativePrompt}`);
+                  lines.push(
+                    `Steps: 20, Sampler: ${image.Sampler}, CFG scale: ${image.CfgScale}, Seed: ${image.Seed}, Size: ${image.Width}x${image.Height}, Model: ${image.Model}`
+                  );
+                  copyToClipboard(lines.join('\n'), 'all');
+                }}
+              >
+                {copiedId === 'all' ? (
+                  <Check size={14} className="text-green-500" />
+                ) : (
+                  <Copy size={14} />
+                )}
+                {copiedId === 'all'
+                  ? 'Copied Full Metadata'
+                  : 'Copy All Parameters'}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </ScrollablePage>
   );
 }

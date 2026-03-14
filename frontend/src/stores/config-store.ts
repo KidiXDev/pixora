@@ -6,29 +6,74 @@ import {
 import {
   AddFolder,
   ClearIndexAndReindex,
+  ClearParserPluginLogs,
   GetConfig,
+  InstallParserPlugin,
+  ListParserPluginLogs,
+  ListParserPlugins,
   RemoveFolder,
+  RemoveParserPlugin,
   SetDevMode,
+  SetParserPluginEnabled,
+  TrustParserPlugin,
+  UntrustParserPlugin,
   UpdateFolderAlias
 } from '../../bindings/pixora/internal/services/galleryservice';
 import { useGalleryStore } from './gallery-store';
 import { useTabsStore } from './tabs-store';
 
+export interface ParserPluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  main: string;
+  folderPath: string;
+  status: 'enabled' | 'disabled' | 'error' | 'untrusted' | string;
+  trusted: boolean;
+  enabled: boolean;
+  error: string;
+}
+
+export interface ParserPluginLogEntry {
+  timestamp: string;
+  pluginID: string;
+  level: string;
+  message: string;
+}
+
 interface ConfigState {
   config: AppConfig | null;
   isLoading: boolean;
+  plugins: ParserPluginInfo[];
+  pluginsLoading: boolean;
+  pluginLogs: ParserPluginLogEntry[];
+  pluginLogsLoading: boolean;
 
   loadConfig: () => Promise<void>;
+  loadPlugins: () => Promise<void>;
   addFolder: (path: string, mode: ScanMode) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   updateFolderAlias: (path: string, alias: string) => Promise<void>;
   setDevMode: (enabled: boolean) => Promise<void>;
   clearIndexAndReindex: () => Promise<void>;
+  loadPluginLogs: (pluginID?: string, limit?: number) => Promise<void>;
+  clearPluginLogs: () => Promise<void>;
+  setPluginEnabled: (pluginID: string, enabled: boolean) => Promise<void>;
+  trustPlugin: (pluginID: string) => Promise<void>;
+  untrustPlugin: (pluginID: string) => Promise<void>;
+  installPlugin: (zipPath: string) => Promise<void>;
+  removePlugin: (pluginID: string) => Promise<void>;
 }
 
 export const useConfigStore = create<ConfigState>((set) => ({
   config: null,
   isLoading: true,
+  plugins: [],
+  pluginsLoading: false,
+  pluginLogs: [],
+  pluginLogsLoading: false,
 
   loadConfig: async () => {
     set({ isLoading: true });
@@ -38,6 +83,17 @@ export const useConfigStore = create<ConfigState>((set) => ({
     } catch (e) {
       console.error('Failed to load config', e);
       set({ isLoading: false });
+    }
+  },
+
+  loadPlugins: async () => {
+    set({ pluginsLoading: true });
+    try {
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[], pluginsLoading: false });
+    } catch (e) {
+      console.error('Failed to load parser plugins', e);
+      set({ pluginsLoading: false });
     }
   },
 
@@ -119,6 +175,85 @@ export const useConfigStore = create<ConfigState>((set) => ({
       await ClearIndexAndReindex();
     } catch (e) {
       console.error('Failed to clear indexing data and re-index', e);
+      throw e;
+    }
+  },
+
+  loadPluginLogs: async (pluginID = '', limit = 300) => {
+    set({ pluginLogsLoading: true });
+    try {
+      const logs = await ListParserPluginLogs(pluginID, limit);
+      set({
+        pluginLogs: logs as ParserPluginLogEntry[],
+        pluginLogsLoading: false
+      });
+    } catch (e) {
+      console.error('Failed to load plugin logs', e);
+      set({ pluginLogsLoading: false });
+    }
+  },
+
+  clearPluginLogs: async () => {
+    try {
+      await ClearParserPluginLogs();
+      set({ pluginLogs: [] });
+    } catch (e) {
+      console.error('Failed to clear plugin logs', e);
+      throw e;
+    }
+  },
+
+  setPluginEnabled: async (pluginID, enabled) => {
+    try {
+      await SetParserPluginEnabled(pluginID, enabled);
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[] });
+    } catch (e) {
+      console.error('Failed to toggle parser plugin', e);
+      throw e;
+    }
+  },
+
+  trustPlugin: async (pluginID) => {
+    try {
+      await TrustParserPlugin(pluginID);
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[] });
+    } catch (e) {
+      console.error('Failed to trust parser plugin', e);
+      throw e;
+    }
+  },
+
+  untrustPlugin: async (pluginID) => {
+    try {
+      await UntrustParserPlugin(pluginID);
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[] });
+    } catch (e) {
+      console.error('Failed to untrust parser plugin', e);
+      throw e;
+    }
+  },
+
+  installPlugin: async (zipPath) => {
+    try {
+      await InstallParserPlugin(zipPath);
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[] });
+    } catch (e) {
+      console.error('Failed to install parser plugin', e);
+      throw e;
+    }
+  },
+
+  removePlugin: async (pluginID) => {
+    try {
+      await RemoveParserPlugin(pluginID);
+      const plugins = await ListParserPlugins();
+      set({ plugins: plugins as ParserPluginInfo[] });
+    } catch (e) {
+      console.error('Failed to remove parser plugin', e);
       throw e;
     }
   }
