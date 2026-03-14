@@ -10,6 +10,7 @@ import {
   RemoveFolder,
   UpdateFolderAlias
 } from '../../bindings/pixora/internal/services/galleryservice';
+import { useGalleryStore } from './gallery-store';
 
 interface ConfigState {
   config: AppConfig | null;
@@ -50,10 +51,27 @@ export const useConfigStore = create<ConfigState>((set) => ({
 
   removeFolder: async (path) => {
     try {
+      const normalizedPath = (path || '').trim();
       await RemoveFolder(path);
       // reload
       const config = await GetConfig();
       set({ config });
+
+      // Keep open tabs, but detach them from the removed folder path.
+      const tabsModule = await import('./tabs-store');
+      const tabsStore = tabsModule.useTabsStore.getState();
+      const affectedTabIds =
+        await tabsStore.clearFolderFromTabs(normalizedPath);
+
+      // If the currently active tab pointed to the removed folder, clear gallery immediately.
+      const activeTabId = tabsStore.activeTabId;
+      if (activeTabId && affectedTabIds.includes(activeTabId)) {
+        const gallery = useGalleryStore.getState();
+        gallery.setImages([], 0);
+        gallery.setSelectedImageId(null);
+      }
+
+      await useGalleryStore.getState().fetchImages(true);
     } catch (e) {
       console.error('Failed to remove folder', e);
     }
@@ -85,6 +103,9 @@ export const useConfigStore = create<ConfigState>((set) => ({
 
   clearIndexAndReindex: async () => {
     try {
+      const gallery = useGalleryStore.getState();
+      gallery.setImages([], 0);
+      gallery.setSelectedImageId(null);
       await ClearIndexAndReindex();
     } catch (e) {
       console.error('Failed to clear indexing data and re-index', e);

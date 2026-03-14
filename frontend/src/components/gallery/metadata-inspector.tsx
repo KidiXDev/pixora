@@ -32,15 +32,12 @@ export function MetadataInspector() {
     await OpenExternally(image.Path).catch(console.error);
   };
 
-  // Basic syntax highlighter for SD prompts
   const renderPrompt = (prompt: string) => {
     if (!prompt)
       return (
         <span className="text-muted-foreground italic">No prompt data</span>
       );
 
-    // Split by tags
-    // Matches <lora:...> or (word:weight)
     const parts = prompt.split(/(<[^>]+>|\([^)]+:\d+(?:\.\d+)?\))/g);
 
     return parts.map((part, i) => {

@@ -18,9 +18,9 @@ import (
 	"pixora/internal/db"
 	"pixora/internal/parser"
 
-	"github.com/zeebo/xxh3"
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/zeebo/xxh3"
 )
 
 type ScanStatus struct {
@@ -33,6 +33,12 @@ type ScanStatus struct {
 type thumbnailJob struct {
 	path string
 	hash string
+}
+
+type thumbnailReadyEvent struct {
+	Hash       string `json:"hash"`
+	Path       string `json:"path"`
+	FolderPath string `json:"folderPath"`
 }
 
 type Indexer struct {
@@ -267,6 +273,28 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 
 	modifiedUnixNs := info.ModTime().UnixNano()
 	if stored != nil && stored.FileSize == info.Size() && stored.ModifiedUnixNs == modifiedUnixNs {
+		if stored.ThumbReady {
+			return
+		}
+
+		if stored.Hash == "" {
+			return
+		}
+
+		if i.thumbnailSvc.Exists(stored.Hash) {
+			if err := i.database.MarkThumbnailReadyByHash(context.Background(), stored.Hash); err != nil {
+				log.Printf("Failed marking existing thumbnail ready for %s: %v", path, err)
+				return
+			}
+			i.emitThumbnailReadyEvent(path, stored.Hash)
+			return
+		}
+
+		select {
+		case <-i.ctx.Done():
+			return
+		case i.thumbJobs <- thumbnailJob{path: path, hash: stored.Hash}:
+		}
 		return
 	}
 
@@ -417,8 +445,26 @@ func (i *Indexer) thumbnailWorker() {
 			<-i.thumbSem
 			if err != nil {
 				log.Printf("Failed generating thumbnail for %s: %v", job.path, err)
+				continue
 			}
+
+			if err := i.database.MarkThumbnailReadyByHash(context.Background(), job.hash); err != nil {
+				log.Printf("Failed marking thumbnail ready for %s: %v", job.path, err)
+				continue
+			}
+
+			i.emitThumbnailReadyEvent(job.path, job.hash)
 		}
+	}
+}
+
+func (i *Indexer) emitThumbnailReadyEvent(path, hash string) {
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("thumbnail:ready", thumbnailReadyEvent{
+			Hash:       hash,
+			Path:       path,
+			FolderPath: filepath.Dir(path),
+		})
 	}
 }
 

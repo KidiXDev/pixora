@@ -13,6 +13,7 @@ export class ImageRecord {
     "ID": number;
     "Path": string;
     "Hash": string;
+    "ThumbReady": boolean;
     "FileSize": number;
     "ModifiedUnixNs": number;
     "Prompt": string;
@@ -35,6 +36,9 @@ export class ImageRecord {
         }
         if (!("Hash" in $$source)) {
             this["Hash"] = "";
+        }
+        if (!("ThumbReady" in $$source)) {
+            this["ThumbReady"] = false;
         }
         if (!("FileSize" in $$source)) {
             this["FileSize"] = 0;

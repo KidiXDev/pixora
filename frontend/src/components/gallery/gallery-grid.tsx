@@ -1,8 +1,10 @@
+import { isSettingsTabPath } from '@/lib/tab-pages';
+import SettingsPage from '@/pages/settings-page';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Loader2, LayoutGrid } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { LayoutGrid, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
 
@@ -16,6 +18,10 @@ export function GalleryGrid() {
     fetchImages(true);
   }, [searchQuery, activeTabId, fetchImages]);
 
+  if (activeTab && isSettingsTabPath(activeTab.path)) {
+    return <SettingsPage />;
+  }
+
   // If we have an active tab but no path, show the setup screen
   if (activeTab && !activeTab.path) {
     return <TabSetup />;
@@ -24,7 +30,13 @@ export function GalleryGrid() {
   return <ImageGrid activeTabId={activeTabId} searchQuery={searchQuery} />;
 }
 
-function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; searchQuery: string }) {
+function ImageGrid({
+  activeTabId,
+  searchQuery
+}: {
+  activeTabId: string | null;
+  searchQuery: string;
+}) {
   const {
     images,
     layoutMode,
@@ -32,14 +44,44 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
     setSelectedImageId,
     fetchNextPage,
     hasMore,
-    isLoading,
+    isLoading
   } = useGalleryStore();
 
   const parentRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  // Columns based on layout mode
-  const columns =
-    layoutMode === 'compact' ? 10 : layoutMode === 'comfortable' ? 7 : 5;
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      setContainerWidth(el.clientWidth);
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const columns = useMemo(() => {
+    const gap = 16;
+    const horizontalPadding = 32;
+    const availableWidth = Math.max(320, containerWidth - horizontalPadding);
+
+    const minTileWidth =
+      layoutMode === 'compact' ? 130 : layoutMode === 'comfortable' ? 180 : 240;
+
+    const maxColumns =
+      layoutMode === 'compact' ? 10 : layoutMode === 'comfortable' ? 7 : 5;
+
+    const fitColumns = Math.floor(
+      (availableWidth + gap) / (minTileWidth + gap)
+    );
+    return Math.max(1, Math.min(maxColumns, fitColumns));
+  }, [containerWidth, layoutMode]);
 
   // Virtualizer for the grid rows
   const rowVirtualizer = useVirtualizer({
@@ -48,10 +90,25 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
     estimateSize: () =>
       layoutMode === 'compact' ? 176 : layoutMode === 'comfortable' ? 272 : 336,
     overscan: 10,
-    scrollMargin: 10,
+    scrollMargin: 10
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (selectedImageId) {
+      return;
+    }
+
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        rowVirtualizer.measure();
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+
+    return () => cancelAnimationFrame(raf1);
+  }, [selectedImageId, columns, rowVirtualizer]);
 
   // Infinite scroll detection
   useEffect(() => {
@@ -72,7 +129,7 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
     hasMore,
     isLoading,
     fetchNextPage,
-    activeTabId,
+    activeTabId
   ]);
 
   return (
@@ -89,15 +146,15 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
             {!activeTabId
               ? 'Welcome to Pixora'
               : searchQuery
-              ? 'No Results'
-              : 'Folder is Empty'}
+                ? 'No Results'
+                : 'Folder is Empty'}
           </h3>
           <p className="max-w-xs mb-8">
             {!activeTabId
               ? 'Start browsing your AI generated art by creating your first folder tab.'
               : searchQuery
-              ? `We couldn't find any images matching "${searchQuery}" in this folder.`
-              : 'This folder is being indexed or contains no supported image formats.'}
+                ? `We couldn't find any images matching "${searchQuery}" in this folder.`
+                : 'This folder is being indexed or contains no supported image formats.'}
           </p>
         </div>
       ) : (
@@ -105,7 +162,7 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
             width: '100%',
-            position: 'relative',
+            position: 'relative'
           }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => (
@@ -117,7 +174,7 @@ function ImageGrid({ activeTabId, searchQuery }: { activeTabId: string | null; s
                 left: 0,
                 width: '100%',
                 height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`,
+                transform: `translateY(${virtualRow.start}px)`
               }}
               className="flex gap-4 pb-4"
             >

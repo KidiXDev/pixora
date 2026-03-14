@@ -1,20 +1,33 @@
-import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Search, Settings, LayoutGrid, LayoutList, LayoutPanelLeft, Loader2 } from 'lucide-react';
-import { useGalleryStore } from '../../stores/gallery-store';
+import { SETTINGS_TAB_PATH, isPageTabPath } from '@/lib/tab-pages';
 import { useIndexingStore } from '@/stores/indexing-store';
 import { useTabsStore } from '@/stores/tabs-store';
-import { Input } from '../ui/input';
+import {
+  LayoutGrid,
+  LayoutList,
+  LayoutPanelLeft,
+  Loader2,
+  Search,
+  Settings
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
+import { useGalleryStore } from '../../stores/gallery-store';
+import { Input } from '../ui/input';
 
 export function TopBar() {
-  const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } = useGalleryStore();
+  const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } =
+    useGalleryStore();
   const { activeScans, getTotalProcessed } = useIndexingStore();
-  const { tabs, activeTabId } = useTabsStore();
+  const { tabs, activeTabId, addTab, setActiveTabId } = useTabsStore();
   const location = useLocation();
-  
-  const activeTab = tabs.find(t => t.id === activeTabId);
-  const showControls = location.pathname === '/' && activeTab && activeTab.path;
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const showControls =
+    location.pathname === '/' &&
+    activeTab &&
+    activeTab.path &&
+    !isPageTabPath(activeTab.path);
 
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [debouncedQuery] = useDebounce(localQuery, 300);
@@ -25,6 +38,18 @@ export function TopBar() {
   useEffect(() => {
     setSearchQuery(debouncedQuery);
   }, [debouncedQuery, setSearchQuery]);
+
+  const handleOpenSettingsTab = async () => {
+    const existingSettingsTab = tabs.find(
+      (tab) => tab.path === SETTINGS_TAB_PATH
+    );
+    if (existingSettingsTab) {
+      setActiveTabId(existingSettingsTab.id);
+      return;
+    }
+
+    await addTab({ label: 'Settings', path: SETTINGS_TAB_PATH, isWalk: false });
+  };
 
   return (
     <div className="flex h-12 w-full shrink-0 items-center justify-between border-b border-border bg-card/50 backdrop-blur-md px-4 text-card-foreground transition-all">
@@ -46,7 +71,9 @@ export function TopBar() {
         {isIndexing && (
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary border border-primary/30 mr-2 text-xs font-medium animate-in fade-in zoom-in duration-300">
             <Loader2 size={14} className="animate-spin" />
-            {totalProcessed > 0 ? `Indexing ${totalProcessed} files...` : 'Indexing...'}
+            {totalProcessed > 0
+              ? `Indexing ${totalProcessed} files...`
+              : 'Indexing...'}
           </div>
         )}
         {showControls && (
@@ -75,21 +102,13 @@ export function TopBar() {
           </div>
         )}
 
-        {location.pathname !== '/settings' ? (
-          <Link
-            to="/settings"
-            className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <Settings size={18} />
-          </Link>
-        ) : (
-          <Link
-            to="/"
-            className="flex h-9 items-center justify-center rounded-md px-4 hover:bg-muted transition-colors font-medium text-sm text-muted-foreground hover:text-foreground border border-transparent hover:border-border"
-          >
-            Back to Gallery
-          </Link>
-        )}
+        <button
+          onClick={handleOpenSettingsTab}
+          className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          title="Open Settings tab"
+        >
+          <Settings size={18} />
+        </button>
       </div>
     </div>
   );

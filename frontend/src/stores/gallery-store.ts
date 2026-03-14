@@ -1,3 +1,4 @@
+import { isPageTabPath } from '@/lib/tab-pages';
 import { create } from 'zustand';
 import { ImageRecord } from '../../bindings/pixora/internal/db/models';
 import { GetImages } from '../../bindings/pixora/internal/services/galleryservice';
@@ -60,6 +61,18 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const activeTab = tabs?.find((t) => t.id === activeTabId);
     const folderPath =
       typeof activeTab?.path === 'string' ? activeTab.path : '';
+
+    if (isPageTabPath(folderPath)) {
+      set({
+        images: [],
+        totalImages: 0,
+        selectedImageId: null,
+        isLoading: false,
+        hasMore: false
+      });
+      return;
+    }
+
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
 
@@ -105,6 +118,12 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const activeTab = tabs?.find((t) => t.id === activeTabId);
     const folderPath =
       typeof activeTab?.path === 'string' ? activeTab.path : '';
+
+    if (isPageTabPath(folderPath)) {
+      set({ isLoading: false, hasMore: false });
+      return;
+    }
+
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
 

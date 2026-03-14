@@ -100,7 +100,7 @@ export default function SettingsPage() {
                 value={newMode}
                 onValueChange={(v) => setNewMode(v as ScanMode)}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-30">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

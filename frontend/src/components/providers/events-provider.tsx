@@ -1,7 +1,14 @@
 import { useGalleryStore } from '@/stores/gallery-store';
 import { ScanStatus, useIndexingStore } from '@/stores/indexing-store';
+import { useTabsStore } from '@/stores/tabs-store';
 import { Events } from '@wailsio/runtime';
 import { useEffect } from 'react';
+
+interface ThumbnailReadyEvent {
+  hash: string;
+  path: string;
+  folderPath: string;
+}
 
 export function EventsProvider({ children }: { children: React.ReactNode }) {
   const { upsertScan, startScan, removeScan } = useIndexingStore();
@@ -13,6 +20,30 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshInFlight = false;
+
+    const queueRefresh = () => {
+      if (refreshTimer || refreshInFlight) return;
+      refreshTimer = setTimeout(async () => {
+        refreshTimer = null;
+        refreshInFlight = true;
+        try {
+          await fetchImages();
+        } finally {
+          refreshInFlight = false;
+        }
+      }, 120);
+    };
+
+    const isInActiveFolderScope = (imagePath: string): boolean => {
+      const { tabs, activeTabId } = useTabsStore.getState();
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      const activePath = (activeTab?.path || '').trim();
+      if (!activePath) return false;
+      return imagePath.startsWith(activePath);
+    };
+
     // Listen for indexing events
     const unsubStart = Events.On('indexing:start', (e) => {
       const folderPath = getPayload<string>(e.data);
@@ -34,10 +65,21 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
       fetchImages();
     });
 
+    const unsubThumbReady = Events.On('thumbnail:ready', (e) => {
+      const payload = getPayload<ThumbnailReadyEvent>(e.data);
+      if (!payload?.path) return;
+      if (!isInActiveFolderScope(payload.path)) return;
+      queueRefresh();
+    });
+
     return () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
       unsubStart();
       unsubProgress();
       unsubEnd();
+      unsubThumbReady();
     };
   }, [upsertScan, startScan, removeScan, fetchImages]);
 

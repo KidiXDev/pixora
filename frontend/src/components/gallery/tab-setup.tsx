@@ -12,9 +12,21 @@ import { cn } from '@/lib/utils';
 import { useConfigStore } from '@/stores/config-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { Dialogs } from '@wailsio/runtime';
-import { Check, Edit2, FileStack, Folder, FolderPlus, Layers, Plus, X } from 'lucide-react';
+import {
+  Check,
+  Edit2,
+  FileStack,
+  Folder,
+  FolderPlus,
+  Layers,
+  Plus,
+  X
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { FolderConfig, ScanMode } from '../../../bindings/pixora/internal/config/models';
+import {
+  FolderConfig,
+  ScanMode
+} from '../../../bindings/pixora/internal/config/models';
 
 function FolderItem({
   folder,
@@ -147,10 +159,10 @@ export function TabSetup() {
 
       if (selection) {
         const path = typeof selection === 'string' ? selection : selection[0];
-        
-        // Check if this folder already has an alias in our config
-        const existingFolder = config?.folders?.find(f => f.path === path);
-        const label = existingFolder?.alias || path.split(/[/\\]/).pop() || 'New Tab';
+
+        const existingFolder = config?.folders?.find((f) => f.path === path);
+        const label =
+          existingFolder?.alias || path.split(/[/\\]/).pop() || 'New Tab';
 
         await updateTab({
           ...activeTab,
@@ -164,9 +176,11 @@ export function TabSetup() {
     }
   };
 
-  const handleSelectExisting = async (folderPath: string, isWalk: boolean, alias?: string) => {
+  const handleSelectExisting = async (folderPath: string, isWalk: boolean) => {
     if (!activeTab) return;
-    const label = alias || folderPath.split(/[/\\]/).pop() || 'Tab';
+    const existingFolder = config?.folders?.find((f) => f.path === folderPath);
+    const label =
+      existingFolder?.alias || folderPath.split(/[/\\]/).pop() || 'New Tab';
     await updateTab({
       ...activeTab,
       label: label,
@@ -197,7 +211,7 @@ export function TabSetup() {
                 value={scanMode.charAt(0).toUpperCase() + scanMode.slice(1)}
                 onValueChange={(v) => setScanMode(v as ScanMode)}
               >
-                <SelectTrigger className="h-8 text-base w-[150px] bg-muted/30 border-transparent shadow-none hover:bg-muted/50 transition-colors">
+                <SelectTrigger className="h-8 text-base w-37.5 bg-muted/30 border-transparent shadow-none hover:bg-muted/50 transition-colors">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -228,18 +242,6 @@ export function TabSetup() {
           </div>
 
           <div className="space-y-6">
-            <div className="space-y-3 px-1">
-              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                Tab Name (Alias)
-              </h3>
-              <Input
-                value={activeTab.label}
-                onChange={(e) => updateTab({ ...activeTab, label: e.target.value })}
-                placeholder="Enter tab name..."
-                className="h-11 bg-muted/20 border-border/50 focus:border-primary/50 transition-all rounded-xl"
-              />
-            </div>
-
             <div className="space-y-4">
               {config?.folders && config.folders.length > 0 ? (
                 <div className="grid gap-3">
@@ -252,7 +254,7 @@ export function TabSetup() {
                         key={folder.path}
                         folder={folder}
                         onSelect={(isWalk) =>
-                          handleSelectExisting(folder.path, isWalk, folder.alias)
+                          handleSelectExisting(folder.path, isWalk)
                         }
                       />
                     ))}
@@ -268,8 +270,8 @@ export function TabSetup() {
                       No indexed folders yet
                     </p>
                     <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-                      Start by clicking the plus button above to browse and add a
-                      directory from your computer.
+                      Start by clicking the plus button above to browse and add
+                      a directory from your computer.
                     </p>
                   </div>
                 </div>

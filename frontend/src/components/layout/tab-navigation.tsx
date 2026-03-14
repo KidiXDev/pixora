@@ -61,7 +61,7 @@ function SortableTab({
       {...attributes}
       {...listeners}
       className={cn(
-        'group relative flex h-8 min-w-[100px] max-w-[200px] items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
+        'group relative flex h-8 min-w-45 max-w-50 items-center gap-2 rounded-md px-3 transition-all cursor-grab active:cursor-grabbing select-none animate-in fade-in zoom-in-95 duration-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary',
         isActive
           ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
           : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
@@ -81,18 +81,12 @@ function SortableTab({
       {tab.path ? (
         <Folder
           size={14}
-          className={cn(
-            'shrink-0 transition-transform duration-300',
-            isActive && 'scale-110'
-          )}
+          className={cn('shrink-0 transition-transform duration-300')}
         />
       ) : (
         <LayoutGrid
           size={14}
-          className={cn(
-            'shrink-0 transition-transform duration-300',
-            isActive && 'scale-110'
-          )}
+          className={cn('shrink-0 transition-transform duration-300')}
         />
       )}
       <span className="truncate text-xs font-semibold tracking-tight">
@@ -113,7 +107,7 @@ function SortableTab({
       </button>
 
       {isActive && (
-        <div className="absolute -bottom-[6px] left-1/2 -translate-x-1/2 w-4 h-[3px] bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all duration-300" />
+        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-0.75 bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all duration-300" />
       )}
     </div>
   );
@@ -131,7 +125,7 @@ function TabDragOverlay({
   return (
     <div
       className={cn(
-        'flex h-8 min-w-[100px] max-w-[200px] items-center gap-2 rounded-md px-3 shadow-xl ring-1 cursor-grabbing select-none rotate-1 scale-105 opacity-95',
+        'flex h-8 min-w-25 max-w-50 items-center gap-2 rounded-md px-3 shadow-xl ring-1 cursor-grabbing select-none rotate-1 scale-105 opacity-95',
         isActive
           ? 'bg-primary/15 text-primary ring-primary/30'
           : 'bg-muted text-foreground ring-border'
@@ -165,9 +159,6 @@ export function TabNavigation() {
   const { fetchImages } = useGalleryStore();
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // Activate pointer sensor with a small drag distance threshold
-  // so clicks still register on tabs
-  // Use discrete sensors for more reliable click vs drag behavior
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 10 }
