@@ -14,12 +14,14 @@ import { TabSetup } from './tab-setup';
 
 const tabScrollTopById = new Map<string, number>();
 const DEV_MODE = import.meta.env.DEV;
+const TAB_SCROLL_DEBUG_ENABLED =
+  DEV_MODE && import.meta.env.VITE_DEBUG_TAB_SCROLL === '1';
 
 function logTabScroll(
   message: string,
   details?: Record<string, unknown>
 ): void {
-  if (!DEV_MODE) {
+  if (!TAB_SCROLL_DEBUG_ENABLED) {
     return;
   }
 
@@ -41,10 +43,17 @@ export function GalleryGrid() {
   const activeTabId = useTabsStore((state) => state.activeTabId);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTabPath = activeTab?.path ?? null;
 
   useEffect(() => {
+    // On startup, activeTabId may be restored before tabs are loaded.
+    // Wait until tab config resolves so we don't clear the gallery prematurely.
+    if (activeTabId && activeTabPath === null) {
+      return;
+    }
+
     fetchImages(true);
-  }, [searchQuery, activeTabId, fetchImages]);
+  }, [searchQuery, activeTabId, activeTabPath, fetchImages]);
 
   useEffect(() => {
     const validTabIds = new Set(tabs.map((tab) => tab.id));
@@ -67,13 +76,7 @@ export function GalleryGrid() {
     return <TabSetup />;
   }
 
-  return (
-    <ImageGrid
-      key={activeTabId ?? 'no-active-tab'}
-      activeTabId={activeTabId}
-      searchQuery={searchQuery}
-    />
-  );
+  return <ImageGrid activeTabId={activeTabId} searchQuery={searchQuery} />;
 }
 
 function ImageGrid({

@@ -180,21 +180,32 @@ func main() {
 }
 
 func applyPersistedWindowOptions(options *application.WebviewWindowOptions, windowCfg config.WindowConfig) {
-	if windowCfg.HasNormalBounds {
-		options.Width = maxInt(windowCfg.NormalBounds.Width, options.MinWidth)
-		options.Height = maxInt(windowCfg.NormalBounds.Height, options.MinHeight)
-	} else if windowCfg.HasBounds {
-		options.Width = maxInt(windowCfg.Bounds.Width, options.MinWidth)
-		options.Height = maxInt(windowCfg.Bounds.Height, options.MinHeight)
-	}
-
-	if windowCfg.HasBounds {
+	startBounds, hasStartBounds := resolveInitialWindowBounds(windowCfg)
+	if hasStartBounds {
+		options.Width = maxInt(startBounds.Width, options.MinWidth)
+		options.Height = maxInt(startBounds.Height, options.MinHeight)
 		options.InitialPosition = application.WindowXY
-		options.X = windowCfg.Bounds.X
-		options.Y = windowCfg.Bounds.Y
+		options.X = startBounds.X
+		options.Y = startBounds.Y
 	}
 
 	options.StartState = windowStateToStartState(windowCfg.State)
+}
+
+func resolveInitialWindowBounds(windowCfg config.WindowConfig) (config.WindowBounds, bool) {
+	if windowCfg.HasNormalBounds && isValidWindowBounds(windowCfg.NormalBounds) {
+		return windowCfg.NormalBounds, true
+	}
+
+	if windowCfg.HasBounds && isValidWindowBounds(windowCfg.Bounds) {
+		return windowCfg.Bounds, true
+	}
+
+	return config.WindowBounds{}, false
+}
+
+func isValidWindowBounds(bounds config.WindowBounds) bool {
+	return bounds.Width > 0 && bounds.Height > 0
 }
 
 func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Manager, initial config.WindowConfig) {
@@ -238,14 +249,18 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	}
 
 	updateBounds := func(updateNormal bool) {
-		bounds := window.Bounds()
+		x, y := window.Position()
+		width, height := window.Size()
+		if width <= 0 || height <= 0 {
+			return
+		}
 
 		mu.Lock()
 		current.Bounds = config.WindowBounds{
-			X:      bounds.X,
-			Y:      bounds.Y,
-			Width:  bounds.Width,
-			Height: bounds.Height,
+			X:      x,
+			Y:      y,
+			Width:  width,
+			Height: height,
 		}
 		current.HasBounds = true
 

@@ -199,4 +199,24 @@ func (m *Manager) ensureDefaultsLocked() {
 	if m.config.Window.State == "" {
 		m.config.Window.State = "normal"
 	}
+
+	if m.config.Window.HasBounds {
+		if m.config.Window.Bounds.Width <= 0 || m.config.Window.Bounds.Height <= 0 {
+			m.config.Window.HasBounds = false
+			m.config.Window.Bounds = WindowBounds{}
+		}
+	} else if m.config.Window.Bounds.Width > 0 && m.config.Window.Bounds.Height > 0 {
+		// Migrate from older config files where bounds existed without explicit flags.
+		m.config.Window.HasBounds = true
+	}
+
+	if m.config.Window.HasNormalBounds {
+		if m.config.Window.NormalBounds.Width <= 0 || m.config.Window.NormalBounds.Height <= 0 {
+			m.config.Window.HasNormalBounds = false
+			m.config.Window.NormalBounds = WindowBounds{}
+		}
+	} else if m.config.Window.NormalBounds.Width > 0 && m.config.Window.NormalBounds.Height > 0 {
+		// Migrate from older config files where normal bounds existed without explicit flags.
+		m.config.Window.HasNormalBounds = true
+	}
 }

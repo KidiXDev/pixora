@@ -8,6 +8,7 @@ type LayoutMode = 'compact' | 'comfortable' | 'spacious';
 
 let latestFetchRequestId = 0;
 let inFlightNextPageKey: string | null = null;
+const MAX_TAB_SNAPSHOT_ENTRIES = 8;
 
 interface ActiveTabContext {
   tabId: string;
@@ -25,6 +26,35 @@ interface GalleryTabSnapshot {
 }
 
 const tabSnapshots = new Map<string, GalleryTabSnapshot>();
+
+function getSnapshot(key: string): GalleryTabSnapshot | null {
+  const snapshot = tabSnapshots.get(key);
+  if (!snapshot) {
+    return null;
+  }
+
+  // Keep most recently used snapshots alive and evict stale ones first.
+  tabSnapshots.delete(key);
+  tabSnapshots.set(key, snapshot);
+  return snapshot;
+}
+
+function setSnapshot(key: string, snapshot: GalleryTabSnapshot): void {
+  if (tabSnapshots.has(key)) {
+    tabSnapshots.delete(key);
+  }
+
+  tabSnapshots.set(key, snapshot);
+
+  while (tabSnapshots.size > MAX_TAB_SNAPSHOT_ENTRIES) {
+    const oldestKey = tabSnapshots.keys().next().value;
+    if (typeof oldestKey !== 'string') {
+      break;
+    }
+
+    tabSnapshots.delete(oldestKey);
+  }
+}
 
 function buildTabSnapshotKey(tabId: string, query: string): string {
   return `${tabId}|${query}`;
@@ -189,7 +219,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const tabSnapshotKey = buildTabSnapshotKey(tabId, safeQuery);
 
     if (clear) {
-      const cachedSnapshot = tabSnapshots.get(tabSnapshotKey);
+      const cachedSnapshot = getSnapshot(tabSnapshotKey);
       if (cachedSnapshot) {
         set({
           ...cachedSnapshot,
@@ -235,7 +265,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
           isLoading: false
         };
         set(nextState);
-        tabSnapshots.set(tabSnapshotKey, {
+        setSnapshot(tabSnapshotKey, {
           images: nextState.images,
           totalImages: nextState.totalImages,
           selectedImageId: null,
@@ -316,10 +346,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
             isLoading: false
           };
         });
-        tabSnapshots.set(
-          buildTabSnapshotKey(tabId, safeQuery),
-          toSnapshot(get())
-        );
+        setSnapshot(buildTabSnapshotKey(tabId, safeQuery), toSnapshot(get()));
       } else {
         set({ isLoading: false });
       }

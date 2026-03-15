@@ -10,6 +10,38 @@ import {
   SetTabs
 } from '../../bindings/pixora/internal/services/galleryservice';
 
+const LAST_ACTIVE_TAB_STORAGE_KEY = 'pixora:last-active-tab-id';
+
+function readLastActiveTabId(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(LAST_ACTIVE_TAB_STORAGE_KEY);
+    return rawValue && rawValue.trim().length > 0 ? rawValue : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLastActiveTabId(tabId: string | null): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (tabId && tabId.trim().length > 0) {
+      window.localStorage.setItem(LAST_ACTIVE_TAB_STORAGE_KEY, tabId);
+      return;
+    }
+
+    window.localStorage.removeItem(LAST_ACTIVE_TAB_STORAGE_KEY);
+  } catch {
+    // Ignore persistence errors (for example, storage access restrictions).
+  }
+}
+
 interface TabsState {
   tabs: TabConfig[];
   activeTabId: string | null;
@@ -27,7 +59,7 @@ interface TabsState {
 
 export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
-  activeTabId: null,
+  activeTabId: readLastActiveTabId(),
   isLoading: false,
 
   fetchTabs: async () => {
@@ -53,10 +85,19 @@ export const useTabsStore = create<TabsState>((set, get) => ({
           await SetTabs(normalizedTabs);
         }
 
-        set({ tabs: normalizedTabs, isLoading: false });
-        if (!get().activeTabId) {
-          set({ activeTabId: normalizedTabs[0].id });
-        }
+        const currentActiveTabId = get().activeTabId;
+        const savedTabId = readLastActiveTabId();
+        const resolvedActiveTabId =
+          normalizedTabs.find((tab) => tab.id === currentActiveTabId)?.id ??
+          normalizedTabs.find((tab) => tab.id === savedTabId)?.id ??
+          normalizedTabs[0].id;
+
+        set({
+          tabs: normalizedTabs,
+          activeTabId: resolvedActiveTabId,
+          isLoading: false
+        });
+        persistLastActiveTabId(resolvedActiveTabId);
       } else {
         // Create an initial empty tab if none exist
         const initialTab = new TabConfig({
@@ -70,6 +111,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
           activeTabId: initialTab.id,
           isLoading: false
         });
+        persistLastActiveTabId(initialTab.id);
         await SetTabs([initialTab]);
       }
     } catch (e) {
@@ -78,7 +120,10 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     }
   },
 
-  setActiveTabId: (activeTabId) => set({ activeTabId }),
+  setActiveTabId: (activeTabId) => {
+    persistLastActiveTabId(activeTabId);
+    set({ activeTabId });
+  },
 
   saveTabs: async (tabs: TabConfig[]) => {
     try {
@@ -95,6 +140,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
         (t) => t.path === SETTINGS_TAB_PATH
       );
       if (existingSettingsTab) {
+        persistLastActiveTabId(existingSettingsTab.id);
         set({ activeTabId: existingSettingsTab.id });
         return;
       }
@@ -120,6 +166,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     await get().saveTabs(newTabs);
 
     // Set as active
+    persistLastActiveTabId(newTab.id);
     set({ activeTabId: newTab.id });
   },
 
@@ -148,6 +195,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
           : null;
     }
     set({ activeTabId: newActiveTabId });
+    persistLastActiveTabId(newActiveTabId);
     await get().saveTabs(newTabs);
   },
 

@@ -283,13 +283,8 @@ export function TabNavigation() {
     addTab,
     reorderTabs
   } = useTabsStore();
-  const {
-    fetchImages,
-    searchQuery,
-    setSearchQuery,
-    layoutMode,
-    setLayoutMode
-  } = useGalleryStore();
+  const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } =
+    useGalleryStore();
   const { activeScans, getTotalProcessed } = useIndexingStore();
   const location = useLocation();
 
@@ -348,9 +343,8 @@ export function TabNavigation() {
   const handleTabChange = useCallback(
     (id: string) => {
       setActiveTabId(id);
-      fetchImages(true);
     },
-    [setActiveTabId, fetchImages]
+    [setActiveTabId]
   );
 
   const handleAddTab = useCallback(async () => {
