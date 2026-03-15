@@ -36,7 +36,14 @@ import {
   Settings,
   X
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 import { TabConfig } from '../../../bindings/pixora/internal/config/models';
@@ -283,8 +290,10 @@ export function TabNavigation() {
     addTab,
     reorderTabs
   } = useTabsStore();
-  const { searchQuery, setSearchQuery, layoutMode, setLayoutMode } =
-    useGalleryStore();
+  const searchQuery = useGalleryStore((state) => state.searchQuery);
+  const setSearchQuery = useGalleryStore((state) => state.setSearchQuery);
+  const layoutMode = useGalleryStore((state) => state.layoutMode);
+  const setLayoutMode = useGalleryStore((state) => state.setLayoutMode);
   const { activeScans, getTotalProcessed } = useIndexingStore();
   const location = useLocation();
 
@@ -342,9 +351,15 @@ export function TabNavigation() {
 
   const handleTabChange = useCallback(
     (id: string) => {
-      setActiveTabId(id);
+      if (id === activeTabId) {
+        return;
+      }
+
+      startTransition(() => {
+        setActiveTabId(id);
+      });
     },
-    [setActiveTabId]
+    [activeTabId, setActiveTabId]
   );
 
   const handleAddTab = useCallback(async () => {

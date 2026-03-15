@@ -12,7 +12,7 @@ interface ThumbnailReadyEvent {
 
 export function EventsProvider({ children }: { children: React.ReactNode }) {
   const { upsertScan, startScan, removeScan } = useIndexingStore();
-  const { fetchImages } = useGalleryStore();
+  const fetchImages = useGalleryStore((state) => state.fetchImages);
 
   const getPayload = <T,>(data: unknown): T | undefined => {
     if (Array.isArray(data)) return data[0] as T | undefined;

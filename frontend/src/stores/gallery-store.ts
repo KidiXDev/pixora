@@ -118,6 +118,7 @@ interface GalleryState {
   setLayoutMode: (mode: LayoutMode) => void;
   updateImageRecord: (image: ImageRecord) => void;
   pruneTabScopedState: (tabIds: string[]) => void;
+  hydrateActiveTabSnapshot: () => boolean;
   fetchImages: (clear?: boolean) => Promise<void>;
   fetchNextPage: () => Promise<void>;
 }
@@ -178,6 +179,65 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         tabSnapshots.delete(key);
       }
     }
+  },
+
+  hydrateActiveTabSnapshot: () => {
+    const { searchQuery } = get();
+    const activeContext = getActiveTabContext();
+    if (!activeContext || !activeContext.folderPath) {
+      set({
+        images: [],
+        totalImages: 0,
+        selectedImageId: null,
+        compareImageIds: null,
+        compareSlider: 50,
+        offset: 0,
+        isLoading: false,
+        hasMore: false
+      });
+      return false;
+    }
+
+    const { tabId, folderPath } = activeContext;
+    if (isPageTabPath(folderPath)) {
+      set({
+        images: [],
+        totalImages: 0,
+        selectedImageId: null,
+        compareImageIds: null,
+        compareSlider: 50,
+        offset: 0,
+        isLoading: false,
+        hasMore: false
+      });
+      return false;
+    }
+
+    const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
+    const tabSnapshotKey = buildTabSnapshotKey(tabId, safeQuery);
+    const cachedSnapshot = getSnapshot(tabSnapshotKey);
+
+    if (cachedSnapshot) {
+      set({
+        ...cachedSnapshot,
+        isLoading: false
+      });
+      return true;
+    }
+
+    // Clear stale tab data immediately so scroll restore doesn't run against
+    // the previous tab's image list before the fetch for the new tab starts.
+    set({
+      images: [],
+      totalImages: 0,
+      selectedImageId: null,
+      compareImageIds: null,
+      compareSlider: 50,
+      offset: 0,
+      isLoading: false,
+      hasMore: false
+    });
+    return false;
   },
 
   fetchImages: async (clear = false) => {

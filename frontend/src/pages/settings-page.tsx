@@ -53,7 +53,7 @@ export default function SettingsPage() {
     removePlugin,
     isLoading: configLoading
   } = useConfigStore();
-  const { fetchImages } = useGalleryStore();
+  const fetchImages = useGalleryStore((state) => state.fetchImages);
   const [newMode, setNewMode] = useState<ScanMode>(ScanMode.ScanModeNormal);
   const [isClearingIndex, setIsClearingIndex] = useState(false);
   const [isInstallingPlugin, setIsInstallingPlugin] = useState(false);
@@ -631,7 +631,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <Select
                           value={logPluginFilter}
-                          onValueChange={(v) => setLogPluginFilter(v)}
+                          onValueChange={(v) => setLogPluginFilter(v ?? 'all')}
                         >
                           <SelectTrigger className="w-48">
                             <SelectValue />

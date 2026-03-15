@@ -5,7 +5,15 @@ import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LayoutGrid } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { useDebouncedCallback } from 'use-debounce';
 import { ScrollablePage } from '../layout/scrollable-page';
 import { Skeleton } from '../ui/skeleton';
@@ -112,8 +120,21 @@ function removeTabScrollTop(tabId: string): void {
 }
 
 const DEV_MODE = import.meta.env.DEV;
-const TAB_SCROLL_DEBUG_ENABLED =
-  DEV_MODE && import.meta.env.VITE_DEBUG_TAB_SCROLL === '1';
+const TAB_SCROLL_DEBUG_ENABLED = DEV_MODE;
+const TAB_ACTIVATION_PROFILE_ENABLED = DEV_MODE;
+const ACTIVATION_OVERSCAN_ROWS = 2;
+const NORMAL_OVERSCAN_ROWS = 8;
+
+interface TabActivationProfile {
+  tabId: string;
+  startMs: number;
+  measureCalls: number;
+  measureTotalMs: number;
+  virtualItemsCalls: number;
+  virtualItemsTotalMs: number;
+  restoreCalls: number;
+  restoreTotalMs: number;
+}
 
 function logTabScroll(
   message: string,
@@ -129,6 +150,51 @@ function logTabScroll(
   }
 
   console.log('[GalleryGrid][TabScroll]', message);
+}
+
+function createTabActivationProfile(tabId: string): TabActivationProfile {
+  return {
+    tabId,
+    startMs: performance.now(),
+    measureCalls: 0,
+    measureTotalMs: 0,
+    virtualItemsCalls: 0,
+    virtualItemsTotalMs: 0,
+    restoreCalls: 0,
+    restoreTotalMs: 0
+  };
+}
+
+function finalizeTabActivationProfile(
+  profile: TabActivationProfile,
+  context: {
+    imagesLength: number;
+    totalImages: number;
+    virtualItemsLength: number;
+    columns: number;
+    layoutMode: 'compact' | 'comfortable' | 'spacious';
+  }
+): void {
+  if (!TAB_ACTIVATION_PROFILE_ENABLED) {
+    return;
+  }
+
+  const totalMs = performance.now() - profile.startMs;
+  console.log('[GalleryGrid][Perf] Tab activation', {
+    tabId: profile.tabId,
+    totalMs: Number(totalMs.toFixed(2)),
+    measureCalls: profile.measureCalls,
+    measureTotalMs: Number(profile.measureTotalMs.toFixed(2)),
+    virtualItemsCalls: profile.virtualItemsCalls,
+    virtualItemsTotalMs: Number(profile.virtualItemsTotalMs.toFixed(2)),
+    restoreCalls: profile.restoreCalls,
+    restoreTotalMs: Number(profile.restoreTotalMs.toFixed(2)),
+    imagesLength: context.imagesLength,
+    totalImages: context.totalImages,
+    virtualItemsLength: context.virtualItemsLength,
+    columns: context.columns,
+    layoutMode: context.layoutMode
+  });
 }
 
 export function GalleryGrid() {
@@ -150,7 +216,14 @@ export function GalleryGrid() {
       return;
     }
 
-    fetchImages(true);
+    // Defer fetch off the click frame to reduce tab-switch handler blocking.
+    const frameId = requestAnimationFrame(() => {
+      void fetchImages(true);
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
   }, [searchQuery, activeTabId, activeTabPath, fetchImages]);
 
   useEffect(() => {
@@ -201,8 +274,41 @@ function ImageGrid({
   activeTabId: string | null;
   searchQuery: string;
 }) {
-  const images = useGalleryStore((state) => state.images);
+  const hydrateActiveTabSnapshot = useGalleryStore(
+    (state) => state.hydrateActiveTabSnapshot
+  );
+  const renderSignature = `${activeTabId ?? 'none'}|${searchQuery}`;
+  const [hydratedSignature, setHydratedSignature] = useState<string | null>(
+    null
+  );
+
+  useLayoutEffect(() => {
+    hydrateActiveTabSnapshot();
+    setHydratedSignature(renderSignature);
+  }, [renderSignature, hydrateActiveTabSnapshot]);
+
+  if (hydratedSignature !== renderSignature) {
+    return null;
+  }
+
+  return (
+    <TabScopedImageGrid
+      key={renderSignature}
+      activeTabId={activeTabId}
+      searchQuery={searchQuery}
+    />
+  );
+}
+
+function TabScopedImageGrid({
+  activeTabId,
+  searchQuery
+}: {
+  activeTabId: string | null;
+  searchQuery: string;
+}) {
   const layoutMode = useGalleryStore((state) => state.layoutMode);
+  const images = useGalleryStore((state) => state.images);
   const selectedImageId = useGalleryStore((state) => state.selectedImageId);
   const setSelectedImageId = useGalleryStore(
     (state) => state.setSelectedImageId
@@ -219,10 +325,43 @@ function ImageGrid({
   const [comparePickImageId, setComparePickImageId] = useState<number | null>(
     null
   );
+  const [overscanRows, setOverscanRows] =
+    useState<number>(NORMAL_OVERSCAN_ROWS);
   const lastFetchTriggerRowsRef = useRef(-1);
   const restoreFetchInFlightRef = useRef(false);
   const isRestoringScrollRef = useRef(false);
   const didRestoreScrollRef = useRef(false);
+  const tabActivationProfileRef = useRef<TabActivationProfile | null>(null);
+  const hasLoggedTabActivationProfileRef = useRef(false);
+
+  useEffect(() => {
+    hasLoggedTabActivationProfileRef.current = false;
+    if (!TAB_ACTIVATION_PROFILE_ENABLED || !activeTabId) {
+      tabActivationProfileRef.current = null;
+      return;
+    }
+
+    tabActivationProfileRef.current = createTabActivationProfile(activeTabId);
+  }, [activeTabId]);
+
+  useEffect(() => {
+    setOverscanRows(ACTIVATION_OVERSCAN_ROWS);
+
+    // Restore normal overscan after first paint to keep scrolling smooth.
+    let frame2 = 0;
+    const frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => {
+        setOverscanRows(NORMAL_OVERSCAN_ROWS);
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame1);
+      if (frame2) {
+        cancelAnimationFrame(frame2);
+      }
+    };
+  }, [activeTabId]);
 
   const debouncedSetTabScrollTop = useDebouncedCallback(
     (tabId: string, scrollTop: number) => {
@@ -329,7 +468,7 @@ function ImageGrid({
     getScrollElement: () => parentRef.current,
     estimateSize: () =>
       layoutMode === 'compact' ? 176 : layoutMode === 'comfortable' ? 272 : 336,
-    overscan: 10,
+    overscan: overscanRows,
     scrollMargin: 10
   });
 
@@ -342,54 +481,77 @@ function ImageGrid({
     if (!el) {
       return;
     }
-
-    const targetScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
-    if (targetScrollTop <= 0) {
-      didRestoreScrollRef.current = true;
-      isRestoringScrollRef.current = false;
-      return;
-    }
-
-    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (maxScrollTop + 1 < targetScrollTop) {
-      logTabScroll('restore waiting for content height', {
-        tabId: activeTabId,
-        targetScrollTop,
-        maxScrollTop,
-        images: images.length,
-        totalImages,
-        isLoading
-      });
-
-      if (hasMore && !isLoading && !restoreFetchInFlightRef.current) {
-        restoreFetchInFlightRef.current = true;
-        void fetchNextPage().finally(() => {
-          restoreFetchInFlightRef.current = false;
-        });
+    const frameId = requestAnimationFrame(() => {
+      const targetScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
+      if (targetScrollTop <= 0) {
+        didRestoreScrollRef.current = true;
+        isRestoringScrollRef.current = false;
+        return;
       }
 
-      return;
-    }
+      const currentScrollTop = el.scrollTop;
+      if (Math.abs(currentScrollTop - targetScrollTop) <= 2) {
+        didRestoreScrollRef.current = true;
+        isRestoringScrollRef.current = false;
+        setTabScrollTop(activeTabId, currentScrollTop);
+        logTabScroll('restore success (initial offset)', {
+          tabId: activeTabId,
+          scrollTop: currentScrollTop
+        });
+        return;
+      }
 
-    rowVirtualizer.scrollToOffset(targetScrollTop, { align: 'start' });
-    const actual = el.scrollTop;
-    const restored = Math.abs(actual - targetScrollTop) <= 2;
-    logTabScroll('restore attempt', {
-      tabId: activeTabId,
-      targetScrollTop,
-      actualScrollTop: actual,
-      restored
+      const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (maxScrollTop + 1 < targetScrollTop) {
+        logTabScroll('restore waiting for content height', {
+          tabId: activeTabId,
+          targetScrollTop,
+          maxScrollTop,
+          images: images.length,
+          totalImages,
+          isLoading
+        });
+
+        if (hasMore && !isLoading && !restoreFetchInFlightRef.current) {
+          restoreFetchInFlightRef.current = true;
+          void fetchNextPage().finally(() => {
+            restoreFetchInFlightRef.current = false;
+          });
+        }
+
+        return;
+      }
+
+      const restoreStartMs = performance.now();
+      rowVirtualizer.scrollToOffset(targetScrollTop, { align: 'start' });
+      const actual = el.scrollTop;
+      const restored = Math.abs(actual - targetScrollTop) <= 2;
+      if (TAB_ACTIVATION_PROFILE_ENABLED && tabActivationProfileRef.current) {
+        tabActivationProfileRef.current.restoreCalls += 1;
+        tabActivationProfileRef.current.restoreTotalMs +=
+          performance.now() - restoreStartMs;
+      }
+      logTabScroll('restore attempt', {
+        tabId: activeTabId,
+        targetScrollTop,
+        actualScrollTop: actual,
+        restored
+      });
+
+      if (restored) {
+        didRestoreScrollRef.current = true;
+        isRestoringScrollRef.current = false;
+        setTabScrollTop(activeTabId, actual);
+        logTabScroll('restore success', {
+          tabId: activeTabId,
+          scrollTop: actual
+        });
+      }
     });
 
-    if (restored) {
-      didRestoreScrollRef.current = true;
-      isRestoringScrollRef.current = false;
-      setTabScrollTop(activeTabId, actual);
-      logTabScroll('restore success', {
-        tabId: activeTabId,
-        scrollTop: actual
-      });
-    }
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
   }, [
     activeTabId,
     rowVirtualizer,
@@ -402,14 +564,31 @@ function ImageGrid({
     fetchNextPage
   ]);
 
+  const virtualItemsStartMs =
+    TAB_ACTIVATION_PROFILE_ENABLED && tabActivationProfileRef.current
+      ? performance.now()
+      : 0;
   const virtualItems = rowVirtualizer.getVirtualItems();
+  if (TAB_ACTIVATION_PROFILE_ENABLED && tabActivationProfileRef.current) {
+    // Record cost of reading virtual rows from the virtualizer state machine.
+    const virtualItemsDurationMs = performance.now() - virtualItemsStartMs;
+    tabActivationProfileRef.current.virtualItemsCalls += 1;
+    tabActivationProfileRef.current.virtualItemsTotalMs +=
+      virtualItemsDurationMs;
+  }
   const loadedRows = Math.ceil(images.length / columns);
   const lastVirtualIndex =
     virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
   useEffect(() => {
     const rafId = requestAnimationFrame(() => {
+      const measureStartMs = performance.now();
       rowVirtualizer.measure();
+      if (TAB_ACTIVATION_PROFILE_ENABLED && tabActivationProfileRef.current) {
+        tabActivationProfileRef.current.measureCalls += 1;
+        tabActivationProfileRef.current.measureTotalMs +=
+          performance.now() - measureStartMs;
+      }
     });
 
     return () => cancelAnimationFrame(rafId);
@@ -426,6 +605,43 @@ function ImageGrid({
       setComparePickImageId(null);
     }
   }, [comparePickImageId, imageIdSet]);
+
+  useEffect(() => {
+    if (!TAB_ACTIVATION_PROFILE_ENABLED) {
+      return;
+    }
+
+    const profile = tabActivationProfileRef.current;
+    if (!profile || hasLoggedTabActivationProfileRef.current) {
+      return;
+    }
+
+    if (!didRestoreScrollRef.current && images.length === 0 && isLoading) {
+      return;
+    }
+
+    hasLoggedTabActivationProfileRef.current = true;
+    const frameId = requestAnimationFrame(() => {
+      finalizeTabActivationProfile(profile, {
+        imagesLength: images.length,
+        totalImages,
+        virtualItemsLength: virtualItems.length,
+        columns,
+        layoutMode
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [
+    images.length,
+    totalImages,
+    virtualItems.length,
+    columns,
+    layoutMode,
+    isLoading
+  ]);
 
   useEffect(() => {
     lastFetchTriggerRowsRef.current = -1;
@@ -487,6 +703,11 @@ function ImageGrid({
     [startCompare]
   );
 
+  const rowContainerHeight = useMemo(
+    () => `${rowVirtualizer.getTotalSize()}px`,
+    [rowVirtualizer, virtualItems.length, images.length, columns]
+  );
+
   return (
     <ScrollablePage
       ref={parentRef}
@@ -538,58 +759,21 @@ function ImageGrid({
             </div>
           )
         ) : (
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative'
-            }}
-          >
-            {virtualItems.map((virtualRow) => (
-              <div
-                key={virtualRow.index}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`
-                }}
-                className="flex gap-4 pb-4"
-              >
-                {Array.from({ length: columns }).map((_, columnIndex) => {
-                  const imageIndex = virtualRow.index * columns + columnIndex;
-                  const image = images[imageIndex];
-
-                  if (!image) {
-                    return (
-                      <div key={`empty-${columnIndex}`} className="flex-1" />
-                    );
-                  }
-
-                  return (
-                    <div key={image.ID} className="flex-1">
-                      <ImageTile
-                        image={image}
-                        isSelected={selectedImageId === image.ID}
-                        onClick={handleTileClick}
-                        layoutMode={layoutMode}
-                        draggingImageId={draggingImageId}
-                        isCompareDragging={draggingImageId !== null}
-                        isCompareDragSource={draggingImageId === image.ID}
-                        onCompareDragStart={handleCompareDragStart}
-                        onCompareDragEnd={handleCompareDragEnd}
-                        onCompareDrop={handleCompareDrop}
-                        isCompareQuickSource={comparePickImageId === image.ID}
-                        onCompareQuickPick={handleCompareQuickPick}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <VirtualizedRows
+            rowContainerHeight={rowContainerHeight}
+            virtualItems={virtualItems}
+            columns={columns}
+            images={images}
+            selectedImageId={selectedImageId}
+            layoutMode={layoutMode}
+            draggingImageId={draggingImageId}
+            comparePickImageId={comparePickImageId}
+            onTileClick={handleTileClick}
+            onCompareDragStart={handleCompareDragStart}
+            onCompareDragEnd={handleCompareDragEnd}
+            onCompareDrop={handleCompareDrop}
+            onCompareQuickPick={handleCompareQuickPick}
+          />
         )}
         {isLoading && images.length > 0 && (
           <div className="flex justify-center p-8">
@@ -600,3 +784,90 @@ function ImageGrid({
     </ScrollablePage>
   );
 }
+
+interface VirtualizedRowsProps {
+  rowContainerHeight: string;
+  virtualItems: ReturnType<
+    ReturnType<typeof useVirtualizer>['getVirtualItems']
+  >;
+  columns: number;
+  images: ReturnType<typeof useGalleryStore.getState>['images'];
+  selectedImageId: number | null;
+  layoutMode: 'compact' | 'comfortable' | 'spacious';
+  draggingImageId: number | null;
+  comparePickImageId: number | null;
+  onTileClick: (imageId: number) => void;
+  onCompareDragStart: (imageId: number) => void;
+  onCompareDragEnd: () => void;
+  onCompareDrop: (sourceId: number, targetId: number) => void;
+  onCompareQuickPick: (targetId: number) => void;
+}
+
+const VirtualizedRows = memo(function VirtualizedRows({
+  rowContainerHeight,
+  virtualItems,
+  columns,
+  images,
+  selectedImageId,
+  layoutMode,
+  draggingImageId,
+  comparePickImageId,
+  onTileClick,
+  onCompareDragStart,
+  onCompareDragEnd,
+  onCompareDrop,
+  onCompareQuickPick
+}: VirtualizedRowsProps) {
+  return (
+    <div
+      style={{
+        height: rowContainerHeight,
+        width: '100%',
+        position: 'relative'
+      }}
+    >
+      {virtualItems.map((virtualRow) => (
+        <div
+          key={virtualRow.index}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: `${virtualRow.size}px`,
+            transform: `translateY(${virtualRow.start}px)`
+          }}
+          className="flex gap-4 pb-4"
+        >
+          {Array.from({ length: columns }).map((_, columnIndex) => {
+            const imageIndex = virtualRow.index * columns + columnIndex;
+            const image = images[imageIndex];
+
+            if (!image) {
+              return <div key={`empty-${columnIndex}`} className="flex-1" />;
+            }
+
+            return (
+              <div key={image.ID} className="flex-1">
+                <ImageTile
+                  image={image}
+                  isSelected={selectedImageId === image.ID}
+                  onClick={onTileClick}
+                  layoutMode={layoutMode}
+                  draggingImageId={draggingImageId}
+                  isCompareDragging={draggingImageId !== null}
+                  isCompareDragSource={draggingImageId === image.ID}
+                  onCompareDragStart={onCompareDragStart}
+                  onCompareDragEnd={onCompareDragEnd}
+                  onCompareDrop={onCompareDrop}
+                  isCompareQuickSource={comparePickImageId === image.ID}
+                  onCompareQuickPick={onCompareQuickPick}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+});
