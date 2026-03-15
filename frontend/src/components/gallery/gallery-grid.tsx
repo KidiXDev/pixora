@@ -6,6 +6,7 @@ import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LayoutGrid } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
 import { ScrollablePage } from '../layout/scrollable-page';
 import { Skeleton } from '../ui/skeleton';
 import { Spinner } from '../ui/spinner';
@@ -223,6 +224,17 @@ function ImageGrid({
   const isRestoringScrollRef = useRef(false);
   const didRestoreScrollRef = useRef(false);
 
+  const debouncedSetTabScrollTop = useDebouncedCallback(
+    (tabId: string, scrollTop: number) => {
+      setTabScrollTop(tabId, scrollTop);
+      logTabScroll('scroll saved (debounced)', {
+        tabId,
+        scrollTop
+      });
+    },
+    200
+  );
+
   useEffect(() => {
     const el = parentRef.current;
     if (!el || !activeTabId) {
@@ -245,17 +257,12 @@ function ImageGrid({
         return;
       }
 
-      setTabScrollTop(activeTabId, el.scrollTop);
-      logTabScroll('scroll saved', {
-        tabId: activeTabId,
-        scrollTop: el.scrollTop
-      });
+      debouncedSetTabScrollTop(activeTabId, el.scrollTop);
     };
 
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
-      const currentKnown = tabScrollTopById.get(activeTabId) ?? 0;
-      if (currentKnown <= 0 && el.scrollTop > 0) {
+      if (el.scrollTop > 0) {
         setTabScrollTop(activeTabId, el.scrollTop);
       }
       logTabScroll('tab unmount keep', {
