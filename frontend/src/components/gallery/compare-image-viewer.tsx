@@ -91,7 +91,7 @@ export function CompareImageViewer() {
             style={{ left: `${compareSlider}%` }}
           >
             <div className="absolute -left-px top-0 h-full w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.3)]" />
-            <div className="absolute -left-5 top-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-black/70 p-2 text-white shadow-lg">
+            <div className="absolute left-0 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/50 bg-black/70 p-2 text-white shadow-lg">
               <MoveHorizontal size={14} />
             </div>
           </div>
