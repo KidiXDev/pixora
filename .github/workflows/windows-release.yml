@@ -39,12 +39,12 @@ jobs:
             - name: Build Windows portable executable
               shell: pwsh
               run: |
-                  wails3 build GOOS=windows -config build/config.yml
+                  wails3 build GOOS=windows
 
             - name: Build Windows setup installer
               shell: pwsh
               run: |
-                  wails3 package GOOS=windows -config build/config.yml
+                  wails3 package GOOS=windows
 
             - name: Collect release artifacts
               shell: pwsh
