@@ -15,6 +15,59 @@ type DB struct {
 	db *sql.DB
 }
 
+type GallerySortBy string
+
+const (
+	GallerySortByCreated  GallerySortBy = "created"
+	GallerySortByModified GallerySortBy = "modified"
+	GallerySortByName     GallerySortBy = "name"
+	GallerySortBySize     GallerySortBy = "size"
+)
+
+type GallerySortDirection string
+
+const (
+	GallerySortDirectionAsc  GallerySortDirection = "asc"
+	GallerySortDirectionDesc GallerySortDirection = "desc"
+)
+
+func normalizeGallerySort(sortBy string, direction string) (GallerySortBy, GallerySortDirection) {
+	normalizedSortBy := GallerySortBy(strings.ToLower(strings.TrimSpace(sortBy)))
+	switch normalizedSortBy {
+	case GallerySortByCreated, GallerySortByModified, GallerySortByName, GallerySortBySize:
+	default:
+		normalizedSortBy = GallerySortByModified
+	}
+
+	normalizedDirection := GallerySortDirection(strings.ToLower(strings.TrimSpace(direction)))
+	switch normalizedDirection {
+	case GallerySortDirectionAsc, GallerySortDirectionDesc:
+	default:
+		normalizedDirection = GallerySortDirectionDesc
+	}
+
+	return normalizedSortBy, normalizedDirection
+}
+
+func buildGalleryOrderClause(tableAlias string, sortBy GallerySortBy, direction GallerySortDirection) string {
+	column := "added_at"
+	switch sortBy {
+	case GallerySortByModified:
+		column = "modified_unix_ns"
+	case GallerySortByName:
+		column = "path"
+	case GallerySortBySize:
+		column = "file_size"
+	}
+
+	prefix := ""
+	if strings.TrimSpace(tableAlias) != "" {
+		prefix = tableAlias + "."
+	}
+
+	return " ORDER BY " + prefix + column + " " + string(direction)
+}
+
 type ImageRecord struct {
 	ID             int64
 	Path           string
@@ -382,7 +435,7 @@ func (d *DB) CheckpointWAL(ctx context.Context) error {
 }
 
 // SearchImages retrieves images from the database, optionally filtering with FTS5 and folder path.
-func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, offset, limit int) ([]ImageRecord, int, error) {
+func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, offset, limit int, sortBy string, direction string) ([]ImageRecord, int, error) {
 	var total int
 	var countQuery string
 	var rowsQuery string
@@ -390,6 +443,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 	var countArgs []interface{}
 
 	query = strings.TrimSpace(query)
+	normalizedSortBy, normalizedDirection := normalizeGallerySort(sortBy, direction)
 
 	whereClause := " WHERE thumb_ready = 1"
 	if folderPath != "" {
@@ -409,7 +463,8 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 				args = append(args, folderPath+"%")
 			}
 		}
-		rowsQuery += " ORDER BY added_at DESC LIMIT ? OFFSET ?"
+		rowsQuery += buildGalleryOrderClause("", normalizedSortBy, normalizedDirection)
+		rowsQuery += " LIMIT ? OFFSET ?"
 		args = append(args, limit, offset)
 
 		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
@@ -420,7 +475,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 		// FTS5 MATCH
 		searchStr := buildFTSQuery(query)
 		if searchStr == "" {
-			return d.SearchImages(ctx, "", folderPath, offset, limit)
+			return d.SearchImages(ctx, "", folderPath, offset, limit, sortBy, direction)
 		}
 
 		countQuery = "SELECT COUNT(*) FROM images_fts WHERE images_fts MATCH ?"
@@ -450,7 +505,8 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 			args = append(args, folderPath+"%")
 		}
 
-		rowsQuery += " ORDER BY rank, i.added_at DESC LIMIT ? OFFSET ?"
+		rowsQuery += buildGalleryOrderClause("i", normalizedSortBy, normalizedDirection)
+		rowsQuery += " LIMIT ? OFFSET ?"
 		args = append(args, limit, offset)
 
 		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)

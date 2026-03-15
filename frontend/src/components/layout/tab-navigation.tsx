@@ -1,5 +1,9 @@
 import { SETTINGS_TAB_PATH, isPageTabPath } from '@/lib/tab-pages';
 import { cn } from '@/lib/utils';
+import type {
+  GallerySortBy,
+  GallerySortDirection
+} from '@/stores/gallery-store';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useIndexingStore } from '@/stores/indexing-store';
 import { useTabsStore } from '@/stores/tabs-store';
@@ -24,6 +28,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  ArrowDownAZ,
   Copy,
   Folder,
   LayoutGrid,
@@ -55,7 +60,42 @@ import {
   ContextMenuTrigger
 } from '../ui/context-menu';
 import { Input } from '../ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '../ui/select';
 import { Separator } from '../ui/separator';
+
+const GALLERY_SORT_BY_OPTIONS: ReadonlyArray<{
+  value: GallerySortBy;
+  label: string;
+}> = [
+  { value: 'created', label: 'Created Date' },
+  { value: 'modified', label: 'Modified Date' },
+  { value: 'name', label: 'Name' },
+  { value: 'size', label: 'File Size' }
+];
+
+const GALLERY_SORT_DIRECTION_OPTIONS: ReadonlyArray<{
+  value: GallerySortDirection;
+  label: string;
+}> = [
+  { value: 'asc', label: 'Asc' },
+  { value: 'desc', label: 'Desc' }
+];
+
+function isGallerySortBy(value: string): value is GallerySortBy {
+  return GALLERY_SORT_BY_OPTIONS.some((option) => option.value === value);
+}
+
+function isGallerySortDirection(value: string): value is GallerySortDirection {
+  return GALLERY_SORT_DIRECTION_OPTIONS.some(
+    (option) => option.value === value
+  );
+}
 
 interface SortableTabProps {
   tab: TabConfig;
@@ -292,6 +332,10 @@ export function TabNavigation() {
   } = useTabsStore();
   const searchQuery = useGalleryStore((state) => state.searchQuery);
   const setSearchQuery = useGalleryStore((state) => state.setSearchQuery);
+  const sortBy = useGalleryStore((state) => state.sortBy);
+  const setSortBy = useGalleryStore((state) => state.setSortBy);
+  const sortDirection = useGalleryStore((state) => state.sortDirection);
+  const setSortDirection = useGalleryStore((state) => state.setSortDirection);
   const layoutMode = useGalleryStore((state) => state.layoutMode);
   const setLayoutMode = useGalleryStore((state) => state.setLayoutMode);
   const { activeScans, getTotalProcessed } = useIndexingStore();
@@ -504,6 +548,52 @@ export function TabNavigation() {
                   onChange={(e) => setLocalQuery(e.target.value)}
                   className="pl-8 h-8 bg-muted/30 border-transparent focus-visible:ring-1 focus-visible:ring-primary/40 text-xs rounded-lg"
                 />
+              </div>
+
+              <div className="flex items-center gap-1.5 rounded-lg bg-muted/30 border border-border/30 px-1.5 py-1">
+                <ArrowDownAZ size={12} className="text-muted-foreground" />
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) => {
+                    if (!isGallerySortBy(value)) {
+                      return;
+                    }
+
+                    setSortBy(value);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-32 border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GALLERY_SORT_BY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={sortDirection}
+                  onValueChange={(value) => {
+                    if (!isGallerySortDirection(value)) {
+                      return;
+                    }
+
+                    setSortDirection(value);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-20 border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                    <SelectValue placeholder="Order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GALLERY_SORT_DIRECTION_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5 border border-border/10">

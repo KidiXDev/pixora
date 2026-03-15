@@ -38,10 +38,10 @@ type PaginatedImages struct {
 }
 
 // GetImages returns a paginated list of images, optionally matching a search query and filtered by folder.
-func (s *GalleryService) GetImages(query string, folderPath string, offset, limit int) (*PaginatedImages, error) {
+func (s *GalleryService) GetImages(query string, folderPath string, offset, limit int, sortBy string, direction string) (*PaginatedImages, error) {
 	// Let's implement this in db.go next
 	// This will use FTS5 if query is not empty
-	images, total, err := s.db.SearchImages(context.Background(), query, folderPath, offset, limit)
+	images, total, err := s.db.SearchImages(context.Background(), query, folderPath, offset, limit, sortBy, direction)
 	if err != nil {
 		return nil, err
 	}

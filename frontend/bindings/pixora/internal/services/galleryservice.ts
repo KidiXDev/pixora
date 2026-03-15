@@ -52,8 +52,8 @@ export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
 /**
  * GetImages returns a paginated list of images, optionally matching a search query and filtered by folder.
  */
-export function GetImages(query: string, folderPath: string, offset: number, limit: number): $CancellablePromise<$models.PaginatedImages | null> {
-    return $Call.ByID(3312439230, query, folderPath, offset, limit).then(($result: any) => {
+export function GetImages(query: string, folderPath: string, offset: number, limit: number, sortBy: string, direction: string): $CancellablePromise<$models.PaginatedImages | null> {
+    return $Call.ByID(3312439230, query, folderPath, offset, limit, sortBy, direction).then(($result: any) => {
         return $$createType2($result);
     });
 }

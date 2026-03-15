@@ -199,6 +199,8 @@ function finalizeTabActivationProfile(
 
 export function GalleryGrid() {
   const searchQuery = useGalleryStore((state) => state.searchQuery);
+  const sortBy = useGalleryStore((state) => state.sortBy);
+  const sortDirection = useGalleryStore((state) => state.sortDirection);
   const fetchImages = useGalleryStore((state) => state.fetchImages);
   const pruneTabScopedState = useGalleryStore(
     (state) => state.pruneTabScopedState
@@ -224,7 +226,14 @@ export function GalleryGrid() {
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [searchQuery, activeTabId, activeTabPath, fetchImages]);
+  }, [
+    searchQuery,
+    sortBy,
+    sortDirection,
+    activeTabId,
+    activeTabPath,
+    fetchImages
+  ]);
 
   useEffect(() => {
     if (tabs.length === 0) {
@@ -264,20 +273,31 @@ export function GalleryGrid() {
     return <TabSetup />;
   }
 
-  return <ImageGrid activeTabId={activeTabId} searchQuery={searchQuery} />;
+  return (
+    <ImageGrid
+      activeTabId={activeTabId}
+      searchQuery={searchQuery}
+      sortBy={sortBy}
+      sortDirection={sortDirection}
+    />
+  );
 }
 
 function ImageGrid({
   activeTabId,
-  searchQuery
+  searchQuery,
+  sortBy,
+  sortDirection
 }: {
   activeTabId: string | null;
   searchQuery: string;
+  sortBy: ReturnType<typeof useGalleryStore.getState>['sortBy'];
+  sortDirection: ReturnType<typeof useGalleryStore.getState>['sortDirection'];
 }) {
   const hydrateActiveTabSnapshot = useGalleryStore(
     (state) => state.hydrateActiveTabSnapshot
   );
-  const renderSignature = `${activeTabId ?? 'none'}|${searchQuery}`;
+  const renderSignature = `${activeTabId ?? 'none'}|${searchQuery}|${sortBy}|${sortDirection}`;
   const [hydratedSignature, setHydratedSignature] = useState<string | null>(
     null
   );
@@ -296,16 +316,22 @@ function ImageGrid({
       key={renderSignature}
       activeTabId={activeTabId}
       searchQuery={searchQuery}
+      sortBy={sortBy}
+      sortDirection={sortDirection}
     />
   );
 }
 
 function TabScopedImageGrid({
   activeTabId,
-  searchQuery
+  searchQuery,
+  sortBy,
+  sortDirection
 }: {
   activeTabId: string | null;
   searchQuery: string;
+  sortBy: ReturnType<typeof useGalleryStore.getState>['sortBy'];
+  sortDirection: ReturnType<typeof useGalleryStore.getState>['sortDirection'];
 }) {
   const layoutMode = useGalleryStore((state) => state.layoutMode);
   const images = useGalleryStore((state) => state.images);
@@ -645,7 +671,7 @@ function TabScopedImageGrid({
 
   useEffect(() => {
     lastFetchTriggerRowsRef.current = -1;
-  }, [activeTabId, searchQuery]);
+  }, [activeTabId, searchQuery, sortBy, sortDirection]);
 
   // Infinite scroll detection
   useEffect(() => {

@@ -5,6 +5,91 @@ import { GetImages } from '../../bindings/pixora/internal/services/galleryservic
 import { useTabsStore } from './tabs-store';
 
 type LayoutMode = 'compact' | 'comfortable' | 'spacious';
+export type GallerySortBy = 'created' | 'modified' | 'name' | 'size';
+export type GallerySortDirection = 'asc' | 'desc';
+
+const GALLERY_SORT_STORAGE_KEY = 'pixora:gallery-sort-preferences';
+
+const DEFAULT_GALLERY_SORT_BY: GallerySortBy = 'modified';
+const DEFAULT_GALLERY_SORT_DIRECTION: GallerySortDirection = 'desc';
+
+function isGallerySortBy(value: unknown): value is GallerySortBy {
+  return (
+    value === 'created' ||
+    value === 'modified' ||
+    value === 'name' ||
+    value === 'size'
+  );
+}
+
+function isGallerySortDirection(value: unknown): value is GallerySortDirection {
+  return value === 'asc' || value === 'desc';
+}
+
+function readPersistedGallerySortPreferences(): {
+  sortBy: GallerySortBy;
+  sortDirection: GallerySortDirection;
+} {
+  if (typeof window === 'undefined') {
+    return {
+      sortBy: DEFAULT_GALLERY_SORT_BY,
+      sortDirection: DEFAULT_GALLERY_SORT_DIRECTION
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(GALLERY_SORT_STORAGE_KEY);
+    if (!raw) {
+      return {
+        sortBy: DEFAULT_GALLERY_SORT_BY,
+        sortDirection: DEFAULT_GALLERY_SORT_DIRECTION
+      };
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return {
+        sortBy: DEFAULT_GALLERY_SORT_BY,
+        sortDirection: DEFAULT_GALLERY_SORT_DIRECTION
+      };
+    }
+
+    const parsedRecord = parsed as Record<string, unknown>;
+    const sortBy = isGallerySortBy(parsedRecord.sortBy)
+      ? parsedRecord.sortBy
+      : DEFAULT_GALLERY_SORT_BY;
+    const sortDirection = isGallerySortDirection(parsedRecord.sortDirection)
+      ? parsedRecord.sortDirection
+      : DEFAULT_GALLERY_SORT_DIRECTION;
+
+    return { sortBy, sortDirection };
+  } catch {
+    return {
+      sortBy: DEFAULT_GALLERY_SORT_BY,
+      sortDirection: DEFAULT_GALLERY_SORT_DIRECTION
+    };
+  }
+}
+
+function persistGallerySortPreferences(
+  sortBy: GallerySortBy,
+  sortDirection: GallerySortDirection
+): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      GALLERY_SORT_STORAGE_KEY,
+      JSON.stringify({ sortBy, sortDirection })
+    );
+  } catch {
+    // Ignore storage errors so UI interactions continue working.
+  }
+}
+
+const persistedSortPreferences = readPersistedGallerySortPreferences();
 
 let latestFetchRequestId = 0;
 let inFlightNextPageKey: string | null = null;
@@ -56,8 +141,13 @@ function setSnapshot(key: string, snapshot: GalleryTabSnapshot): void {
   }
 }
 
-function buildTabSnapshotKey(tabId: string, query: string): string {
-  return `${tabId}|${query}`;
+function buildTabSnapshotKey(
+  tabId: string,
+  query: string,
+  sortBy: GallerySortBy,
+  sortDirection: GallerySortDirection
+): string {
+  return `${tabId}|${query}|${sortBy}|${sortDirection}`;
 }
 
 function getActiveTabContext(): ActiveTabContext | null {
@@ -77,10 +167,12 @@ function buildNextPageRequestKey(
   tabId: string,
   folderPath: string,
   query: string,
+  sortBy: GallerySortBy,
+  sortDirection: GallerySortDirection,
   offset: number,
   limit: number
 ): string {
-  return `${tabId}|${folderPath}|${query}|${offset}|${limit}`;
+  return `${tabId}|${folderPath}|${query}|${sortBy}|${sortDirection}|${offset}|${limit}`;
 }
 
 function toSnapshot(state: GalleryState): GalleryTabSnapshot {
@@ -99,6 +191,8 @@ interface GalleryState {
   images: ImageRecord[];
   totalImages: number;
   searchQuery: string;
+  sortBy: GallerySortBy;
+  sortDirection: GallerySortDirection;
   selectedImageId: number | null;
   compareImageIds: [number, number] | null;
   compareSlider: number;
@@ -110,6 +204,8 @@ interface GalleryState {
 
   setImages: (images: ImageRecord[], total: number) => void;
   setSearchQuery: (query: string) => void;
+  setSortBy: (sortBy: GallerySortBy) => void;
+  setSortDirection: (direction: GallerySortDirection) => void;
   setSelectedImageId: (id: number | null) => void;
   setCompareSlider: (value: number) => void;
   startCompare: (firstId: number, secondId: number) => void;
@@ -127,6 +223,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   images: [],
   totalImages: 0,
   searchQuery: '',
+  sortBy: persistedSortPreferences.sortBy,
+  sortDirection: persistedSortPreferences.sortDirection,
   selectedImageId: null,
   compareImageIds: null,
   compareSlider: 50,
@@ -139,6 +237,16 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   setImages: (images, total) =>
     set({ images, totalImages: total, hasMore: images.length < total }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setSortBy: (sortBy) => {
+    const nextDirection = get().sortDirection;
+    persistGallerySortPreferences(sortBy, nextDirection);
+    set({ sortBy });
+  },
+  setSortDirection: (sortDirection) => {
+    const nextSortBy = get().sortBy;
+    persistGallerySortPreferences(nextSortBy, sortDirection);
+    set({ sortDirection });
+  },
   setSelectedImageId: (selectedImageId) =>
     set({
       selectedImageId,
@@ -182,7 +290,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   },
 
   hydrateActiveTabSnapshot: () => {
-    const { searchQuery } = get();
+    const { searchQuery, sortBy, sortDirection } = get();
     const activeContext = getActiveTabContext();
     if (!activeContext || !activeContext.folderPath) {
       set({
@@ -214,7 +322,12 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     }
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
-    const tabSnapshotKey = buildTabSnapshotKey(tabId, safeQuery);
+    const tabSnapshotKey = buildTabSnapshotKey(
+      tabId,
+      safeQuery,
+      sortBy,
+      sortDirection
+    );
     const cachedSnapshot = getSnapshot(tabSnapshotKey);
 
     if (cachedSnapshot) {
@@ -241,7 +354,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   },
 
   fetchImages: async (clear = false) => {
-    const { searchQuery, limit, isLoading } = get();
+    const { searchQuery, limit, isLoading, sortBy, sortDirection } = get();
     // Don't fetch if already loading unless clearing
     if (isLoading && !clear) return;
 
@@ -276,7 +389,12 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
-    const tabSnapshotKey = buildTabSnapshotKey(tabId, safeQuery);
+    const tabSnapshotKey = buildTabSnapshotKey(
+      tabId,
+      safeQuery,
+      sortBy,
+      sortDirection
+    );
 
     if (clear) {
       const cachedSnapshot = getSnapshot(tabSnapshotKey);
@@ -306,7 +424,14 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         : {})
     });
     try {
-      const res = await GetImages(safeQuery, folderPath, 0, safeLimit);
+      const res = await GetImages(
+        safeQuery,
+        folderPath,
+        0,
+        safeLimit,
+        sortBy,
+        sortDirection
+      );
       if (requestId !== latestFetchRequestId) {
         return;
       }
@@ -348,7 +473,15 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   },
 
   fetchNextPage: async () => {
-    const { searchQuery, offset, limit, isLoading, hasMore } = get();
+    const {
+      searchQuery,
+      offset,
+      limit,
+      isLoading,
+      hasMore,
+      sortBy,
+      sortDirection
+    } = get();
     if (isLoading || !hasMore) return;
 
     const activeContext = getActiveTabContext();
@@ -369,6 +502,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       tabId,
       folderPath,
       safeQuery,
+      sortBy,
+      sortDirection,
       nextOffset,
       safeLimit
     );
@@ -377,13 +512,24 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
     set({ isLoading: true });
     try {
-      const res = await GetImages(safeQuery, folderPath, nextOffset, safeLimit);
+      const res = await GetImages(
+        safeQuery,
+        folderPath,
+        nextOffset,
+        safeLimit,
+        sortBy,
+        sortDirection
+      );
       const currentContext = getActiveTabContext();
       const currentSearchQuery = get().searchQuery;
+      const currentSortBy = get().sortBy;
+      const currentSortDirection = get().sortDirection;
       if (
         !currentContext ||
         currentContext.tabId !== tabId ||
-        currentSearchQuery !== safeQuery
+        currentSearchQuery !== safeQuery ||
+        currentSortBy !== sortBy ||
+        currentSortDirection !== sortDirection
       ) {
         return;
       }
@@ -406,7 +552,10 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
             isLoading: false
           };
         });
-        setSnapshot(buildTabSnapshotKey(tabId, safeQuery), toSnapshot(get()));
+        setSnapshot(
+          buildTabSnapshotKey(tabId, safeQuery, sortBy, sortDirection),
+          toSnapshot(get())
+        );
       } else {
         set({ isLoading: false });
       }
