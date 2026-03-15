@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue
@@ -272,27 +273,23 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-2 w-full sm:w-auto">
                         <Select
-                          value={
-                            newMode.charAt(0).toUpperCase() + newMode.slice(1)
-                          }
-                          onValueChange={(v) => {
-                            if (v == null) return;
-                            setNewMode(
-                              (v.charAt(0).toLowerCase() +
-                                v.slice(1)) as ScanMode
-                            );
-                          }}
+                          value={newMode}
+                          onValueChange={(v) => setNewMode(v as ScanMode)}
                         >
                           <SelectTrigger className="w-30">
-                            <SelectValue />
+                            <SelectValue placeholder="Mode" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={ScanMode.ScanModeNormal}>
-                              Normal
-                            </SelectItem>
-                            <SelectItem value={ScanMode.ScanModeWalk}>
-                              Walk Array
-                            </SelectItem>
+                            <SelectGroup
+                              className="overflow-y-auto max-h-[40vh]"
+                            >
+                              <SelectItem value={ScanMode.ScanModeNormal}>
+                                Normal
+                              </SelectItem>
+                              <SelectItem value={ScanMode.ScanModeWalk}>
+                                Walk Array
+                              </SelectItem>
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                         <Button
@@ -655,15 +652,17 @@ export default function SettingsPage() {
                           onValueChange={(v) => setLogPluginFilter(v ?? 'all')}
                         >
                           <SelectTrigger className="w-48">
-                            <SelectValue />
+                            <SelectValue placeholder="Filter by plugin" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">all</SelectItem>
-                            {plugins.map((plugin) => (
-                              <SelectItem key={plugin.id} value={plugin.id}>
-                                {plugin.id}
-                              </SelectItem>
-                            ))}
+                            <SelectGroup className="overflow-y-auto max-h-40vh">
+                              <SelectItem value="all">all</SelectItem>
+                              {plugins.map((plugin) => (
+                                <SelectItem key={plugin.id} value={plugin.id}>
+                                  {plugin.id}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                         <Button
