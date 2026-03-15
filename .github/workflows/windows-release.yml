@@ -41,6 +41,10 @@ jobs:
               run: |
                   wails3 build GOOS=windows
 
+            - name: Install NSIS
+              shell: pwsh
+              run: choco install nsis --no-progress -y
+
             - name: Build Windows setup installer
               shell: pwsh
               run: |
