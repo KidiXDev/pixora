@@ -1,5 +1,5 @@
-import { QueryProvider } from '@/components/providers/query-provider';
 import { EventsProvider } from '@/components/providers/events-provider';
+import { QueryProvider } from '@/components/providers/query-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import React from 'react';

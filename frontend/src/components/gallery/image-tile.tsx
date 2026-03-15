@@ -209,7 +209,7 @@ export const ImageTile = memo(function ImageTile({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent className="w-52" sideOffset={8}>
+      <ContextMenuContent className="w-52">
         <ContextMenuItem onClick={handleClick}>
           <ImageIcon size={14} />
           Select Image

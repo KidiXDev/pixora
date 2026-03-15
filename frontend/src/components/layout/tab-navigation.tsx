@@ -200,7 +200,7 @@ const SortableTab = memo(function SortableTab({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent className="w-48" sideOffset={6}>
+      <ContextMenuContent className="w-48">
         <ContextMenuItem disabled className="text-xs font-medium opacity-80">
           {tab.label}
         </ContextMenuItem>
@@ -547,13 +547,15 @@ export function TabNavigation() {
             </>
           )}
 
-          <button
-            onClick={handleOpenSettingsTab}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            title="Settings"
-          >
-            <Settings size={16} />
-          </button>
+          {activeTab?.path !== SETTINGS_TAB_PATH && (
+            <button
+              onClick={handleOpenSettingsTab}
+              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
+          )}
         </div>
       </div>
 
