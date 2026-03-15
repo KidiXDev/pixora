@@ -92,9 +92,20 @@ func main() {
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
 	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
 	// 'Mac' options tailor the application when running an macOS.
+	var mainWindow *application.WebviewWindow
+
 	app := application.New(application.Options{
 		Name:        "pixora",
 		Description: "pixora",
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.pixora.app",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				if mainWindow != nil {
+					mainWindow.Restore()
+					mainWindow.Focus()
+				}
+			},
+		},
 		Services: []application.Service{
 			application.NewService(gallerySvc),
 			application.NewService(&services.GreetService{}), // can be removed eventually
@@ -151,7 +162,7 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	mainWindow := app.Window.NewWithOptions(windowOptions)
+	mainWindow = app.Window.NewWithOptions(windowOptions)
 	bindWindowPersistence(mainWindow, cfgMgr, windowConfig)
 	gallerySvc.SetWindow(mainWindow)
 
