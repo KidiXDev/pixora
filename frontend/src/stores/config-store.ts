@@ -16,7 +16,6 @@ import {
   SetDevMode,
   SetParserPluginEnabled,
   TrustParserPlugin,
-  UntrustParserPlugin,
   UpdateFolderAlias
 } from '../../bindings/pixora/internal/services/galleryservice';
 import { useGalleryStore } from './gallery-store';
@@ -62,7 +61,6 @@ interface ConfigState {
   clearPluginLogs: () => Promise<void>;
   setPluginEnabled: (pluginID: string, enabled: boolean) => Promise<void>;
   trustPlugin: (pluginID: string) => Promise<void>;
-  untrustPlugin: (pluginID: string) => Promise<void>;
   installPlugin: (zipPath: string) => Promise<void>;
   removePlugin: (pluginID: string) => Promise<void>;
 }
@@ -225,16 +223,6 @@ export const useConfigStore = create<ConfigState>((set) => ({
     }
   },
 
-  untrustPlugin: async (pluginID) => {
-    try {
-      await UntrustParserPlugin(pluginID);
-      const plugins = await ListParserPlugins();
-      set({ plugins: plugins as ParserPluginInfo[] });
-    } catch (e) {
-      console.error('Failed to untrust parser plugin', e);
-      throw e;
-    }
-  },
 
   installPlugin: async (zipPath) => {
     try {

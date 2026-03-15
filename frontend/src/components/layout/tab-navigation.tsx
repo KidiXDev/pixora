@@ -50,8 +50,6 @@ import {
 import { Input } from '../ui/input';
 import { Separator } from '../ui/separator';
 
-// ── Sortable Tab Item ────────────────────────────────────────────────────────
-
 interface SortableTabProps {
   tab: TabConfig;
   isActive: boolean;

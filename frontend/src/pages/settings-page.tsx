@@ -49,7 +49,6 @@ export default function SettingsPage() {
     setDevMode,
     setPluginEnabled,
     trustPlugin,
-    untrustPlugin,
     installPlugin,
     removePlugin,
     isLoading: configLoading
@@ -156,21 +155,6 @@ export default function SettingsPage() {
     } catch (e) {
       console.error('Failed to toggle plugin', e);
     }
-  };
-
-  const handleUntrustPlugin = async (pluginID: string) => {
-    const ok = await confirm.confirm({
-      title: 'Untrust Plugin?',
-      description:
-        'This will immediately disable the plugin and mark it as untrusted until you explicitly trust it again.',
-      confirmText: 'Untrust Plugin',
-      cancelText: 'Cancel',
-      variant: 'destructive'
-    });
-
-    if (!ok) return;
-    await untrustPlugin(pluginID);
-    await loadPlugins();
   };
 
   const handleRemovePlugin = async (pluginID: string, pluginName: string) => {
@@ -536,18 +520,16 @@ export default function SettingsPage() {
                                     handleTogglePlugin(plugin.id, checked)
                                   }
                                 />
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-muted-foreground"
-                                  onClick={() =>
-                                    plugin.trusted
-                                      ? handleUntrustPlugin(plugin.id)
-                                      : handleTrustPlugin(plugin.id)
-                                  }
-                                >
-                                  {plugin.trusted ? 'Untrust' : 'Trust'}
-                                </Button>
+                                {!plugin.trusted && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-muted-foreground"
+                                    onClick={() => handleTrustPlugin(plugin.id)}
+                                  >
+                                    Trust
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
@@ -619,24 +601,6 @@ export default function SettingsPage() {
                         checked={config?.devMode || false}
                         onCheckedChange={(checked) => setDevMode(checked)}
                       />
-                    </div>
-                  </section>
-
-                  <section className="p-6 rounded-xl border border-border bg-muted/20">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle
-                        size={18}
-                        className="text-muted-foreground mt-0.5 shrink-0"
-                      />
-                      <div className="space-y-1">
-                        <h4 className="font-medium text-sm">Caution</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          These settings are intended for development and
-                          debugging. Changing them may affect application
-                          stability or performance. Enable Developer Mode to
-                          access the Plugin Developer Console.
-                        </p>
-                      </div>
                     </div>
                   </section>
                 </div>
