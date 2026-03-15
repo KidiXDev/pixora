@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"path/filepath"
 	"pixora/internal/config"
 	"pixora/internal/db"
+	"runtime"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -91,16 +94,48 @@ func (s *GalleryService) RemoveFolder(path string) error {
 
 // OpenExternally opens a file using the default OS application
 func (s *GalleryService) OpenExternally(path string) error {
-	// Works on Windows
-	cmd := exec.Command("cmd", "/c", "start", "", path)
+	cmd, err := buildOpenCommand(path)
+	if err != nil {
+		return err
+	}
+
 	return cmd.Start()
 }
 
 // ShowInFolder opens the file explorer and selects the file
 func (s *GalleryService) ShowInFolder(path string) error {
-	// Works on Windows
-	cmd := exec.Command("explorer", "/select,", path)
+	cmd, err := buildShowInFolderCommand(path)
+	if err != nil {
+		return err
+	}
+
 	return cmd.Start()
+}
+
+func buildOpenCommand(path string) (*exec.Cmd, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("cmd", "/c", "start", "", path), nil
+	case "darwin":
+		return exec.Command("open", path), nil
+	case "linux":
+		return exec.Command("xdg-open", path), nil
+	default:
+		return nil, fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
+}
+
+func buildShowInFolderCommand(path string) (*exec.Cmd, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("explorer", "/select,", path), nil
+	case "darwin":
+		return exec.Command("open", "-R", path), nil
+	case "linux":
+		return exec.Command("xdg-open", filepath.Dir(path)), nil
+	default:
+		return nil, fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
 }
 
 // SetTabs updates the tabs configuration.

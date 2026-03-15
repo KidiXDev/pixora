@@ -1,3 +1,4 @@
+import { getBaseName } from '@/lib/utils';
 import { Browser } from '@wailsio/runtime';
 import {
   Copy,
@@ -51,10 +52,7 @@ export const ImageTile = memo(function ImageTile({
 }: ImageTileProps) {
   const [isCompareDropTarget, setIsCompareDropTarget] = useState(false);
   const suppressClickRef = useRef(false);
-  const fileName = useMemo(
-    () => image.Path.split('\\').pop()?.split('/').pop() || 'Image',
-    [image.Path]
-  );
+  const fileName = useMemo(() => getBaseName(image.Path), [image.Path]);
 
   const heightClass =
     layoutMode === 'compact'

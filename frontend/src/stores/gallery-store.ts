@@ -6,6 +6,65 @@ import { useTabsStore } from './tabs-store';
 
 type LayoutMode = 'compact' | 'comfortable' | 'spacious';
 
+let latestFetchRequestId = 0;
+let inFlightNextPageKey: string | null = null;
+
+interface ActiveTabContext {
+  tabId: string;
+  folderPath: string;
+}
+
+interface GalleryTabSnapshot {
+  images: ImageRecord[];
+  totalImages: number;
+  selectedImageId: number | null;
+  compareImageIds: [number, number] | null;
+  compareSlider: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+const tabSnapshots = new Map<string, GalleryTabSnapshot>();
+
+function buildTabSnapshotKey(tabId: string, query: string): string {
+  return `${tabId}|${query}`;
+}
+
+function getActiveTabContext(): ActiveTabContext | null {
+  const { tabs, activeTabId } = useTabsStore.getState();
+  if (!activeTabId) {
+    return null;
+  }
+
+  const activeTab = tabs?.find((t) => t.id === activeTabId);
+  return {
+    tabId: activeTabId,
+    folderPath: typeof activeTab?.path === 'string' ? activeTab.path : ''
+  };
+}
+
+function buildNextPageRequestKey(
+  tabId: string,
+  folderPath: string,
+  query: string,
+  offset: number,
+  limit: number
+): string {
+  return `${tabId}|${folderPath}|${query}|${offset}|${limit}`;
+}
+
+function toSnapshot(state: GalleryState): GalleryTabSnapshot {
+  return {
+    images: state.images,
+    totalImages: state.totalImages,
+    selectedImageId: state.selectedImageId,
+    compareImageIds: state.compareImageIds,
+    compareSlider: state.compareSlider,
+    offset: state.offset,
+    hasMore: state.hasMore
+  };
+}
+
 interface GalleryState {
   images: ImageRecord[];
   totalImages: number;
@@ -28,6 +87,7 @@ interface GalleryState {
   swapCompareImages: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
   updateImageRecord: (image: ImageRecord) => void;
+  pruneTabScopedState: (tabIds: string[]) => void;
   fetchImages: (clear?: boolean) => Promise<void>;
   fetchNextPage: () => Promise<void>;
 }
@@ -80,16 +140,23 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     set((state) => ({
       images: state.images.map((img) => (img.ID === image.ID ? image : img))
     })),
+  pruneTabScopedState: (tabIds) => {
+    const validTabIds = new Set(tabIds);
+    for (const key of tabSnapshots.keys()) {
+      const [tabId] = key.split('|');
+      if (!validTabIds.has(tabId)) {
+        tabSnapshots.delete(key);
+      }
+    }
+  },
 
   fetchImages: async (clear = false) => {
     const { searchQuery, limit, isLoading } = get();
     // Don't fetch if already loading unless clearing
     if (isLoading && !clear) return;
 
-    // Get active tab info from tabs store
-    const { tabs, activeTabId } = useTabsStore.getState();
-
-    if (!activeTabId) {
+    const activeContext = getActiveTabContext();
+    if (!activeContext || !activeContext.folderPath) {
       set({
         images: [],
         totalImages: 0,
@@ -102,9 +169,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       return;
     }
 
-    const activeTab = tabs?.find((t) => t.id === activeTabId);
-    const folderPath =
-      typeof activeTab?.path === 'string' ? activeTab.path : '';
+    const { tabId, folderPath } = activeContext;
 
     if (isPageTabPath(folderPath)) {
       set({
@@ -121,6 +186,20 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
+    const tabSnapshotKey = buildTabSnapshotKey(tabId, safeQuery);
+
+    if (clear) {
+      const cachedSnapshot = tabSnapshots.get(tabSnapshotKey);
+      if (cachedSnapshot) {
+        set({
+          ...cachedSnapshot,
+          isLoading: false
+        });
+        return;
+      }
+    }
+
+    const requestId = ++latestFetchRequestId;
 
     set({
       isLoading: true,
@@ -138,34 +217,54 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     });
     try {
       const res = await GetImages(safeQuery, folderPath, 0, safeLimit);
+      if (requestId !== latestFetchRequestId) {
+        return;
+      }
+
+      const currentContext = getActiveTabContext();
+      if (!currentContext || currentContext.tabId !== tabId) {
+        return;
+      }
+
       if (res) {
-        set({
+        const nextState = {
           images: (res.images as ImageRecord[]) || [],
           totalImages: res.totalCount || 0,
           offset: 0,
           hasMore: (res.images?.length || 0) < (res.totalCount || 0),
           isLoading: false
+        };
+        set(nextState);
+        tabSnapshots.set(tabSnapshotKey, {
+          images: nextState.images,
+          totalImages: nextState.totalImages,
+          selectedImageId: null,
+          compareImageIds: null,
+          compareSlider: 50,
+          offset: nextState.offset,
+          hasMore: nextState.hasMore
         });
       } else {
         set({ isLoading: false });
       }
     } catch (e) {
+      if (requestId !== latestFetchRequestId) {
+        return;
+      }
+
       console.error('Failed to fetch images:', e);
       set({ isLoading: false });
     }
   },
 
   fetchNextPage: async () => {
-    const { searchQuery, offset, limit, images, isLoading, hasMore } = get();
+    const { searchQuery, offset, limit, isLoading, hasMore } = get();
     if (isLoading || !hasMore) return;
 
-    // Get active tab info
-    const { tabs, activeTabId } = useTabsStore.getState();
-    if (!activeTabId) return;
+    const activeContext = getActiveTabContext();
+    if (!activeContext || !activeContext.folderPath) return;
 
-    const activeTab = tabs?.find((t) => t.id === activeTabId);
-    const folderPath =
-      typeof activeTab?.path === 'string' ? activeTab.path : '';
+    const { tabId, folderPath } = activeContext;
 
     if (isPageTabPath(folderPath)) {
       set({ isLoading: false, hasMore: false });
@@ -176,23 +275,61 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const safeLimit = Number.isFinite(limit) ? limit : 100;
 
     const nextOffset = offset + safeLimit;
+    const requestKey = buildNextPageRequestKey(
+      tabId,
+      folderPath,
+      safeQuery,
+      nextOffset,
+      safeLimit
+    );
+    if (inFlightNextPageKey === requestKey) return;
+    inFlightNextPageKey = requestKey;
+
     set({ isLoading: true });
     try {
       const res = await GetImages(safeQuery, folderPath, nextOffset, safeLimit);
+      const currentContext = getActiveTabContext();
+      const currentSearchQuery = get().searchQuery;
+      if (
+        !currentContext ||
+        currentContext.tabId !== tabId ||
+        currentSearchQuery !== safeQuery
+      ) {
+        return;
+      }
+
       if (res) {
-        set({
-          images: [...images, ...((res.images as ImageRecord[]) || [])],
-          offset: nextOffset,
-          hasMore:
-            images.length + (res.images?.length || 0) < (res.totalCount || 0),
-          isLoading: false
+        const incoming = (res.images as ImageRecord[]) || [];
+        set((state) => {
+          const existingIds = new Set(state.images.map((img) => img.ID));
+          const dedupedIncoming = incoming.filter(
+            (img) => !existingIds.has(img.ID)
+          );
+          const mergedImages = [...state.images, ...dedupedIncoming];
+          const totalCount = res.totalCount || 0;
+
+          return {
+            images: mergedImages,
+            totalImages: totalCount,
+            offset: nextOffset,
+            hasMore: mergedImages.length < totalCount,
+            isLoading: false
+          };
         });
+        tabSnapshots.set(
+          buildTabSnapshotKey(tabId, safeQuery),
+          toSnapshot(get())
+        );
       } else {
         set({ isLoading: false });
       }
     } catch (e) {
       console.error('Failed to fetch next page:', e);
       set({ isLoading: false });
+    } finally {
+      if (inFlightNextPageKey === requestKey) {
+        inFlightNextPageKey = null;
+      }
     }
   }
 }));

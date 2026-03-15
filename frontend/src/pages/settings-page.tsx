@@ -690,7 +690,7 @@ export default function SettingsPage() {
                           No plugin logs yet.
                         </div>
                       ) : (
-                        <div className="max-h-[300px] overflow-auto bg-black/90">
+                        <div className="max-h-75 overflow-auto bg-black/90">
                           <div className="divide-y divide-white/5 font-mono text-[11px] py-1">
                             {pluginLogs.map((entry, idx) => (
                               <div

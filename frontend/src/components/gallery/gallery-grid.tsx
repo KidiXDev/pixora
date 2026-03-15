@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils';
 import { isSettingsTabPath } from '@/lib/tab-pages';
+import { cn } from '@/lib/utils';
 import SettingsPage from '@/pages/settings-page';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
@@ -7,14 +7,36 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { LayoutGrid } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollablePage } from '../layout/scrollable-page';
-import { ImageTile } from './image-tile';
-import { TabSetup } from './tab-setup';
 import { Skeleton } from '../ui/skeleton';
 import { Spinner } from '../ui/spinner';
+import { ImageTile } from './image-tile';
+import { TabSetup } from './tab-setup';
+
+const tabScrollTopById = new Map<string, number>();
+const DEV_MODE = import.meta.env.DEV;
+
+function logTabScroll(
+  message: string,
+  details?: Record<string, unknown>
+): void {
+  if (!DEV_MODE) {
+    return;
+  }
+
+  if (details) {
+    console.log('[GalleryGrid][TabScroll]', message, details);
+    return;
+  }
+
+  console.log('[GalleryGrid][TabScroll]', message);
+}
 
 export function GalleryGrid() {
   const searchQuery = useGalleryStore((state) => state.searchQuery);
   const fetchImages = useGalleryStore((state) => state.fetchImages);
+  const pruneTabScopedState = useGalleryStore(
+    (state) => state.pruneTabScopedState
+  );
   const tabs = useTabsStore((state) => state.tabs);
   const activeTabId = useTabsStore((state) => state.activeTabId);
 
@@ -23,6 +45,18 @@ export function GalleryGrid() {
   useEffect(() => {
     fetchImages(true);
   }, [searchQuery, activeTabId, fetchImages]);
+
+  useEffect(() => {
+    const validTabIds = new Set(tabs.map((tab) => tab.id));
+
+    for (const tabId of tabScrollTopById.keys()) {
+      if (!validTabIds.has(tabId)) {
+        tabScrollTopById.delete(tabId);
+      }
+    }
+
+    pruneTabScopedState(Array.from(validTabIds));
+  }, [tabs, pruneTabScopedState]);
 
   if (activeTab && isSettingsTabPath(activeTab.path)) {
     return <SettingsPage />;
@@ -33,7 +67,13 @@ export function GalleryGrid() {
     return <TabSetup />;
   }
 
-  return <ImageGrid activeTabId={activeTabId} searchQuery={searchQuery} />;
+  return (
+    <ImageGrid
+      key={activeTabId ?? 'no-active-tab'}
+      activeTabId={activeTabId}
+      searchQuery={searchQuery}
+    />
+  );
 }
 
 function ImageGrid({
@@ -53,6 +93,7 @@ function ImageGrid({
   const fetchNextPage = useGalleryStore((state) => state.fetchNextPage);
   const hasMore = useGalleryStore((state) => state.hasMore);
   const isLoading = useGalleryStore((state) => state.isLoading);
+  const totalImages = useGalleryStore((state) => state.totalImages);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -61,6 +102,52 @@ function ImageGrid({
     null
   );
   const lastFetchTriggerRowsRef = useRef(-1);
+  const isRestoringScrollRef = useRef(false);
+  const didRestoreScrollRef = useRef(false);
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el || !activeTabId) {
+      isRestoringScrollRef.current = false;
+      didRestoreScrollRef.current = false;
+      return;
+    }
+
+    const savedScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
+    isRestoringScrollRef.current = savedScrollTop > 0;
+    didRestoreScrollRef.current = savedScrollTop <= 0;
+    logTabScroll('tab mount', {
+      tabId: activeTabId,
+      savedScrollTop,
+      isRestoring: isRestoringScrollRef.current
+    });
+
+    const handleScroll = () => {
+      if (isRestoringScrollRef.current) {
+        return;
+      }
+
+      tabScrollTopById.set(activeTabId, el.scrollTop);
+      logTabScroll('scroll saved', {
+        tabId: activeTabId,
+        scrollTop: el.scrollTop
+      });
+    };
+
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      const currentKnown = tabScrollTopById.get(activeTabId) ?? 0;
+      if (currentKnown <= 0 && el.scrollTop > 0) {
+        tabScrollTopById.set(activeTabId, el.scrollTop);
+      }
+      logTabScroll('tab unmount keep', {
+        tabId: activeTabId,
+        domScrollTop: el.scrollTop,
+        keptScrollTop: tabScrollTopById.get(activeTabId) ?? 0
+      });
+      el.removeEventListener('scroll', handleScroll);
+    };
+  }, [activeTabId]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -102,9 +189,18 @@ function ImageGrid({
     return Math.max(1, Math.min(maxColumns, fitColumns));
   }, [containerWidth, layoutMode]);
 
+  const initialOffset = useMemo(() => {
+    if (!activeTabId) {
+      return 0;
+    }
+
+    return tabScrollTopById.get(activeTabId) ?? 0;
+  }, [activeTabId]);
+
   // Virtualizer for the grid rows
   const rowVirtualizer = useVirtualizer({
-    count: Math.ceil(images.length / columns),
+    count: Math.ceil(Math.max(images.length, totalImages) / columns),
+    initialOffset,
     getScrollElement: () => parentRef.current,
     estimateSize: () =>
       layoutMode === 'compact' ? 176 : layoutMode === 'comfortable' ? 272 : 336,
@@ -112,25 +208,77 @@ function ImageGrid({
     scrollMargin: 10
   });
 
+  useEffect(() => {
+    if (!activeTabId || didRestoreScrollRef.current) {
+      return;
+    }
+
+    const el = parentRef.current;
+    if (!el) {
+      return;
+    }
+
+    const targetScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
+    if (targetScrollTop <= 0) {
+      didRestoreScrollRef.current = true;
+      isRestoringScrollRef.current = false;
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    if (maxScrollTop + 1 < targetScrollTop) {
+      logTabScroll('restore waiting for content height', {
+        tabId: activeTabId,
+        targetScrollTop,
+        maxScrollTop,
+        images: images.length,
+        totalImages,
+        isLoading
+      });
+      return;
+    }
+
+    rowVirtualizer.scrollToOffset(targetScrollTop, { align: 'start' });
+    const actual = el.scrollTop;
+    const restored = Math.abs(actual - targetScrollTop) <= 2;
+    logTabScroll('restore attempt', {
+      tabId: activeTabId,
+      targetScrollTop,
+      actualScrollTop: actual,
+      restored
+    });
+
+    if (restored) {
+      didRestoreScrollRef.current = true;
+      isRestoringScrollRef.current = false;
+      tabScrollTopById.set(activeTabId, actual);
+      logTabScroll('restore success', {
+        tabId: activeTabId,
+        scrollTop: actual
+      });
+    }
+  }, [
+    activeTabId,
+    rowVirtualizer,
+    images.length,
+    totalImages,
+    columns,
+    layoutMode,
+    isLoading
+  ]);
+
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const totalRows = Math.ceil(images.length / columns);
+  const loadedRows = Math.ceil(images.length / columns);
   const lastVirtualIndex =
     virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
   useEffect(() => {
-    if (selectedImageId) {
-      return;
-    }
-
-    const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => {
-        rowVirtualizer.measure();
-      });
-      return () => cancelAnimationFrame(raf2);
+    const rafId = requestAnimationFrame(() => {
+      rowVirtualizer.measure();
     });
 
-    return () => cancelAnimationFrame(raf1);
-  }, [selectedImageId, columns, rowVirtualizer]);
+    return () => cancelAnimationFrame(rafId);
+  }, [columns, layoutMode, images.length, rowVirtualizer]);
 
   const imageIdSet = useMemo(
     () => new Set(images.map((img) => img.ID)),
@@ -152,12 +300,13 @@ function ImageGrid({
   useEffect(() => {
     if (lastVirtualIndex < 0) return;
     if (!hasMore || isLoading) return;
-    if (lastVirtualIndex < totalRows - 2) return;
+    if (loadedRows <= 0) return;
+    if (lastVirtualIndex < loadedRows - 2) return;
 
-    if (lastFetchTriggerRowsRef.current === totalRows) return;
-    lastFetchTriggerRowsRef.current = totalRows;
+    if (lastFetchTriggerRowsRef.current === loadedRows) return;
+    lastFetchTriggerRowsRef.current = loadedRows;
     fetchNextPage();
-  }, [lastVirtualIndex, totalRows, hasMore, isLoading, fetchNextPage]);
+  }, [lastVirtualIndex, loadedRows, hasMore, isLoading, fetchNextPage]);
 
   const handleTileClick = useCallback(
     (imageId: number) => {
@@ -212,14 +361,23 @@ function ImageGrid({
       <div className="h-full w-full">
         {images.length === 0 ? (
           isLoading ? (
-            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            <div
+              className="grid gap-4"
+              style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
+              }}
+            >
               {Array.from({ length: columns * 3 }).map((_, i) => (
-                <Skeleton 
-                  key={i} 
+                <Skeleton
+                  key={i}
                   className={cn(
-                    "w-full rounded-md",
-                    layoutMode === 'compact' ? 'h-40' : layoutMode === 'comfortable' ? 'h-64' : 'h-80'
-                  )} 
+                    'w-full rounded-md',
+                    layoutMode === 'compact'
+                      ? 'h-40'
+                      : layoutMode === 'comfortable'
+                        ? 'h-64'
+                        : 'h-80'
+                  )}
                 />
               ))}
             </div>
