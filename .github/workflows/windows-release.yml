@@ -1,0 +1,83 @@
+name: Windows Auto Release
+
+on:
+    push:
+        tags:
+            - x-windows-v*
+
+permissions:
+    contents: write
+
+jobs:
+    build-and-release-windows:
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install Wails v3 CLI
+              shell: pwsh
+              run: |
+                  go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+                  Add-Content -Path $env:GITHUB_PATH -Value "$(go env GOPATH)\bin"
+
+            - name: Build Windows portable executable
+              shell: pwsh
+              run: |
+                  wails3 build GOOS=windows -config build/config.yml
+
+            - name: Build Windows setup installer
+              shell: pwsh
+              run: |
+                  wails3 package GOOS=windows -config build/config.yml
+
+            - name: Collect release artifacts
+              shell: pwsh
+              run: |
+                  $tag = "${{ github.ref_name }}"
+                  New-Item -ItemType Directory -Path release -Force | Out-Null
+
+                  $portableExe = "bin/pixora.exe"
+                  if (-not (Test-Path $portableExe)) {
+                    throw "Expected portable executable not found: $portableExe"
+                  }
+
+                  $portableOut = "release/pixora-$tag-portable.exe"
+                  Copy-Item -Path $portableExe -Destination $portableOut -Force
+
+                  $setupCandidates = Get-ChildItem -Path "bin" -Filter "*-installer.exe" -File
+                  if (-not $setupCandidates -or $setupCandidates.Count -eq 0) {
+                    throw "Expected setup installer not found under bin/*.exe (*-installer.exe)"
+                  }
+
+                  $setupSrc = $setupCandidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  $setupOut = "release/pixora-$tag-setup.exe"
+                  Copy-Item -Path $setupSrc.FullName -Destination $setupOut -Force
+
+                  Write-Host "Portable artifact: $portableOut"
+                  Write-Host "Setup artifact: $setupOut"
+
+            - name: Create or update GitHub release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  name: ${{ github.ref_name }}
+                  files: |
+                      release/pixora-${{ github.ref_name }}-portable.exe
+                      release/pixora-${{ github.ref_name }}-setup.exe
+                  generate_release_notes: true
