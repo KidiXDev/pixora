@@ -80,6 +80,24 @@ export function MetadataInspector() {
     }
   }, [availablePlugins, selectedPluginID]);
 
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+
+      // Don't close if clicking inside this component
+      if (target.closest('.metadata-inspector-panel')) return;
+
+      // Don't close if clicking an image (the "image area")
+      if (target.tagName.toLowerCase() === 'img') return;
+
+      // If we clicked outside everything but not on an image, close the inspector
+      setSelectedImageId(null);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [setSelectedImageId]);
+
   if (!selectedImageId) return null;
 
   if (!image) return null;
@@ -211,8 +229,9 @@ export function MetadataInspector() {
     );
   };
 
+
   return (
-    <ScrollablePage className="flex flex-col p-6 select-none">
+    <ScrollablePage className="flex flex-col p-6 select-none metadata-inspector-panel">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-card-foreground">
           Generation Data

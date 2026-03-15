@@ -1,5 +1,5 @@
 import { useGalleryStore } from '@/stores/gallery-store';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export function FullImageViewer() {
   const images = useGalleryStore((state) => state.images);
@@ -9,6 +9,11 @@ export function FullImageViewer() {
   );
   const isLoading = useGalleryStore((state) => state.isLoading);
 
+  const [scale, setScale] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   const image = images.find((img) => img.ID === selectedImageId);
 
   useEffect(() => {
@@ -17,23 +22,79 @@ export function FullImageViewer() {
     }
   }, [selectedImageId, image, isLoading, setSelectedImageId]);
 
+  // Reset state when image changes
+  useEffect(() => {
+    setOffset({ x: 0, y: 0 });
+    setScale(1);
+    setIsDragging(false);
+  }, [selectedImageId]);
+
   if (!selectedImageId || !image) return null;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale <= 1) return;
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - offset.x,
+      y: e.clientY - offset.y
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setOffset({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const delta = -e.deltaY;
+    const factor = 0.002;
+    setScale((prev) => {
+      const next = prev + delta * factor;
+      return Math.max(1, Math.min(5, next));
+    });
+  };
 
   return (
     <div className="relative w-full h-full bg-black/95 flex flex-col">
       {/* Top toolbar */}
-      <div className="absolute top-0 left-0 w-full p-4 flex items-center justify-between z-10 bg-linear-to-b from-black/60 to-transparent">
-        <div className="text-white/80 text-sm truncate max-w-md">
+      <div className="absolute top-0 left-0 w-full p-4 flex items-center justify-between z-10 bg-linear-to-b from-black/60 to-transparent pointer-events-none">
+        <div className="text-white/80 text-sm truncate max-w-md pointer-events-auto">
           {image.Path.split(/[/\\]/).pop()}
         </div>
       </div>
 
-      <div className="flex-1 w-full h-full p-8 flex items-center justify-center">
+      <div
+        className="flex-1 w-full h-full p-8 flex items-center justify-center overflow-hidden"
+        onMouseLeave={handleMouseLeave}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onWheel={handleWheel}
+      >
         <img
           src={`/image/?path=${encodeURIComponent(image.Path)}`}
           alt="Full preview"
-          className="max-w-full max-h-full object-contain select-none shadow-2xl rounded-sm"
+          className="max-w-full max-h-full object-contain select-none shadow-2xl rounded-sm transition-transform duration-150 ease-out"
           draggable={false}
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            transition: isDragging ? 'none' : undefined,
+            cursor: isDragging ? 'grabbing' : scale > 1 ? 'grab' : 'grab'
+          }}
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (target.src.includes('/image/')) {
