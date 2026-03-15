@@ -15,6 +15,8 @@ export function FullImageViewer() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const image = images.find((img) => img.ID === selectedImageId);
+  const metadataStatus = image?.MetadataStatus;
+  const isMetadataUnavailable = metadataStatus === 2;
 
   useEffect(() => {
     if (selectedImageId && !image && !isLoading) {
@@ -75,6 +77,11 @@ export function FullImageViewer() {
         <div className="text-white/80 text-sm truncate max-w-md pointer-events-auto">
           {image.Path.split(/[/\\]/).pop()}
         </div>
+        {isMetadataUnavailable && (
+          <div className="pointer-events-auto rounded-md border border-amber-400/40 bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-100">
+            No parseable metadata found
+          </div>
+        )}
       </div>
 
       <div

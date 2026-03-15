@@ -285,7 +285,7 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 	if stored != nil && stored.FileSize == info.Size() && stored.ModifiedUnixNs == modifiedUnixNs {
 		refreshMetadata = shouldRefreshPNGMetadata(ext, stored)
 		if refreshMetadata {
-			log.Printf("Refreshing stale PNG metadata for %s (missing model)", path)
+			log.Printf("Refreshing stale PNG metadata for %s (missing parsed metadata)", path)
 		} else if stored.ThumbReady {
 			return
 		}
@@ -325,10 +325,16 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 	var prompt, negPrompt, model, sampler, seed string
 	var cfgScale float64
 	var width, height int
+	metadataStatus := db.MetadataStatusUnknown
 
 	if ext == ".png" {
 		meta, parseCtx, err := parser.ParsePNGMetadataWithContext(path)
-		if err == nil {
+		if err != nil {
+			metadataStatus = db.MetadataStatusMissing
+			if refreshMetadata {
+				log.Printf("PNG metadata unavailable after refresh for %s: %v", path, err)
+			}
+		} else {
 			if meta == nil {
 				meta = &parser.ImageMetadata{}
 			}
@@ -341,8 +347,13 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 				}
 			}
 
-			if refreshMetadata && meta.Model != "" {
-				log.Printf("Fixed missing model for %s: %s", path, meta.Model)
+			metadataStatus = classifyMetadataStatus(meta)
+			if refreshMetadata {
+				if metadataStatus == db.MetadataStatusPresent {
+					log.Printf("Fixed stale metadata for %s", path)
+				} else {
+					log.Printf("PNG metadata unavailable after refresh for %s", path)
+				}
 			}
 
 			prompt = meta.Prompt
@@ -361,6 +372,7 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 		Hash:           hash,
 		FileSize:       info.Size(),
 		ModifiedUnixNs: modifiedUnixNs,
+		MetadataStatus: metadataStatus,
 		Prompt:         prompt,
 		NegativePrompt: negPrompt,
 		Model:          model,
@@ -468,6 +480,11 @@ func (i *Indexer) RefetchMetadata(path string, mode MetadataRefetchMode, pluginI
 				metadata = mergeParsedMetadata(metadata, pluginMeta)
 			}
 		}
+
+		record.MetadataStatus = classifyMetadataStatus(metadata)
+		if parseErr != nil {
+			record.MetadataStatus = db.MetadataStatusMissing
+		}
 	}
 
 	record.Hash = hash
@@ -508,10 +525,50 @@ func shouldRefreshPNGMetadata(ext string, stored *db.ImageRecord) bool {
 		return false
 	}
 
-	// Only refresh if Model is empty AND Prompt is also empty.
-	// This avoids infinite refresh loops for images that genuinely have no metadata (like screenshots).
-	// If it has a prompt but no model, we assume it was already scanned and no model was found.
+	// Refresh legacy rows that still have unknown metadata status and no parsed metadata.
+	if stored.MetadataStatus != db.MetadataStatusUnknown {
+		return false
+	}
+
 	return strings.TrimSpace(stored.Model) == "" && strings.TrimSpace(stored.Prompt) == ""
+}
+
+func classifyMetadataStatus(meta *parser.ImageMetadata) int {
+	if hasMeaningfulMetadata(meta) {
+		return db.MetadataStatusPresent
+	}
+
+	return db.MetadataStatusMissing
+}
+
+func hasMeaningfulMetadata(meta *parser.ImageMetadata) bool {
+	if meta == nil {
+		return false
+	}
+
+	if strings.TrimSpace(meta.Prompt) != "" {
+		return true
+	}
+	if strings.TrimSpace(meta.NegativePrompt) != "" {
+		return true
+	}
+	if strings.TrimSpace(meta.Model) != "" {
+		return true
+	}
+	if strings.TrimSpace(meta.Sampler) != "" {
+		return true
+	}
+	if strings.TrimSpace(meta.Seed) != "" {
+		return true
+	}
+	if meta.CfgScale != 0 {
+		return true
+	}
+	if strings.TrimSpace(meta.Raw) != "" {
+		return true
+	}
+
+	return false
 }
 
 // calculateFastHash computes a fast hash using leading 64KB and file size.

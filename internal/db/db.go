@@ -73,6 +73,7 @@ type ImageRecord struct {
 	Path           string
 	Hash           string
 	ThumbReady     bool
+	MetadataStatus int
 	FileSize       int64
 	ModifiedUnixNs int64
 	Prompt         string
@@ -85,6 +86,12 @@ type ImageRecord struct {
 	Height         int
 	AddedAt        time.Time
 }
+
+const (
+	MetadataStatusUnknown = 0
+	MetadataStatusPresent = 1
+	MetadataStatusMissing = 2
+)
 
 func New() (*DB, error) {
 	dataDir, err := os.UserConfigDir() // Will be ~/.config on Linux, %APPDATA% on Windows
@@ -129,6 +136,7 @@ func (d *DB) initSchema() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		path TEXT UNIQUE NOT NULL,
 		hash TEXT NOT NULL,
+		metadata_status INTEGER NOT NULL DEFAULT 0,
 		file_size INTEGER NOT NULL DEFAULT 0,
 		modified_unix_ns INTEGER NOT NULL DEFAULT 0,
 		prompt TEXT,
@@ -186,6 +194,10 @@ func (d *DB) initSchema() error {
 		return err
 	}
 
+	if err := d.ensureImagesColumn("metadata_status", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
 	return d.ensureImagesColumn("modified_unix_ns", "INTEGER NOT NULL DEFAULT 0")
 }
 
@@ -226,11 +238,12 @@ func (d *DB) Close() error {
 // InsertOrUpdateImage adds or updates an image in the database.
 func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, error) {
 	query := `
-		INSERT INTO images (path, hash, thumb_ready, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height)
-		VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO images (path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height)
+		VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			hash=excluded.hash,
 			thumb_ready=0,
+			metadata_status=excluded.metadata_status,
 			file_size=excluded.file_size,
 			modified_unix_ns=excluded.modified_unix_ns,
 			prompt=excluded.prompt,
@@ -243,6 +256,7 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 			height=excluded.height
 		WHERE
 			images.hash IS NOT excluded.hash OR
+			images.metadata_status IS NOT excluded.metadata_status OR
 			images.file_size IS NOT excluded.file_size OR
 			images.modified_unix_ns IS NOT excluded.modified_unix_ns OR
 			images.prompt IS NOT excluded.prompt OR
@@ -258,7 +272,7 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 
 	var id int64
 	err := d.db.QueryRowContext(ctx, query,
-		img.Path, img.Hash, img.FileSize, img.ModifiedUnixNs, img.Prompt, img.NegativePrompt, img.Model, img.Sampler,
+		img.Path, img.Hash, img.MetadataStatus, img.FileSize, img.ModifiedUnixNs, img.Prompt, img.NegativePrompt, img.Model, img.Sampler,
 		img.Seed, img.CfgScale, img.Width, img.Height,
 	).Scan(&id)
 
@@ -275,11 +289,12 @@ func (d *DB) InsertOrUpdateImage(ctx context.Context, img ImageRecord) (int64, e
 
 func (d *DB) GetImageFileState(ctx context.Context, path string) (*ImageRecord, error) {
 	var img ImageRecord
-	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, model, prompt FROM images WHERE path = ?`, path).Scan(
+	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, model, prompt FROM images WHERE path = ?`, path).Scan(
 		&img.ID,
 		&img.Path,
 		&img.Hash,
 		&img.ThumbReady,
+		&img.MetadataStatus,
 		&img.FileSize,
 		&img.ModifiedUnixNs,
 		&img.Model,
@@ -296,11 +311,12 @@ func (d *DB) GetImageFileState(ctx context.Context, path string) (*ImageRecord, 
 
 func (d *DB) GetImageByPath(ctx context.Context, path string) (*ImageRecord, error) {
 	var img ImageRecord
-	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images WHERE path = ?`, path).Scan(
+	err := d.db.QueryRowContext(ctx, `SELECT id, path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images WHERE path = ?`, path).Scan(
 		&img.ID,
 		&img.Path,
 		&img.Hash,
 		&img.ThumbReady,
+		&img.MetadataStatus,
 		&img.FileSize,
 		&img.ModifiedUnixNs,
 		&img.Prompt,
@@ -326,10 +342,11 @@ func (d *DB) GetImageByPath(ctx context.Context, path string) (*ImageRecord, err
 func (d *DB) UpdateImageMetadataByPath(ctx context.Context, img ImageRecord) error {
 	_, err := d.db.ExecContext(ctx, `
 		UPDATE images
-		SET hash = ?, file_size = ?, modified_unix_ns = ?, prompt = ?, negative_prompt = ?, model = ?, sampler = ?, seed = ?, cfg_scale = ?, width = ?, height = ?
+		SET hash = ?, metadata_status = ?, file_size = ?, modified_unix_ns = ?, prompt = ?, negative_prompt = ?, model = ?, sampler = ?, seed = ?, cfg_scale = ?, width = ?, height = ?
 		WHERE path = ?
 	`,
 		img.Hash,
+		img.MetadataStatus,
 		img.FileSize,
 		img.ModifiedUnixNs,
 		img.Prompt,
@@ -347,7 +364,7 @@ func (d *DB) UpdateImageMetadataByPath(ctx context.Context, img ImageRecord) err
 }
 
 func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) (map[string]ImageRecord, error) {
-	rows, err := d.db.QueryContext(ctx, `SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, model, prompt FROM images WHERE path LIKE ?`, folderPath+"%")
+	rows, err := d.db.QueryContext(ctx, `SELECT id, path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, model, prompt FROM images WHERE path LIKE ?`, folderPath+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +373,7 @@ func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) 
 	states := make(map[string]ImageRecord)
 	for rows.Next() {
 		var img ImageRecord
-		if err := rows.Scan(&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.FileSize, &img.ModifiedUnixNs, &img.Model, &img.Prompt); err != nil {
+		if err := rows.Scan(&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.MetadataStatus, &img.FileSize, &img.ModifiedUnixNs, &img.Model, &img.Prompt); err != nil {
 			return nil, err
 		}
 		states[img.Path] = img
@@ -456,7 +473,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 			countArgs = append(countArgs, folderPath+"%")
 		}
 
-		rowsQuery = "SELECT id, path, hash, thumb_ready, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images"
+		rowsQuery = "SELECT id, path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images"
 		if whereClause != "" {
 			rowsQuery += whereClause
 			if folderPath != "" {
@@ -494,7 +511,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 						 WHERE images_fts MATCH ? AND i.thumb_ready = 1`
 		}
 
-		rowsQuery = `SELECT i.id, i.path, i.hash, i.thumb_ready, i.file_size, i.modified_unix_ns, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at 
+		rowsQuery = `SELECT i.id, i.path, i.hash, i.thumb_ready, i.metadata_status, i.file_size, i.modified_unix_ns, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at 
 					 FROM images_fts f 
 					 JOIN images i ON f.rowid = i.id 
 					 WHERE images_fts MATCH ? AND i.thumb_ready = 1`
@@ -525,7 +542,7 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 	for rows.Next() {
 		var img ImageRecord
 		if err := rows.Scan(
-			&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.FileSize, &img.ModifiedUnixNs,
+			&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.MetadataStatus, &img.FileSize, &img.ModifiedUnixNs,
 			&img.Prompt, &img.NegativePrompt, &img.Model, &img.Sampler, &img.Seed, &img.CfgScale,
 			&img.Width, &img.Height, &img.AddedAt,
 		); err != nil {

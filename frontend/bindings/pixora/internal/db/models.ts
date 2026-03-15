@@ -14,6 +14,7 @@ export class ImageRecord {
     "Path": string;
     "Hash": string;
     "ThumbReady": boolean;
+    "MetadataStatus": number;
     "FileSize": number;
     "ModifiedUnixNs": number;
     "Prompt": string;
@@ -39,6 +40,9 @@ export class ImageRecord {
         }
         if (!("ThumbReady" in $$source)) {
             this["ThumbReady"] = false;
+        }
+        if (!("MetadataStatus" in $$source)) {
+            this["MetadataStatus"] = 0;
         }
         if (!("FileSize" in $$source)) {
             this["FileSize"] = 0;

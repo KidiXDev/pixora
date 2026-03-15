@@ -56,6 +56,8 @@ export function MetadataInspector() {
   );
   const [selectedPluginID, setSelectedPluginID] = useState<string>('');
   const [isRefetching, setIsRefetching] = useState(false);
+  const metadataStatus = image?.MetadataStatus;
+  const isMetadataUnavailable = metadataStatus === 2;
 
   useEffect(() => {
     loadPlugins();
@@ -279,6 +281,13 @@ export function MetadataInspector() {
       </div>
 
       <div className="space-y-8">
+        {isMetadataUnavailable && (
+          <div className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90">
+            No valid generation metadata could be extracted from this file by
+            the default parser or enabled plugins.
+          </div>
+        )}
+
         {/* Prompt Section */}
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm font-medium text-muted-foreground px-1">
@@ -318,7 +327,14 @@ export function MetadataInspector() {
             </Button>
           </div>
           <div className="text-sm bg-muted/20 p-4 rounded-xl border border-white/5 leading-relaxed shadow-inner overflow-hidden">
-            {renderPrompt(image.Prompt)}
+            {isMetadataUnavailable ? (
+              <span className="text-amber-200/90 italic text-xs">
+                Metadata parse failed for this image. It likely does not contain
+                compatible embedded metadata.
+              </span>
+            ) : (
+              renderPrompt(image.Prompt)
+            )}
           </div>
         </div>
 
