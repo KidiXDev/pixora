@@ -1,13 +1,16 @@
+import { cn } from '@/lib/utils';
 import { isSettingsTabPath } from '@/lib/tab-pages';
 import SettingsPage from '@/pages/settings-page';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { LayoutGrid, Loader2 } from 'lucide-react';
+import { LayoutGrid } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollablePage } from '../layout/scrollable-page';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
+import { Skeleton } from '../ui/skeleton';
+import { Spinner } from '../ui/spinner';
 
 export function GalleryGrid() {
   const searchQuery = useGalleryStore((state) => state.searchQuery);
@@ -207,26 +210,40 @@ function ImageGrid({
       containerClassName="h-full w-full"
     >
       <div className="h-full w-full">
-        {images.length === 0 && !isLoading ? (
-          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
-            <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
-              <LayoutGrid size={40} className="text-muted-foreground/40" />
+        {images.length === 0 ? (
+          isLoading ? (
+            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+              {Array.from({ length: columns * 3 }).map((_, i) => (
+                <Skeleton 
+                  key={i} 
+                  className={cn(
+                    "w-full rounded-md",
+                    layoutMode === 'compact' ? 'h-40' : layoutMode === 'comfortable' ? 'h-64' : 'h-80'
+                  )} 
+                />
+              ))}
             </div>
-            <h3 className="text-xl font-semibold text-foreground mb-2">
-              {!activeTabId
-                ? 'Welcome to Pixora'
-                : searchQuery
-                  ? 'No Results'
-                  : 'Folder is Empty'}
-            </h3>
-            <p className="max-w-xs mb-8">
-              {!activeTabId
-                ? 'Start browsing your AI generated art by creating your first folder tab.'
-                : searchQuery
-                  ? `We couldn't find any images matching "${searchQuery}" in this folder.`
-                  : 'This folder is being indexed or contains no supported image formats.'}
-            </p>
-          </div>
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
+              <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                <LayoutGrid size={40} className="text-muted-foreground/40" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">
+                {!activeTabId
+                  ? 'Welcome to Pixora'
+                  : searchQuery
+                    ? 'No Results'
+                    : 'Folder is Empty'}
+              </h3>
+              <p className="max-w-xs mb-8">
+                {!activeTabId
+                  ? 'Start browsing your AI generated art by creating your first folder tab.'
+                  : searchQuery
+                    ? `We couldn't find any images matching "${searchQuery}" in this folder.`
+                    : 'This folder is being indexed or contains no supported image formats.'}
+              </p>
+            </div>
+          )
         ) : (
           <div
             style={{
@@ -281,9 +298,9 @@ function ImageGrid({
             ))}
           </div>
         )}
-        {isLoading && (
+        {isLoading && images.length > 0 && (
           <div className="flex justify-center p-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <Spinner className="size-6 text-primary" />
           </div>
         )}
       </div>
