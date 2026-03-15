@@ -43,7 +43,9 @@ jobs:
 
             - name: Install NSIS
               shell: pwsh
-              run: choco install nsis --no-progress -y
+              run: |
+                  choco install nsis --no-progress -y
+                  Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
 
             - name: Build Windows setup installer
               shell: pwsh
@@ -61,8 +63,13 @@ jobs:
                     throw "Expected portable executable not found: $portableExe"
                   }
 
-                  $portableOut = "release/pixora-$tag-portable.exe"
-                  Copy-Item -Path $portableExe -Destination $portableOut -Force
+                  # Build portable ZIP: pixora.exe + empty plugins/ folder
+                  $portableStaging = "release/portable-staging"
+                  New-Item -ItemType Directory -Path "$portableStaging" -Force | Out-Null
+                  New-Item -ItemType Directory -Path "$portableStaging/plugins" -Force | Out-Null
+                  Copy-Item -Path $portableExe -Destination "$portableStaging/pixora.exe" -Force
+                  $portableOut = "release/pixora-$tag-portable.zip"
+                  Compress-Archive -Path "$portableStaging/*" -DestinationPath $portableOut -Force
 
                   $setupCandidates = Get-ChildItem -Path "bin" -Filter "*-installer.exe" -File
                   if (-not $setupCandidates -or $setupCandidates.Count -eq 0) {
@@ -82,6 +89,6 @@ jobs:
                   tag_name: ${{ github.ref_name }}
                   name: ${{ github.ref_name }}
                   files: |
-                      release/pixora-${{ github.ref_name }}-portable.exe
+                      release/pixora-${{ github.ref_name }}-portable.zip
                       release/pixora-${{ github.ref_name }}-setup.exe
                   generate_release_notes: true
