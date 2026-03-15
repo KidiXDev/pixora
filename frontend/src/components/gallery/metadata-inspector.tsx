@@ -1,4 +1,3 @@
-import { ScrollablePage } from '../layout/scrollable-page';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -31,6 +30,7 @@ import {
   RefetchImageMetadata,
   ShowInFolder
 } from '../../../bindings/pixora/internal/services/galleryservice';
+import { ScrollablePage } from '../layout/scrollable-page';
 
 export function MetadataInspector() {
   const selectedImageId = useGalleryStore((state) => state.selectedImageId);
@@ -81,21 +81,33 @@ export function MetadataInspector() {
   }, [availablePlugins, selectedPluginID]);
 
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
 
-      // Don't close if clicking inside this component
       if (target.closest('.metadata-inspector-panel')) return;
 
-      // Don't close if clicking an image (the "image area")
       if (target.tagName.toLowerCase() === 'img') return;
 
-      // If we clicked outside everything but not on an image, close the inspector
+      const isRadixPortal = !!document.querySelector('[data-radix-portal]');
+      const hasOpenSelect = !!document.querySelector('[data-state="open"]');
+      const isClickingRadixPortal =
+        !!target.closest('[data-radix-portal]') ||
+        !!target.closest('[data-slot^="select-"]');
+
+      if (isRadixPortal || hasOpenSelect || isClickingRadixPortal) {
+        return;
+      }
+
       setSelectedImageId(null);
     };
 
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('pointerdown', handleOutsideClick, {
+      capture: true
+    });
+    return () =>
+      document.removeEventListener('pointerdown', handleOutsideClick, {
+        capture: true
+      });
   }, [setSelectedImageId]);
 
   if (!selectedImageId) return null;
@@ -228,7 +240,6 @@ export function MetadataInspector() {
       </div>
     );
   };
-
 
   return (
     <ScrollablePage className="flex flex-col p-6 select-none metadata-inspector-panel">
@@ -519,9 +530,7 @@ export function MetadataInspector() {
                 </span>
                 <div className="grid grid-cols-1 gap-2">
                   <Select
-                    value={
-                      refetchMode.charAt(0).toUpperCase() + refetchMode.slice(1)
-                    }
+                    value={refetchMode}
                     onValueChange={(value) =>
                       setRefetchMode(value as 'default' | 'plugin')
                     }
