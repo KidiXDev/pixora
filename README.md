@@ -1,146 +1,92 @@
-# Welcome to Your New Wails3 Project!
+<div align="center">
+  <img src="assets/pixora_logo.png" width="160" height="160" alt="Pixora Logo">
+  <h1>Pixora</h1>
+  <p><strong>The Intelligent AI-Generated Image Gallery</strong></p>
+  <p>
+    <img src="https://img.shields.io/badge/Wails-v3-00ADD8?style=flat-square&logo=go" alt="Wails v3">
+    <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React 19">
+    <img src="https://img.shields.io/badge/TypeScript-latest-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
+    <img src="https://img.shields.io/badge/Tailwind-v4-06B6D4?style=flat-square&logo=tailwindcss" alt="Tailwind CSS v4">
+  </p>
+</div>
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+## ✨ Overview
 
-## Getting Started
+**Pixora** is a high-performance, premium desktop gallery designed specifically for AI-generated art. It combines the speed of Go with the beauty of React 19 to provide a seamless experience for managing, inspecting, and comparing your AI creations.
 
-1. Navigate to your project directory in the terminal.
+## 🚀 Key Features
 
-2. To run your application in development mode, use the following command:
+### ♾️ Smooth Infinity Scroll
 
+Experience zero-lag browsing. Pixora utilizes advanced virtualization techniques to handle libraries with tens of thousands of images without breaking a sweat.
+
+### 🔍 Deep Metadata Inspector
+
+Uncover the secrets behind every image. Pixora automatically parses prompts, seeds, samplers, and model information from your AI-generated files.
+
+### ⚖️ Image Comparison
+
+Need to pick between two versions? Use our side-by-side comparison tool with a smooth interactive slider to spot the subtle differences in your generations.
+
+### 🧩 Secure Plugin Architecture
+
+Pixora features a JavaScript-based plugin system that allows the community to add support for new AI tools and file formats.
+
+## 🛠️ Tech Stack
+
+- **Core Engine:** [Wails v3](https://v3.wails.io/) (Golang)
+- **Frontend UI:** React 19 + TypeScript
+- **Styling:** Tailwind CSS v4 + Framer Motion
+- **Database:** SQLite (Embedded)
+
+## 📦 Getting Started
+
+### Prerequisites
+
+- [Go](https://go.dev/dl/) (v1.25+)
+- [Node.js](https://nodejs.org/) (v20+)
+- [Wails v3 CLI](https://v3alpha.wails.io/quick-start/installation/)
+
+### Installation & Development
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/kidixdev/pixora.git
+   cd pixora
    ```
+
+2. **Run in Development Mode:**
+
+   ```bash
    wails3 dev
    ```
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+   This will start the app with hot-reloading enabled for both the Go backend and the React frontend.
 
-3. To build your application for production, use:
-
-   ```
+3. **Build for Production:**
+   ```bash
    wails3 build
    ```
+   The production-ready executable will be generated in the `bin/` directory.
 
-   This will create a production-ready executable in the `build` directory.
+## 🎨 Plugin System
 
-## Exploring Wails3 Features
+Pixora is built to be extended. You can create your own metadata parsers in JavaScript.
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
-
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
-
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
-
-   ```
-   go run .
-   ```
-
-   Note: Some examples may be under development during the alpha phase.
-
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
-
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
-
-## Project Structure
-
-Take a moment to familiarize yourself with your project structure:
-
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
-
-## Next Steps
-
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
-
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
-
-## Parser Plugin System (JavaScript)
-
-Pixora supports JavaScript metadata parser plugins so you can add support for new AI image tools without changing core code.
-
-### Plugin Directory
-
-Plugins are loaded from the `plugins/` directory at application startup.
-
-Each plugin must be a folder with:
+**Structure:**
 
 ```text
 plugins/
-   my-parser-plugin/
+   my-parser/
       manifest.json
       index.js
 ```
 
-Example `manifest.json`:
+Check out the [Plugin Documentation](docs/plugins.md) or the `plugins/example-parser-plugin` for more details.
 
-```json
-{
-  "name": "Example Parser Plugin",
-  "version": "1.0.0",
-  "description": "Parser for images generated by ExampleTool",
-  "author": "Community",
-  "main": "index.js"
-}
-```
+---
 
-### Plugin API
-
-`index.js` must export an object with two functions:
-
-```js
-module.exports = {
-  detect(context) {
-    return Boolean(context?.textByKeyword?.my_tool_meta);
-  },
-
-  parse(context) {
-    // Return normalized metadata fields used by Pixora.
-    return {
-      prompt: "...",
-      negativePrompt: "...",
-      model: "...",
-      sampler: "...",
-      seed: "...",
-      cfgScale: 7,
-      width: 1024,
-      height: 1024,
-      raw: "original metadata payload",
-    };
-  },
-};
-```
-
-`context` currently provides:
-
-- `filePath`
-- `extension`
-- `width`, `height`
-- `raw`
-- `textByKeyword`
-- `textEntries`
-
-### Security and Trust
-
-- Plugins run in a sandboxed JavaScript runtime with no direct filesystem/OS APIs exposed.
-- Plugin structure is validated before load (`manifest.json`, safe relative entrypoint, compile checks).
-- New plugins are marked `untrusted` by default.
-- A plugin must be explicitly trusted in Settings before it can be enabled.
-
-Only install plugins from trusted sources.
-
-### Plugin Management UI
-
-Settings now includes a **Parser Plugins** section that lets you:
-
-- List detected plugins
-- See name/version/description/author/status
-- Trust or untrust plugins
-- Enable or disable trusted plugins
-- Remove plugins
-- Install plugin `.zip` packages
-
-An example starter plugin is included at `plugins/example-parser-plugin`.
+<div align="center">
+  <p>Crafted with ❤️ for the AI Art Community</p>
+</div>
