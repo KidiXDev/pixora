@@ -12,7 +12,104 @@ import { Spinner } from '../ui/spinner';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
 
-const tabScrollTopById = new Map<string, number>();
+const TAB_SCROLL_STORAGE_KEY = 'pixora:tab-scroll-top';
+
+function readPersistedTabScroll(): Map<string, number> {
+  if (typeof window === 'undefined') {
+    return new Map<string, number>();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TAB_SCROLL_STORAGE_KEY);
+    if (!raw) {
+      return new Map<string, number>();
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return new Map<string, number>();
+    }
+
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .map(([tabId, value]) => {
+        const num = typeof value === 'number' ? value : Number.NaN;
+        return [tabId, num] as const;
+      })
+      .filter((entry) => Number.isFinite(entry[1]) && entry[1] >= 0);
+
+    return new Map<string, number>(entries);
+  } catch {
+    return new Map<string, number>();
+  }
+}
+
+let persistScrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+const tabScrollTopById = readPersistedTabScroll();
+
+function queuePersistTabScroll(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (persistScrollTimer) {
+    clearTimeout(persistScrollTimer);
+  }
+
+  persistScrollTimer = setTimeout(() => {
+    persistScrollTimer = null;
+    try {
+      const serialized = Object.fromEntries(tabScrollTopById.entries());
+      window.localStorage.setItem(
+        TAB_SCROLL_STORAGE_KEY,
+        JSON.stringify(serialized)
+      );
+    } catch {
+      // Ignore storage access errors.
+    }
+  }, 120);
+}
+
+function flushPersistTabScroll(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (persistScrollTimer) {
+    clearTimeout(persistScrollTimer);
+    persistScrollTimer = null;
+  }
+
+  try {
+    const serialized = Object.fromEntries(tabScrollTopById.entries());
+    window.localStorage.setItem(
+      TAB_SCROLL_STORAGE_KEY,
+      JSON.stringify(serialized)
+    );
+  } catch {
+    // Ignore storage access errors.
+  }
+}
+
+function setTabScrollTop(tabId: string, scrollTop: number): void {
+  const safeScrollTop = Math.max(0, Math.round(scrollTop));
+  const current = tabScrollTopById.get(tabId);
+  if (current === safeScrollTop) {
+    return;
+  }
+
+  tabScrollTopById.set(tabId, safeScrollTop);
+  queuePersistTabScroll();
+}
+
+function removeTabScrollTop(tabId: string): void {
+  if (!tabScrollTopById.delete(tabId)) {
+    return;
+  }
+
+  queuePersistTabScroll();
+}
+
 const DEV_MODE = import.meta.env.DEV;
 const TAB_SCROLL_DEBUG_ENABLED =
   DEV_MODE && import.meta.env.VITE_DEBUG_TAB_SCROLL === '1';
@@ -56,16 +153,33 @@ export function GalleryGrid() {
   }, [searchQuery, activeTabId, activeTabPath, fetchImages]);
 
   useEffect(() => {
+    if (tabs.length === 0) {
+      // Tabs are loaded asynchronously on startup; avoid clearing persisted scroll too early.
+      return;
+    }
+
     const validTabIds = new Set(tabs.map((tab) => tab.id));
 
     for (const tabId of tabScrollTopById.keys()) {
       if (!validTabIds.has(tabId)) {
-        tabScrollTopById.delete(tabId);
+        removeTabScrollTop(tabId);
       }
     }
 
     pruneTabScopedState(Array.from(validTabIds));
   }, [tabs, pruneTabScopedState]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushPersistTabScroll();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      flushPersistTabScroll();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   if (activeTab && isSettingsTabPath(activeTab.path)) {
     return <SettingsPage />;
@@ -105,6 +219,7 @@ function ImageGrid({
     null
   );
   const lastFetchTriggerRowsRef = useRef(-1);
+  const restoreFetchInFlightRef = useRef(false);
   const isRestoringScrollRef = useRef(false);
   const didRestoreScrollRef = useRef(false);
 
@@ -130,7 +245,7 @@ function ImageGrid({
         return;
       }
 
-      tabScrollTopById.set(activeTabId, el.scrollTop);
+      setTabScrollTop(activeTabId, el.scrollTop);
       logTabScroll('scroll saved', {
         tabId: activeTabId,
         scrollTop: el.scrollTop
@@ -141,7 +256,7 @@ function ImageGrid({
     return () => {
       const currentKnown = tabScrollTopById.get(activeTabId) ?? 0;
       if (currentKnown <= 0 && el.scrollTop > 0) {
-        tabScrollTopById.set(activeTabId, el.scrollTop);
+        setTabScrollTop(activeTabId, el.scrollTop);
       }
       logTabScroll('tab unmount keep', {
         tabId: activeTabId,
@@ -238,6 +353,14 @@ function ImageGrid({
         totalImages,
         isLoading
       });
+
+      if (hasMore && !isLoading && !restoreFetchInFlightRef.current) {
+        restoreFetchInFlightRef.current = true;
+        void fetchNextPage().finally(() => {
+          restoreFetchInFlightRef.current = false;
+        });
+      }
+
       return;
     }
 
@@ -254,7 +377,7 @@ function ImageGrid({
     if (restored) {
       didRestoreScrollRef.current = true;
       isRestoringScrollRef.current = false;
-      tabScrollTopById.set(activeTabId, actual);
+      setTabScrollTop(activeTabId, actual);
       logTabScroll('restore success', {
         tabId: activeTabId,
         scrollTop: actual
@@ -267,7 +390,9 @@ function ImageGrid({
     totalImages,
     columns,
     layoutMode,
-    isLoading
+    isLoading,
+    hasMore,
+    fetchNextPage
   ]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
