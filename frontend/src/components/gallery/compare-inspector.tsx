@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useGalleryStore } from '@/stores/gallery-store';
+import { motion } from 'framer-motion';
 import {
   ArrowLeftRight,
   ExternalLink,
@@ -43,7 +44,12 @@ export function CompareInspector() {
   };
 
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar"
+    >
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-card-foreground">
@@ -97,7 +103,7 @@ export function CompareInspector() {
           onShowInFolder={openSecondInFolder}
         />
       </div>
-    </div>
+    </motion.div>
   );
 }
 
