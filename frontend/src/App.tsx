@@ -7,6 +7,10 @@ import { useConfigStore } from './stores/config-store';
 
 function App() {
   useEffect(() => {
+    useConfigStore.getState().loadConfig();
+  }, []);
+
+  useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       // Allow context menu only on titlebar (it usually has --wails-draggable)
       const target = e.target as HTMLElement;

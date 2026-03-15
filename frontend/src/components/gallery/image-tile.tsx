@@ -163,7 +163,7 @@ export const ImageTile = memo(function ImageTile({
               src={`/thumbs/${image.Hash}.jpg`}
               alt={fileName}
               className="h-full w-full object-contain"
-              loading="lazy"
+              decoding="async"
               draggable={false}
               onError={(e) => {
                 const target = e.target as HTMLImageElement;

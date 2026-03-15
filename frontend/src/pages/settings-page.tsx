@@ -115,7 +115,13 @@ export default function SettingsPage() {
         Title: 'Select Parser Plugin (.zip)',
         CanChooseDirectories: false,
         CanChooseFiles: true,
-        AllowsMultipleSelection: false
+        AllowsMultipleSelection: false,
+        Filters: [
+          {
+            DisplayName: 'Zip Archives',
+            Pattern: '*.zip'
+          }
+        ]
       });
 
       if (!selection) return;
@@ -137,7 +143,7 @@ export default function SettingsPage() {
     const ok = await confirm.confirm({
       title: 'Trust This Plugin?',
       description:
-        'This plugin contains executable JavaScript code and will run inside the app parser runtime. Only trust plugins from sources you fully trust. Malicious plugins may compromise your data.',
+        'This plugin contains executable JavaScript code and will run inside the app parser runtime. Only trust plugins from sources you fully trust.',
       confirmText: 'I Trust This Plugin',
       cancelText: 'Cancel',
       variant: 'destructive'
@@ -160,7 +166,7 @@ export default function SettingsPage() {
   const handleRemovePlugin = async (pluginID: string, pluginName: string) => {
     const ok = await confirm.confirm({
       title: 'Remove Plugin?',
-      description: `This will delete ${pluginName} from your plugins directory and remove its trusted/enabled state.`,
+      description: `This will delete ${pluginName} from your plugins directory.`,
       confirmText: 'Remove Plugin',
       cancelText: 'Cancel',
       variant: 'destructive'
@@ -173,7 +179,7 @@ export default function SettingsPage() {
 
   const pluginBadgeVariant = (status: string) => {
     if (status === 'enabled') return 'default';
-    if (status === 'error') return 'destructive';
+    if (status === 'error' || status === 'untrusted') return 'destructive';
     return 'outline';
   };
 
@@ -243,7 +249,7 @@ export default function SettingsPage() {
             <div className="max-w-4xl mx-auto">
               <TabsContent
                 value="library"
-                className="space-y-10 focus-visible:outline-none animate-in fade-in slide-in-from-right-2 duration-300"
+                className="space-y-10 focus-visible:outline-none"
               >
                 <div className="space-y-1">
                   <h2 className="text-2xl font-bold tracking-tight">Library</h2>
@@ -412,7 +418,7 @@ export default function SettingsPage() {
 
               <TabsContent
                 value="plugins"
-                className="space-y-10 focus-visible:outline-none animate-in fade-in slide-in-from-right-2 duration-300"
+                className="space-y-10 focus-visible:outline-none"
               >
                 <div className="space-y-1">
                   <h2 className="text-2xl font-bold tracking-tight">Plugins</h2>
@@ -430,15 +436,31 @@ export default function SettingsPage() {
                         Installed Plugins
                       </h3>
                     </div>
-                    <Button
-                      onClick={handleInstallPlugin}
-                      size="sm"
-                      className="gap-2"
-                      disabled={isInstallingPlugin}
-                    >
-                      <Plug size={16} />
-                      {isInstallingPlugin ? 'Installing...' : 'Install Plugin'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={loadPlugins}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={pluginsLoading}
+                      >
+                        <RefreshCw
+                          size={16}
+                          className={pluginsLoading ? 'animate-spin' : ''}
+                        />
+                      </Button>
+                      <Button
+                        onClick={handleInstallPlugin}
+                        size="sm"
+                        className="gap-2"
+                        disabled={isInstallingPlugin}
+                      >
+                        <Plug size={16} />
+                        {isInstallingPlugin
+                          ? 'Installing...'
+                          : 'Install Plugin'}
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -450,8 +472,7 @@ export default function SettingsPage() {
                         />
                         <p>
                           Plugins run JavaScript code inside the app. Install
-                          only from trusted sources. New plugins start as
-                          untrusted until you explicitly trust them.
+                          only from trusted sources.
                         </p>
                       </div>
                     </div>
@@ -550,8 +571,8 @@ export default function SettingsPage() {
                               <div className="text-xs rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300 flex items-start gap-2">
                                 <AlertTriangle size={14} className="mt-0.5" />
                                 <span>
-                                  This plugin is untrusted and cannot run until
-                                  you explicitly trust it.
+                                  This plugin is untrusted and cannot be
+                                  enabled.
                                 </span>
                               </div>
                             ) : null}
@@ -571,7 +592,7 @@ export default function SettingsPage() {
 
               <TabsContent
                 value="advanced"
-                className="space-y-10 focus-visible:outline-none animate-in fade-in slide-in-from-right-2 duration-300"
+                className="space-y-10 focus-visible:outline-none"
               >
                 <div className="space-y-1">
                   <h2 className="text-2xl font-bold tracking-tight">
@@ -609,7 +630,7 @@ export default function SettingsPage() {
               {config?.devMode && (
                 <TabsContent
                   value="logs"
-                  className="space-y-10 focus-visible:outline-none animate-in fade-in slide-in-from-right-2 duration-300"
+                  className="space-y-10 focus-visible:outline-none"
                 >
                   <div className="space-y-1">
                     <h2 className="text-2xl font-bold tracking-tight">
