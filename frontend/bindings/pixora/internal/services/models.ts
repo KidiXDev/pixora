@@ -53,6 +53,7 @@ export class ParserPluginInfo {
     "description": string;
     "author": string;
     "main": string;
+    "priority": number;
     "folderPath": string;
     "status": string;
     "trusted": boolean;
@@ -78,6 +79,9 @@ export class ParserPluginInfo {
         }
         if (!("main" in $$source)) {
             this["main"] = "";
+        }
+        if (!("priority" in $$source)) {
+            this["priority"] = 0;
         }
         if (!("folderPath" in $$source)) {
             this["folderPath"] = "";

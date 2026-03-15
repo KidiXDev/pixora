@@ -1,130 +1,39 @@
-# 🧩 Pixora Plugin Documentation
+# Pixora Parser Plugins
 
-Pixora uses a flexible, secure JavaScript-based plugin system for parsing image metadata. This allows the community to add support for new AI tools (like Midjourney, ComfyUI, DALL-E, etc.) without modifying the core application.
-
----
-
-## 📂 Plugin Structure
-
-Every plugin must be contained within its own folder inside the `plugins/` directory.
-
-```text
-plugins/
-└── my-parser-plugin/
-    ├── manifest.json
-    └── index.js
-```
-
-### 📄 `manifest.json`
-The manifest file defines your plugin's identity and entry point.
-
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `name` | `string` | Human-readable name |
-| `version` | `string` | Semantic version of your plugin |
-| `description` | `string` | Brief explanation of what it parses |
-| `author` | `string` | Your name or organization |
-| `main` | `string` | The relative path to your main JavaScript file |
-
-**Example:**
-```json
-{
-  "name": "ComfyUI Basic Parser",
-  "version": "1.0.0",
-  "description": "Extracts basic metadata from ComfyUI PNGs",
-  "author": "Pixora",
-  "main": "index.js"
-}
-```
+Pixora supports custom JavaScript plugins to extract metadata from your images. This allows the community to add support for new AI generators, workflows, and formats without modifying the core application.
 
 ---
 
-## 💻 Plugin API
+## Getting Started
 
-Your `main` file must use CommonJS-style exports (`module.exports`). It should export an object containing two primary functions: `detect` and `parse`.
+If you are new to Pixora plugins, start with the overview and development guide.
 
-```javascript
-module.exports = {
-  /**
-   * Used to check if this image belongs to this parser.
-   * Returns true if the plugin should handle this file.
-   */
-  detect(context) {
-    // Check for specific keywords or file structure
-    return context.textByKeyword && context.textByKeyword.comfy_workflow;
-  },
+- [**Overview & Manifest**](plugin-manifest.md): Learn how to structure your plugin and define its properties.
+- [**Development Guide**](plugin-development.md): Sandbox rules, debugging with the Plugin Console, and best practices.
 
-  /**
-   * Extracts and normalizes metadata from the image.
-   * Returns a standardized Metadata object.
-   */
-  parse(context) {
-    // Logic to extract fields from context
-    return {
-      prompt: "vibrant nebula, 4k",
-      negativePrompt: "blur, low quality",
-      model: "SDXL Turbo",
-      sampler: "Euler a",
-      seed: "123456789",
-      cfgScale: 7.5,
-      width: 1024,
-      height: 1024,
-      raw: context.raw // Keep original payload if needed
-    };
-  }
-};
-```
+## Reference
 
-### 📥 The `context` Object
-Both functions receive a `context` object containing pre-checked file information:
+Detailed technical specifications for plugin authors.
 
-- `filePath` (string): Absolute path to the file.
-- `extension` (string): File extension (e.g., ".png").
-- `width` / `height` (number): Pixel dimensions.
-- `raw` (string): The raw metadata payload from the file.
-- `textByKeyword` (object): A map of text chunks (for PNGs, this maps keywords to text).
-- `textEntries` (array): A flat list of all text items found in file chunks.
-
-### 📤 The `Metadata` Object
-The `parse` function should return an object with these fields (all optional):
-
-- `prompt` (string)
-- `negativePrompt` (string)
-- `model` (string)
-- `sampler` (string)
-- `seed` (string)
-- `cfgScale` (number)
-- `width` (number)
-- `height` (number)
-- `raw` (string)
+- [**Runtime API Reference**](plugin-api.md): Detailed explanation of the `pixora` global, `context` object, and utility helpers.
+- [**Example Implementation**](plugin-example.md): A walkthrough of a real-world ComfyUI parser plugin.
 
 ---
 
-## 🛡️ Security & Constraints
+## Core Concepts
 
-To ensure system stability and user safety, plugins run in a highly restricted sandbox:
+### Simplicity First
+Keep plugins deterministic. A plugin should take a fixed input (the image metadata context) and return a structured output. Avoid complex external dependencies or state.
 
-- **No OS Access**: You cannot access the filesystem, network, or environment variables.
-- **No `require`**: All logic must be contained within your main file or combined before distribution.
-- **Execution Limits**:
-  - Max script size: **512 KB**.
-  - Execution timeout: **200ms** per file.
-- **Console Logging**: You can use `console.log()`, `console.warn()`, and `console.error()`. These will appear in the Pixora Plugin Console in Settings (Developer Mode).
+### Sandbox Security
+Plugins run in a isolated environment. They cannot access your files, network, or hardware. This ensures that installing plugins from the community is safe.
 
----
-
-## 🛠️ Development Tips
-
-### Testing your Plugin
-1. Enable **Developer Mode** in Settings.
-2. Open the **Plugin Console** to see live output and errors.
-3. Use `console.log(JSON.stringify(context))` in your `detect` function to inspect the available data for a specific file.
-
-### Distribution
-You can distribute your plugin as a `.zip` file. Pixora can install these directly via the **Install Plugin** button in Settings. Ensure the `manifest.json` is at the root of the zip or in the first subdirectory.
+### Priority System
+Pixora allows multiple plugins to coexist. If multiple plugins claim they can parse a file, the one with the highest **priority** runs first.
 
 ---
 
-<p align="center">
-  <em>Help the community! Share your parsers on the Pixora GitHub Discussions.</em>
-</p>
+## Contributing
+Have you built a great parser? Share it with the Pixora community!
+1. Package your plugin folder into a `.zip` file.
+2. Share it on our community forums or GitHub discussions.

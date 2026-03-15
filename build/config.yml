@@ -8,9 +8,9 @@ info:
   companyName: "KidiXDev" # The name of the company
   productName: "Pixora" # The name of the application
   productIdentifier: "com.kidixdev.pixora" # The unique product identifier
-  description: "pixora" # The application description
+  description: "Pixora" # The application description
   copyright: "(c) 2025, KidiXDev" # Copyright text
-  comments: "pixora" # Comments
+  comments: "Pixora" # Comments
   version: "1.0.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension

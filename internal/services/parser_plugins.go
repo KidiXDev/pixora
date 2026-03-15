@@ -2,6 +2,7 @@ package services
 
 import (
 	"archive/zip"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"pixora/internal/parser"
 
@@ -32,7 +34,130 @@ const (
 	maxPluginScriptSize = 512 * 1024
 	pluginExecTimeout   = 200 * time.Millisecond
 	maxPluginLogEntries = 500
+
+	defaultPluginPriority = 100
 )
+
+const pluginRuntimePreludeScript = `(function () {
+	function asString(value, fallback) {
+		if (typeof value === "string") {
+			var trimmed = value.trim();
+			if (trimmed !== "") {
+				return trimmed;
+			}
+		}
+		return typeof fallback === "string" ? fallback : "";
+	}
+
+	function toNumber(value, fallback) {
+		var n = Number(value);
+		if (Number.isFinite(n)) {
+			return n;
+		}
+		var base = Number(fallback);
+		return Number.isFinite(base) ? base : 0;
+	}
+
+	function parseJSON(text) {
+		if (typeof text !== "string" || text.trim() === "") {
+			return null;
+		}
+		try {
+			return JSON.parse(text);
+		} catch (_err) {
+			return null;
+		}
+	}
+
+	function getKeyword(context, key) {
+		if (!context || typeof context !== "object") {
+			return "";
+		}
+		if (!context.textByKeyword || typeof context.textByKeyword !== "object") {
+			return "";
+		}
+		if (typeof key !== "string" || key.trim() === "") {
+			return "";
+		}
+		return asString(context.textByKeyword[key], "");
+	}
+
+	function hasKeyword(context, key) {
+		return getKeyword(context, key) !== "";
+	}
+
+	function parseDimensions(value) {
+		if (typeof value !== "string") {
+			return { width: 0, height: 0 };
+		}
+		var match = value.match(/(\d+)\s*x\s*(\d+)/i);
+		if (!match) {
+			return { width: 0, height: 0 };
+		}
+		return {
+			width: toNumber(match[1], 0),
+			height: toNumber(match[2], 0),
+		};
+	}
+
+	function decodeBase64(value, fallback) {
+		var base64Value = asString(value, "");
+		var fallbackValue = typeof fallback === "string" ? fallback : "";
+		if (base64Value === "") {
+			return fallbackValue;
+		}
+
+		try {
+			return __pixoraDecodeBase64(base64Value, fallbackValue);
+		} catch (_err) {
+			return fallbackValue;
+		}
+	}
+
+	function createParser(definition) {
+		if (typeof definition === "function") {
+			return {
+				detect: function () {
+					return true;
+				},
+				parse: definition,
+			};
+		}
+
+		var candidate = definition && typeof definition === "object" ? definition : {};
+		var detect =
+			typeof candidate.detect === "function"
+				? candidate.detect
+				: function () {
+						return true;
+					};
+		var parse =
+			typeof candidate.parse === "function"
+				? candidate.parse
+				: function () {
+						return null;
+					};
+
+		return {
+			detect: detect,
+			parse: parse,
+		};
+	}
+
+	this.pixora = Object.freeze({
+		version: "1",
+		createParser: createParser,
+		utils: Object.freeze({
+			asString: asString,
+			toNumber: toNumber,
+			parseJSON: parseJSON,
+			getKeyword: getKeyword,
+			hasKeyword: hasKeyword,
+			parseDimensions: parseDimensions,
+			decodeBase64: decodeBase64,
+		}),
+	});
+})();`
 
 var pluginIDSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
@@ -42,6 +167,7 @@ type ParserPluginManifest struct {
 	Description string `json:"description"`
 	Author      string `json:"author"`
 	Main        string `json:"main"`
+	Priority    int    `json:"priority"`
 }
 
 type ParserPluginState struct {
@@ -56,6 +182,7 @@ type ParserPluginInfo struct {
 	Description string `json:"description"`
 	Author      string `json:"author"`
 	Main        string `json:"main"`
+	Priority    int    `json:"priority"`
 	FolderPath  string `json:"folderPath"`
 	Status      string `json:"status"`
 	Trusted     bool   `json:"trusted"`
@@ -342,6 +469,9 @@ func (m *ParserPluginManager) ParsePNG(ctx *parser.PNGParseContext) (*parser.Ima
 	m.mu.RUnlock()
 
 	sort.Slice(plugins, func(i, j int) bool {
+		if plugins[i].info.Priority != plugins[j].info.Priority {
+			return plugins[i].info.Priority > plugins[j].info.Priority
+		}
 		return plugins[i].info.ID < plugins[j].info.ID
 	})
 
@@ -521,6 +651,9 @@ func (m *ParserPluginManager) loadPlugin(id string, pluginPath string) *loadedPa
 	manifest.Description = strings.TrimSpace(manifest.Description)
 	manifest.Author = strings.TrimSpace(manifest.Author)
 	manifest.Main = strings.TrimSpace(manifest.Main)
+	if manifest.Priority <= 0 {
+		manifest.Priority = defaultPluginPriority
+	}
 
 	if manifest.Name == "" || manifest.Main == "" {
 		result.info.Error = "manifest must include non-empty name and main"
@@ -557,6 +690,7 @@ func (m *ParserPluginManager) loadPlugin(id string, pluginPath string) *loadedPa
 	result.info.Description = manifest.Description
 	result.info.Author = manifest.Author
 	result.info.Main = manifest.Main
+	result.info.Priority = manifest.Priority
 
 	return result
 }
@@ -612,36 +746,54 @@ func (p *loadedParserPlugin) run(ctx *parser.PNGParseContext) (*jsPluginMetadata
 	if err != nil {
 		return nil, false, err
 	}
+	apiValue := runtime.Get("pixora")
+
+	if parseFn, ok := goja.AssertFunction(moduleExports); ok {
+		parseResult, callErr := callWithTimeout(runtime, func() (goja.Value, error) {
+			return parseFn(goja.Undefined(), ctxValueFromParseContext(runtime, ctx), apiValue)
+		})
+		if callErr != nil {
+			return nil, false, fmt.Errorf("parse failed: %w", callErr)
+		}
+
+		if goja.IsNull(parseResult) || goja.IsUndefined(parseResult) {
+			return nil, true, nil
+		}
+
+		output, decodeErr := decodePluginMetadata(runtime, parseResult)
+		if decodeErr != nil {
+			return nil, false, fmt.Errorf("parse returned invalid data: %w", decodeErr)
+		}
+
+		return output, true, nil
+	}
 
 	pluginObj, ok := moduleExports.(*goja.Object)
 	if !ok {
-		return nil, false, errors.New("plugin must export an object")
+		return nil, false, errors.New("plugin must export an object or parse function")
 	}
 
-	ctxValue := runtime.ToValue(map[string]any{
-		"filePath":      ctx.FilePath,
-		"extension":     ctx.Extension,
-		"width":         ctx.Width,
-		"height":        ctx.Height,
-		"raw":           ctx.Raw,
-		"textByKeyword": ctx.TextByKeyword,
-		"textEntries":   ctx.TextEntries,
-	})
+	ctxValue := ctxValueFromParseContext(runtime, ctx)
 
 	detectValue := pluginObj.Get("detect")
-	detectFn, ok := goja.AssertFunction(detectValue)
-	if !ok {
-		return nil, false, errors.New("plugin must export detect(context)")
+	matched := true
+	if !goja.IsUndefined(detectValue) && !goja.IsNull(detectValue) {
+		detectFn, ok := goja.AssertFunction(detectValue)
+		if !ok {
+			return nil, false, errors.New("plugin detect must be a function")
+		}
+
+		detectResult, detectErr := callWithTimeout(runtime, func() (goja.Value, error) {
+			return detectFn(pluginObj, ctxValue, apiValue)
+		})
+		if detectErr != nil {
+			return nil, false, fmt.Errorf("detect failed: %w", detectErr)
+		}
+
+		matched = detectResult.ToBoolean()
 	}
 
-	detectResult, err := callWithTimeout(runtime, func() (goja.Value, error) {
-		return detectFn(pluginObj, ctxValue)
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("detect failed: %w", err)
-	}
-
-	if !detectResult.ToBoolean() {
+	if !matched {
 		return nil, false, nil
 	}
 
@@ -652,7 +804,7 @@ func (p *loadedParserPlugin) run(ctx *parser.PNGParseContext) (*jsPluginMetadata
 	}
 
 	parseResult, err := callWithTimeout(runtime, func() (goja.Value, error) {
-		return parseFn(pluginObj, ctxValue)
+		return parseFn(pluginObj, ctxValue, apiValue)
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("parse failed: %w", err)
@@ -672,6 +824,9 @@ func (p *loadedParserPlugin) run(ctx *parser.PNGParseContext) (*jsPluginMetadata
 
 func (p *loadedParserPlugin) evalModule() (*goja.Runtime, goja.Value, error) {
 	runtime := goja.New()
+	if err := runtime.Set("__pixoraDecodeBase64", decodeBase64ToUTF8); err != nil {
+		return nil, nil, err
+	}
 
 	moduleObj := runtime.NewObject()
 	exportsObj := runtime.NewObject()
@@ -707,6 +862,12 @@ func (p *loadedParserPlugin) evalModule() (*goja.Runtime, goja.Value, error) {
 		return nil, nil, err
 	}
 
+	if _, err := callWithTimeout(runtime, func() (goja.Value, error) {
+		return runtime.RunScript("pixora-plugin-api.js", pluginRuntimePreludeScript)
+	}); err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize pixora api: %w", err)
+	}
+
 	_, err := callWithTimeout(runtime, func() (goja.Value, error) {
 		return runtime.RunScript(p.scriptRef, p.script)
 	})
@@ -715,6 +876,22 @@ func (p *loadedParserPlugin) evalModule() (*goja.Runtime, goja.Value, error) {
 	}
 
 	return runtime, moduleObj.Get("exports"), nil
+}
+
+func ctxValueFromParseContext(runtime *goja.Runtime, ctx *parser.PNGParseContext) goja.Value {
+	if ctx == nil {
+		return runtime.ToValue(map[string]any{})
+	}
+
+	return runtime.ToValue(map[string]any{
+		"filePath":      ctx.FilePath,
+		"extension":     ctx.Extension,
+		"width":         ctx.Width,
+		"height":        ctx.Height,
+		"raw":           ctx.Raw,
+		"textByKeyword": ctx.TextByKeyword,
+		"textEntries":   ctx.TextEntries,
+	})
 }
 
 func callWithTimeout(runtime *goja.Runtime, fn func() (goja.Value, error)) (goja.Value, error) {
@@ -744,6 +921,48 @@ func callWithTimeout(runtime *goja.Runtime, fn func() (goja.Value, error)) (goja
 	}
 
 	return result, nil
+}
+
+func decodeBase64ToUTF8(value string, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+
+	if commaIndex := strings.Index(trimmed, ","); commaIndex > 0 {
+		prefix := strings.ToLower(trimmed[:commaIndex])
+		if strings.Contains(prefix, ";base64") {
+			trimmed = trimmed[commaIndex+1:]
+		}
+	}
+
+	trimmed = strings.ReplaceAll(trimmed, "\n", "")
+	trimmed = strings.ReplaceAll(trimmed, "\r", "")
+	trimmed = strings.ReplaceAll(trimmed, "\t", "")
+	trimmed = strings.ReplaceAll(trimmed, " ", "")
+	if trimmed == "" {
+		return fallback
+	}
+
+	decoders := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+
+	for _, decoder := range decoders {
+		decoded, err := decoder.DecodeString(trimmed)
+		if err != nil {
+			continue
+		}
+		if !utf8.Valid(decoded) {
+			return fallback
+		}
+		return string(decoded)
+	}
+
+	return fallback
 }
 
 func discoverPluginRoot(root string) (string, ParserPluginManifest, error) {
