@@ -19,9 +19,6 @@ import * as db$0 from "../db/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
-/**
- * AddFolder adds a new supervised folder and triggers a scan.
- */
 export function AddFolder(path: string, mode: config$0.ScanMode): $CancellablePromise<void> {
     return $Call.ByID(255073735, path, mode);
 }
@@ -33,85 +30,54 @@ export function ClearIndexAndReindex(): $CancellablePromise<void> {
     return $Call.ByID(1114111755);
 }
 
-/**
- * ClearParserPluginLogs clears the in-memory plugin debug console log buffer.
- */
 export function ClearParserPluginLogs(): $CancellablePromise<void> {
     return $Call.ByID(143676958);
 }
 
-/**
- * GetConfig returns the application configuration.
- */
 export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
     return $Call.ByID(1693510026).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
-/**
- * GetImages returns a paginated list of images, optionally matching a search query and filtered by folder.
- */
 export function GetImages(query: string, folderPath: string, offset: number, limit: number, sortBy: string, direction: string): $CancellablePromise<$models.PaginatedImages | null> {
     return $Call.ByID(3312439230, query, folderPath, offset, limit, sortBy, direction).then(($result: any) => {
         return $$createType2($result);
     });
 }
 
-/**
- * InstallParserPlugin installs a plugin from a zip package.
- */
 export function InstallParserPlugin(zipPath: string): $CancellablePromise<$models.ParserPluginInfo | null> {
     return $Call.ByID(2873676735, zipPath).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
-/**
- * ListParserPluginLogs returns recent plugin runtime logs for debugging.
- */
 export function ListParserPluginLogs(pluginID: string, limit: number): $CancellablePromise<$models.ParserPluginLogEntry[]> {
     return $Call.ByID(877205903, pluginID, limit).then(($result: any) => {
         return $$createType6($result);
     });
 }
 
-/**
- * ListParserPlugins returns all parser plugins detected in the plugins directory.
- */
 export function ListParserPlugins(): $CancellablePromise<$models.ParserPluginInfo[]> {
     return $Call.ByID(607641509).then(($result: any) => {
         return $$createType7($result);
     });
 }
 
-/**
- * OpenExternally opens a file using the default OS application
- */
 export function OpenExternally(path: string): $CancellablePromise<void> {
     return $Call.ByID(2481728976, path);
 }
 
-/**
- * RefetchImageMetadata reparses metadata for a single image and persists the result.
- * mode supports: "default" (built-in parser) and "plugin" (built-in + specific plugin override).
- */
 export function RefetchImageMetadata(path: string, mode: string, pluginID: string): $CancellablePromise<db$0.ImageRecord | null> {
     return $Call.ByID(2762129337, path, mode, pluginID).then(($result: any) => {
         return $$createType9($result);
     });
 }
 
-/**
- * RemoveFolder removes a supervised folder and purges indexed images immediately.
- */
 export function RemoveFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(3664983788, path);
 }
 
-/**
- * RemoveParserPlugin removes an installed plugin directory and state.
- */
 export function RemoveParserPlugin(pluginID: string): $CancellablePromise<void> {
     return $Call.ByID(3708498644, pluginID);
 }
@@ -123,9 +89,6 @@ export function SetDevMode(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(3111825936, enabled);
 }
 
-/**
- * SetParserPluginEnabled enables or disables a trusted plugin.
- */
 export function SetParserPluginEnabled(pluginID: string, enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(1778698493, pluginID, enabled);
 }
@@ -144,9 +107,6 @@ export function SetWindow(window: application$0.WebviewWindow | null): $Cancella
     return $Call.ByID(3517996620, window);
 }
 
-/**
- * ShowInFolder opens the file explorer and selects the file
- */
 export function ShowInFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(3474754050, path);
 }
@@ -158,16 +118,10 @@ export function ToggleDevTools(): $CancellablePromise<void> {
     return $Call.ByID(1248833658);
 }
 
-/**
- * TrustParserPlugin marks a plugin as trusted. Trusted plugins can be enabled.
- */
 export function TrustParserPlugin(pluginID: string): $CancellablePromise<void> {
     return $Call.ByID(2379761378, pluginID);
 }
 
-/**
- * UntrustParserPlugin revokes trust and disables the plugin.
- */
 export function UntrustParserPlugin(pluginID: string): $CancellablePromise<void> {
     return $Call.ByID(576907323, pluginID);
 }
