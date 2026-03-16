@@ -177,7 +177,6 @@ export const ImageTile = memo(function ImageTile({
             </div>
           </div>
 
-          {/* Decorative gradient to simulate an image load */}
           <div className="absolute inset-0 bg-linear-to-tr from-transparent to-black/10 mix-blend-overlay pointer-events-none"></div>
 
           <button

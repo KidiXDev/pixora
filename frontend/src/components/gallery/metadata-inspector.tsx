@@ -169,7 +169,6 @@ export function MetadataInspector() {
   const formatDate = (date: string | number | Date | null | undefined) => {
     if (!date) return '-';
     try {
-      // Handle Go/Wails time representation
       const d = new Date(date);
       if (isNaN(d.getTime())) return '-';
       return new Intl.DateTimeFormat('en-US', {
