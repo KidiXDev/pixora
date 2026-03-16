@@ -73,9 +73,7 @@ function queuePersistTabScroll(): void {
         TAB_SCROLL_STORAGE_KEY,
         JSON.stringify(serialized)
       );
-    } catch {
-      // Ignore storage access errors.
-    }
+    } catch {}
   }, 120);
 }
 
@@ -95,9 +93,7 @@ function flushPersistTabScroll(): void {
       TAB_SCROLL_STORAGE_KEY,
       JSON.stringify(serialized)
     );
-  } catch {
-    // Ignore storage access errors.
-  }
+  } catch {}
 }
 
 function setTabScrollTop(tabId: string, scrollTop: number): void {
@@ -212,13 +208,9 @@ export function GalleryGrid() {
   const activeTabPath = activeTab?.path ?? null;
 
   useEffect(() => {
-    // On startup, activeTabId may be restored before tabs are loaded.
-    // Wait until tab config resolves so we don't clear the gallery prematurely.
     if (activeTabId && activeTabPath === null) {
       return;
     }
-
-    // Defer fetch off the click frame to reduce tab-switch handler blocking.
     const frameId = requestAnimationFrame(() => {
       void fetchImages(true);
     });
@@ -237,7 +229,6 @@ export function GalleryGrid() {
 
   useEffect(() => {
     if (tabs.length === 0) {
-      // Tabs are loaded asynchronously on startup; avoid clearing persisted scroll too early.
       return;
     }
 
@@ -268,7 +259,6 @@ export function GalleryGrid() {
     return <SettingsPage />;
   }
 
-  // If we have an active tab but no path, show the setup screen
   if (activeTab && !activeTab.path) {
     return <TabSetup />;
   }
@@ -596,7 +586,6 @@ function TabScopedImageGrid({
       : 0;
   const virtualItems = rowVirtualizer.getVirtualItems();
   if (TAB_ACTIVATION_PROFILE_ENABLED && tabActivationProfileRef.current) {
-    // Record cost of reading virtual rows from the virtualizer state machine.
     const virtualItemsDurationMs = performance.now() - virtualItemsStartMs;
     tabActivationProfileRef.current.virtualItemsCalls += 1;
     tabActivationProfileRef.current.virtualItemsTotalMs +=
@@ -673,7 +662,6 @@ function TabScopedImageGrid({
     lastFetchTriggerRowsRef.current = -1;
   }, [activeTabId, searchQuery, sortBy, sortDirection]);
 
-  // Infinite scroll detection
   useEffect(() => {
     if (lastVirtualIndex < 0) return;
     if (!hasMore || isLoading) return;

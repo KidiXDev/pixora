@@ -18,10 +18,8 @@ interface IndexingState {
 export const useIndexingStore = create<IndexingState>((set, get) => ({
   activeScans: {},
   upsertScan: (status) => {
-    // Ignore malformed event payloads to keep state updates safe.
     if (!status?.folderPath) return;
 
-    // If the scan finished, treat it as a removal (belt-and-suspenders with indexing:end).
     if (!status.isRunning) {
       set((state) => {
         const { [status.folderPath]: _, ...rest } = state.activeScans;

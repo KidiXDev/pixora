@@ -150,11 +150,9 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 	paths := make(chan string, workerCount*4)
 	var processed atomic.Int64
 	var totalFiles atomic.Int64
-	var lastEmitNs atomic.Int64 // nanosecond timestamp of last progress emit
+	var lastEmitNs atomic.Int64
 	var workers sync.WaitGroup
 
-	// emitProgress fires at most once every 50 ms using a CAS gate so only
-	// one goroutine wins the race and the event bus is never flooded.
 	emitProgress := func() {
 		now := time.Now().UnixNano()
 		last := lastEmitNs.Load()
@@ -525,7 +523,6 @@ func shouldRefreshPNGMetadata(ext string, stored *db.ImageRecord) bool {
 		return false
 	}
 
-	// Refresh legacy rows that still have unknown metadata status and no parsed metadata.
 	if stored.MetadataStatus != db.MetadataStatusUnknown {
 		return false
 	}
@@ -571,9 +568,6 @@ func hasMeaningfulMetadata(meta *parser.ImageMetadata) bool {
 	return false
 }
 
-// calculateFastHash computes a fast hash using leading 64KB and file size.
-// xxh3 is used instead of SHA-256 — it is extremely fast and sufficient for
-// a non-security cache key.
 func (i *Indexer) calculateFastHash(path string, info os.FileInfo) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -683,18 +677,4 @@ func (i *Indexer) emitThumbnailReadyEvent(path, hash string) {
 			FolderPath: filepath.Dir(path),
 		})
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

@@ -11,15 +11,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => {
-      // Allow context menu only on titlebar (it usually has --wails-draggable)
-      const target = e.target as HTMLElement;
-      // We can check if the element has data-wails-drag or a specific class
-      if (!target.closest('[style*="--wails-draggable:drag"]')) {
-        // e.preventDefault();
-      }
-    };
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F12') {
         const config = useConfigStore.getState().config;
@@ -30,10 +21,8 @@ function App() {
       }
     };
 
-    document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);

@@ -94,7 +94,7 @@ const (
 )
 
 func New() (*DB, error) {
-	dataDir, err := os.UserConfigDir() // Will be ~/.config on Linux, %APPDATA% on Windows
+	dataDir, err := os.UserConfigDir()
 	if err != nil {
 		return nil, err
 	}
@@ -106,16 +106,12 @@ func New() (*DB, error) {
 
 	dbPath := filepath.Join(pixoraDir, "pixora.db")
 
-	// Open database with foreign keys and WAL mode for better concurrency
-	// Added busy_timeout to handle "database is locked" errors
 	dsn := dbPath + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_busy_timeout=5000"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	// Limit to 1 open connection to avoid concurrent writers conflicting on the lock,
-	// while WAL mode allows concurrent readers.
 	db.SetMaxOpenConns(1)
 
 	if err := db.Ping(); err != nil {
@@ -382,7 +378,6 @@ func (d *DB) GetImageFileStatesByFolder(ctx context.Context, folderPath string) 
 	return states, nil
 }
 
-// RemoveImage removes an image by path and returns its ID if it existed.
 func (d *DB) RemoveImage(ctx context.Context, path string) error {
 	query := `DELETE FROM images WHERE path = ?;`
 	_, err := d.db.ExecContext(ctx, query, path)
@@ -406,7 +401,6 @@ func (d *DB) RemoveImageAndGetHash(ctx context.Context, path string) (string, er
 	return hash, nil
 }
 
-// RemoveImagesByFolder removes all images that start with the given folder path.
 func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) ([]string, error) {
 	searchPath := folderPath + "%"
 
@@ -432,7 +426,6 @@ func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) ([]str
 	return hashes, nil
 }
 
-// ClearImages removes all indexed image rows.
 func (d *DB) ClearImages(ctx context.Context) error {
 	_, err := d.db.ExecContext(ctx, `DELETE FROM images;`)
 	return err
@@ -451,7 +444,6 @@ func (d *DB) CheckpointWAL(ctx context.Context) error {
 	return err
 }
 
-// SearchImages retrieves images from the database, optionally filtering with FTS5 and folder path.
 func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, offset, limit int, sortBy string, direction string) ([]ImageRecord, int, error) {
 	var total int
 	var countQuery string

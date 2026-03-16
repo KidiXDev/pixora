@@ -27,11 +27,6 @@ const (
 	windowStateFull     = "fullscreen"
 )
 
-// Wails uses Go's `embed` package to embed the frontend files into the binary.
-// Any files in the frontend/dist folder will be embedded into the binary and
-// made available to the frontend.
-// See https://pkg.go.dev/embed for more information.
-
 //go:embed all:frontend/dist
 var assets embed.FS
 
@@ -42,12 +37,7 @@ func init() {
 	application.RegisterEvent[string]("time")
 }
 
-// main function serves as the application's entry point. It initializes the application, creates a window,
-// and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
-// logs any error that might occur.
 func main() {
-
-	// Initialize backend dependencies
 	database, err := db.New()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
@@ -77,7 +67,6 @@ func main() {
 
 	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer, pluginManager)
 
-	// Log app data directories so they are easy to locate during development/debugging.
 	if appDataDir, err := os.UserConfigDir(); err == nil {
 		log.Printf("[pixora] Config dir  : %s", filepath.Join(appDataDir, "pixora"))
 		log.Printf("[pixora] Database    : %s", filepath.Join(appDataDir, "pixora", "pixora.db"))
@@ -87,11 +76,6 @@ func main() {
 	}
 	log.Printf("[pixora] Thumb cache (svc): %s", thumbSvc.CacheDir())
 
-	// Create a new Wails application by providing the necessary options.
-	// Variables 'Name' and 'Description' are for application metadata.
-	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
-	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
-	// 'Mac' options tailor the application when running an macOS.
 	var mainWindow *application.WebviewWindow
 
 	app := application.New(application.Options{
@@ -108,18 +92,15 @@ func main() {
 		},
 		Services: []application.Service{
 			application.NewService(gallerySvc),
-			application.NewService(&services.GreetService{}), // can be removed eventually
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 			Middleware: func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					// Serve thumbnails from the cache directory
 					if strings.HasPrefix(r.URL.Path, "/thumbs/") {
 						http.StripPrefix("/thumbs/", http.FileServer(http.Dir(thumbSvc.CacheDir()))).ServeHTTP(w, r)
 						return
 					}
-					// Serve original images from disk securely via path query param
 					if strings.HasPrefix(r.URL.Path, "/image/") {
 						imagePath := r.URL.Query().Get("path")
 						if imagePath != "" {
@@ -157,11 +138,6 @@ func main() {
 	windowConfig := cfgMgr.GetConfig().Window
 	applyPersistedWindowOptions(&windowOptions, windowConfig)
 
-	// Create a new window with the necessary options.
-	// 'Title' is the title of the window.
-	// 'Mac' options tailor the window when running on macOS.
-	// 'BackgroundColour' is the background colour of the window.
-	// 'URL' is the URL that will be loaded into the webview.
 	mainWindow = app.Window.NewWithOptions(windowOptions)
 	bindWindowPersistence(mainWindow, cfgMgr, windowConfig)
 	gallerySvc.SetWindow(mainWindow)
@@ -178,10 +154,8 @@ func main() {
 		}
 	}()
 
-	// Initial scan in background once app is ready
 	go indexer.ScanAll()
 
-	// Run the application. This blocks until the application has been exited.
 	err = app.Run()
 
 	// If an error occurred while running the application, log it and exit.

@@ -130,11 +130,10 @@ func (m *Manager) SetWindow(window WindowConfig) error {
 
 func (m *Manager) AddFolder(path string, mode ScanMode) error {
 	m.mu.Lock()
-	// Check if already exists
 	exists := false
 	for i, f := range m.config.Folders {
 		if f.Path == path {
-			m.config.Folders[i].ScanMode = mode // update mode
+			m.config.Folders[i].ScanMode = mode
 			exists = true
 			break
 		}
@@ -206,7 +205,6 @@ func (m *Manager) ensureDefaultsLocked() {
 			m.config.Window.Bounds = WindowBounds{}
 		}
 	} else if m.config.Window.Bounds.Width > 0 && m.config.Window.Bounds.Height > 0 {
-		// Migrate from older config files where bounds existed without explicit flags.
 		m.config.Window.HasBounds = true
 	}
 
@@ -216,7 +214,6 @@ func (m *Manager) ensureDefaultsLocked() {
 			m.config.Window.NormalBounds = WindowBounds{}
 		}
 	} else if m.config.Window.NormalBounds.Width > 0 && m.config.Window.NormalBounds.Height > 0 {
-		// Migrate from older config files where normal bounds existed without explicit flags.
 		m.config.Window.HasNormalBounds = true
 	}
 }

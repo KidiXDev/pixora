@@ -37,9 +37,7 @@ function persistLastActiveTabId(tabId: string | null): void {
     }
 
     window.localStorage.removeItem(LAST_ACTIVE_TAB_STORAGE_KEY);
-  } catch {
-    // Ignore persistence errors (for example, storage access restrictions).
-  }
+  } catch {}
 }
 
 interface TabsState {
@@ -202,7 +200,6 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   updateTab: async (tab) => {
     const oldTab = get().tabs.find((t) => t.id === tab.id);
 
-    // If the path was empty and now it's set, start watching it
     if (tab.path && !isPageTabPath(tab.path) && (!oldTab || !oldTab.path)) {
       try {
         await AddFolder(
@@ -219,9 +216,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   reorderTabs: async (tabs: TabConfig[]) => {
-    // Update local state first for immediate UI feedback
     set({ tabs });
-    // Persist to backend
     await get().saveTabs(tabs);
   },
 

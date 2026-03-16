@@ -12,7 +12,6 @@ import (
 	"strings"
 )
 
-// ImageMetadata holds A1111/ComfyUI Metadata extracted from PNG
 type ImageMetadata struct {
 	Prompt         string
 	NegativePrompt string
@@ -43,7 +42,6 @@ type PNGParseContext struct {
 
 var pngHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
-// ParsePNGMetadata parses tEXt and iTXt chunks for A1111/ComfyUI metadata
 func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 	metadata, _, err := ParsePNGMetadataWithContext(path)
 	if err != nil {
@@ -53,8 +51,6 @@ func ParsePNGMetadata(path string) (*ImageMetadata, error) {
 	return metadata, nil
 }
 
-// ParsePNGMetadataWithContext parses tEXt and iTXt chunks for A1111/ComfyUI metadata
-// and returns a context object that can be used by parser plugins.
 func ParsePNGMetadataWithContext(path string) (*ImageMetadata, *PNGParseContext, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -83,7 +79,6 @@ func ParsePNGMetadataWithContext(path string) (*ImageMetadata, *PNGParseContext,
 	haveSize := false
 	haveParams := false
 
-	// Basic chunk parser
 	for {
 		var length uint32
 		if err := binary.Read(f, binary.BigEndian, &length); err != nil {
@@ -444,7 +439,6 @@ func parseA1111Parameters(params string, metadata *ImageMetadata) {
 		return
 	}
 
-	// The last line usually contains keys like "Steps: 20, Sampler: Euler a, CFG scale: 7..."
 	lastLine := strings.TrimSpace(lines[len(lines)-1])
 	if strings.HasPrefix(lastLine, "Steps:") {
 		parseKeyValuePairs(lastLine, metadata)

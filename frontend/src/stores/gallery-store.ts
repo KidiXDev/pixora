@@ -84,9 +84,7 @@ function persistGallerySortPreferences(
       GALLERY_SORT_STORAGE_KEY,
       JSON.stringify({ sortBy, sortDirection })
     );
-  } catch {
-    // Ignore storage errors so UI interactions continue working.
-  }
+  } catch {}
 }
 
 const persistedSortPreferences = readPersistedGallerySortPreferences();
@@ -118,7 +116,6 @@ function getSnapshot(key: string): GalleryTabSnapshot | null {
     return null;
   }
 
-  // Keep most recently used snapshots alive and evict stale ones first.
   tabSnapshots.delete(key);
   tabSnapshots.set(key, snapshot);
   return snapshot;
@@ -338,8 +335,6 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       return true;
     }
 
-    // Clear stale tab data immediately so scroll restore doesn't run against
-    // the previous tab's image list before the fetch for the new tab starts.
     set({
       images: [],
       totalImages: 0,
@@ -355,7 +350,6 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
   fetchImages: async (clear = false) => {
     const { searchQuery, limit, isLoading, sortBy, sortDirection } = get();
-    // Don't fetch if already loading unless clearing
     if (isLoading && !clear) return;
 
     const activeContext = getActiveTabContext();

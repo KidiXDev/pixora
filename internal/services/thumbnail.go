@@ -38,8 +38,6 @@ func NewThumbnailService() (*ThumbnailService, error) {
 	return &ThumbnailService{cacheDir: cacheDir, inFlight: make(map[string]*thumbGeneration)}, nil
 }
 
-// Generate creates a thumbnail for the image and returns the path to the thumbnail
-// Uses a pure-Go resize path to keep generation fast without CGO.
 func (s *ThumbnailService) Generate(originalPath string, hash string) (string, error) {
 	if originalPath == "" || hash == "" {
 		return "", errors.New("originalPath and hash are required")
@@ -152,7 +150,6 @@ func resizeToFit(img image.Image, maxWidth, maxHeight int) image.Image {
 	newHeight := maxIntThumb(1, int(float64(height)*scale))
 
 	dst := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
-	// ApproxBiLinear is faster than high-quality kernels and is sufficient for thumbnails.
 	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
 
 	return dst
@@ -172,7 +169,6 @@ func maxIntThumb(a, b int) int {
 	return b
 }
 
-// CacheDir returns the directory where thumbnails are stored
 func (s *ThumbnailService) CacheDir() string {
 	return s.cacheDir
 }

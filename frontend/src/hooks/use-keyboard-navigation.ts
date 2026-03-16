@@ -14,7 +14,6 @@ export function useKeyboardNavigation() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in an input
       if (
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA'
@@ -42,7 +41,6 @@ export function useKeyboardNavigation() {
       }
 
       if (!selectedImageId) {
-        // If nothing is selected, selecting the first one on arrow right
         if (e.key === 'ArrowRight' && images.length > 0) {
           setSelectedImageId(images[0].ID);
         }
@@ -70,7 +68,6 @@ export function useKeyboardNavigation() {
 
       if (nextIndex !== currentIndex) {
         setSelectedImageId(images[nextIndex].ID);
-        // Note: For a comprehensive grid, we'd also implement Up/Down accounting for columns
         e.preventDefault();
       }
     };

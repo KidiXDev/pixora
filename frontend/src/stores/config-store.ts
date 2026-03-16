@@ -110,16 +110,12 @@ export const useConfigStore = create<ConfigState>((set) => ({
     try {
       const normalizedPath = (path || '').trim();
       await RemoveFolder(path);
-      // reload
       const config = await GetConfig();
       set({ config });
 
-      // Keep open tabs, but detach them from the removed folder path.
       const tabsStore = useTabsStore.getState();
       const affectedTabIds =
         await tabsStore.clearFolderFromTabs(normalizedPath);
-
-      // If the currently active tab pointed to the removed folder, clear gallery immediately.
       const activeTabId = tabsStore.activeTabId;
       if (activeTabId && affectedTabIds.includes(activeTabId)) {
         const gallery = useGalleryStore.getState();
@@ -136,11 +132,9 @@ export const useConfigStore = create<ConfigState>((set) => ({
   updateFolderAlias: async (path, alias) => {
     try {
       await UpdateFolderAlias(path, alias);
-      // reload
       const config = await GetConfig();
       set({ config });
 
-      // Use useTabsStore to trigger an immediate tab rename
       const tabsStore = useTabsStore.getState();
       const newTabs = tabsStore.tabs.map((t) => {
         if (t.path === path) {
@@ -222,7 +216,6 @@ export const useConfigStore = create<ConfigState>((set) => ({
       throw e;
     }
   },
-
 
   installPlugin: async (zipPath) => {
     try {

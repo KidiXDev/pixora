@@ -37,10 +37,7 @@ type PaginatedImages struct {
 	Limit      int              `json:"limit"`
 }
 
-// GetImages returns a paginated list of images, optionally matching a search query and filtered by folder.
 func (s *GalleryService) GetImages(query string, folderPath string, offset, limit int, sortBy string, direction string) (*PaginatedImages, error) {
-	// Let's implement this in db.go next
-	// This will use FTS5 if query is not empty
 	images, total, err := s.db.SearchImages(context.Background(), query, folderPath, offset, limit, sortBy, direction)
 	if err != nil {
 		return nil, err
@@ -54,24 +51,18 @@ func (s *GalleryService) GetImages(query string, folderPath string, offset, limi
 	}, nil
 }
 
-// GetConfig returns the application configuration.
 func (s *GalleryService) GetConfig() config.AppConfig {
 	return s.config.GetConfig()
 }
-
-// AddFolder adds a new supervised folder and triggers a scan.
 func (s *GalleryService) AddFolder(path string, mode config.ScanMode) error {
 	err := s.config.AddFolder(path, mode)
 	if err != nil {
 		return err
 	}
 
-	// Trigger scan for this new folder immediately
 	go s.indexer.ScanFolder(config.FolderConfig{Path: path, ScanMode: mode})
 	return nil
 }
-
-// RemoveFolder removes a supervised folder and purges indexed images immediately.
 func (s *GalleryService) RemoveFolder(path string) error {
 	s.indexer.StopScan(path)
 	err := s.config.RemoveFolder(path)
@@ -92,7 +83,6 @@ func (s *GalleryService) RemoveFolder(path string) error {
 	return s.db.CheckpointWAL(ctx)
 }
 
-// OpenExternally opens a file using the default OS application
 func (s *GalleryService) OpenExternally(path string) error {
 	cmd, err := buildOpenCommand(path)
 	if err != nil {
@@ -102,7 +92,6 @@ func (s *GalleryService) OpenExternally(path string) error {
 	return cmd.Start()
 }
 
-// ShowInFolder opens the file explorer and selects the file
 func (s *GalleryService) ShowInFolder(path string) error {
 	cmd, err := buildShowInFolderCommand(path)
 	if err != nil {
@@ -182,14 +171,12 @@ func (s *GalleryService) ClearIndexAndReindex() error {
 		return err
 	}
 
-	// Let canceled scans finish unwinding before triggering a full rescan.
 	time.Sleep(150 * time.Millisecond)
 	go s.indexer.ScanAll()
 
 	return nil
 }
 
-// ListParserPlugins returns all parser plugins detected in the plugins directory.
 func (s *GalleryService) ListParserPlugins() ([]ParserPluginInfo, error) {
 	if s.plugins == nil {
 		return []ParserPluginInfo{}, nil
@@ -202,7 +189,6 @@ func (s *GalleryService) ListParserPlugins() ([]ParserPluginInfo, error) {
 	return s.plugins.List(), nil
 }
 
-// SetParserPluginEnabled enables or disables a trusted plugin.
 func (s *GalleryService) SetParserPluginEnabled(pluginID string, enabled bool) error {
 	if s.plugins == nil {
 		return nil
@@ -211,7 +197,6 @@ func (s *GalleryService) SetParserPluginEnabled(pluginID string, enabled bool) e
 	return s.plugins.SetEnabled(pluginID, enabled)
 }
 
-// TrustParserPlugin marks a plugin as trusted. Trusted plugins can be enabled.
 func (s *GalleryService) TrustParserPlugin(pluginID string) error {
 	if s.plugins == nil {
 		return nil
@@ -220,7 +205,6 @@ func (s *GalleryService) TrustParserPlugin(pluginID string) error {
 	return s.plugins.Trust(pluginID, true)
 }
 
-// UntrustParserPlugin revokes trust and disables the plugin.
 func (s *GalleryService) UntrustParserPlugin(pluginID string) error {
 	if s.plugins == nil {
 		return nil
@@ -229,7 +213,6 @@ func (s *GalleryService) UntrustParserPlugin(pluginID string) error {
 	return s.plugins.Trust(pluginID, false)
 }
 
-// InstallParserPlugin installs a plugin from a zip package.
 func (s *GalleryService) InstallParserPlugin(zipPath string) (*ParserPluginInfo, error) {
 	if s.plugins == nil {
 		return nil, nil
@@ -238,7 +221,6 @@ func (s *GalleryService) InstallParserPlugin(zipPath string) (*ParserPluginInfo,
 	return s.plugins.Install(zipPath)
 }
 
-// RemoveParserPlugin removes an installed plugin directory and state.
 func (s *GalleryService) RemoveParserPlugin(pluginID string) error {
 	if s.plugins == nil {
 		return nil
@@ -247,8 +229,6 @@ func (s *GalleryService) RemoveParserPlugin(pluginID string) error {
 	return s.plugins.Remove(pluginID)
 }
 
-// RefetchImageMetadata reparses metadata for a single image and persists the result.
-// mode supports: "default" (built-in parser) and "plugin" (built-in + specific plugin override).
 func (s *GalleryService) RefetchImageMetadata(path string, mode string, pluginID string) (*db.ImageRecord, error) {
 	refetchMode := MetadataRefetchMode(mode)
 	if refetchMode != MetadataRefetchModePlugin {
@@ -258,7 +238,6 @@ func (s *GalleryService) RefetchImageMetadata(path string, mode string, pluginID
 	return s.indexer.RefetchMetadata(path, refetchMode, pluginID)
 }
 
-// ListParserPluginLogs returns recent plugin runtime logs for debugging.
 func (s *GalleryService) ListParserPluginLogs(pluginID string, limit int) []ParserPluginLogEntry {
 	if s.plugins == nil {
 		return []ParserPluginLogEntry{}
@@ -267,7 +246,6 @@ func (s *GalleryService) ListParserPluginLogs(pluginID string, limit int) []Pars
 	return s.plugins.ListLogs(pluginID, limit)
 }
 
-// ClearParserPluginLogs clears the in-memory plugin debug console log buffer.
 func (s *GalleryService) ClearParserPluginLogs() {
 	if s.plugins == nil {
 		return
