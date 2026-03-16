@@ -247,7 +247,7 @@ export default function SettingsPage() {
             containerClassName="flex-1"
             className="p-8 lg:p-12 custom-scrollbar"
           >
-            <div className="max-w-4xl mx-auto">
+            <div className="container mx-auto">
               <TabsContent
                 value="library"
                 className="space-y-10 focus-visible:outline-none"
@@ -280,9 +280,7 @@ export default function SettingsPage() {
                             <SelectValue placeholder="Mode" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectGroup
-                              className="overflow-y-auto max-h-[40vh]"
-                            >
+                            <SelectGroup className="overflow-y-auto max-h-[40vh]">
                               <SelectItem value={ScanMode.ScanModeNormal}>
                                 Normal
                               </SelectItem>

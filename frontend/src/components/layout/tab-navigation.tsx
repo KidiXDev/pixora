@@ -28,7 +28,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  ArrowDownAZ,
+  ArrowDownAZIcon,
+  ArrowUpNarrowWideIcon,
   Copy,
   Folder,
   LayoutGrid,
@@ -39,6 +40,7 @@ import {
   Plus,
   Search,
   Settings,
+  SlidersHorizontal,
   X
 } from 'lucide-react';
 import {
@@ -60,6 +62,7 @@ import {
   ContextMenuTrigger
 } from '../ui/context-menu';
 import { Input } from '../ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import {
   Select,
   SelectContent,
@@ -530,7 +533,7 @@ export function TabNavigation() {
         />
 
         {/* Fixed Right Controls */}
-        <div className="flex items-center gap-2 px-2 shrink-0 ml-1 animate-in fade-in slide-in-from-right-4 duration-500">
+        <div className="flex items-center gap-1.5 px-2 shrink-0 ml-1 animate-in fade-in slide-in-from-right-4 duration-500">
           {isIndexing && (
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 mr-1 text-[10px] font-semibold tracking-tight uppercase animate-in fade-in zoom-in duration-300">
               <Loader2 size={12} className="animate-spin" />
@@ -540,107 +543,142 @@ export function TabNavigation() {
 
           {showControls && (
             <>
-              <div className="relative group transition-all duration-300 w-40 focus-within:w-64">
+              <div className="relative group transition-all duration-300 w-32 focus-within:w-48">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                 <Input
-                  placeholder="Search gallery..."
+                  placeholder="Search..."
                   value={localQuery}
                   onChange={(e) => setLocalQuery(e.target.value)}
                   className="pl-8 h-8 bg-muted/30 border-transparent focus-visible:ring-1 focus-visible:ring-primary/40 text-xs rounded-lg"
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-lg bg-muted/30 border border-border/30 px-1.5 py-1">
-                <ArrowDownAZ size={12} className="text-muted-foreground" />
-                <Select
-                  value={sortBy}
-                  onValueChange={(value) => {
-                    if (!isGallerySortBy(value)) {
-                      return;
-                    }
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground active:scale-95"
+                    title="View Settings"
+                  >
+                    <SlidersHorizontal size={16} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-3" align="end">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70 px-1">
+                        Sorting
+                      </h4>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2 rounded-md bg-muted/30 border border-border/30 px-2 py-1">
+                          <ArrowUpNarrowWideIcon
+                            size={14}
+                            className="text-muted-foreground shrink-0"
+                          />
+                          <Select
+                            value={sortBy}
+                            onValueChange={(value) => {
+                              if (!isGallerySortBy(value)) return;
+                              setSortBy(value);
+                            }}
+                          >
+                            <SelectTrigger className="h-7 w-full border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                              <SelectValue placeholder="Sort by" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {GALLERY_SORT_BY_OPTIONS.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-md bg-muted/30 border border-border/30 px-2 py-1">
+                          <ArrowDownAZIcon
+                            size={14}
+                            className="text-muted-foreground shrink-0"
+                          />
+                          <Select
+                            value={sortDirection}
+                            onValueChange={(value) => {
+                              if (!isGallerySortDirection(value)) return;
+                              setSortDirection(value);
+                            }}
+                          >
+                            <SelectTrigger className="h-7 w-full border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                              <SelectValue placeholder="Direction" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {GALLERY_SORT_DIRECTION_OPTIONS.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
 
-                    setSortBy(value);
-                  }}
-                >
-                  <SelectTrigger className="h-7 w-32 border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GALLERY_SORT_BY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={sortDirection}
-                  onValueChange={(value) => {
-                    if (!isGallerySortDirection(value)) {
-                      return;
-                    }
-
-                    setSortDirection(value);
-                  }}
-                >
-                  <SelectTrigger className="h-7 w-20 border-transparent bg-transparent px-2 text-xs shadow-none focus:ring-0">
-                    <SelectValue placeholder="Order" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GALLERY_SORT_DIRECTION_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5 border border-border/10">
-                <button
-                  onClick={() => setLayoutMode('compact')}
-                  className={cn(
-                    'p-1 px-1.5 rounded-md transition-all',
-                    layoutMode === 'compact'
-                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  title="Compact"
-                >
-                  <LayoutGrid size={13} />
-                </button>
-                <button
-                  onClick={() => setLayoutMode('comfortable')}
-                  className={cn(
-                    'p-1 px-1.5 rounded-md transition-all',
-                    layoutMode === 'comfortable'
-                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  title="Comfortable"
-                >
-                  <LayoutList size={13} />
-                </button>
-                <button
-                  onClick={() => setLayoutMode('spacious')}
-                  className={cn(
-                    'p-1 px-1.5 rounded-md transition-all',
-                    layoutMode === 'spacious'
-                      ? 'bg-background text-primary shadow-xs ring-1 ring-border/20'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  title="Spacious"
-                >
-                  <LayoutPanelLeft size={13} />
-                </button>
-              </div>
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70 px-1">
+                        Layout Mode
+                      </h4>
+                      <div className="flex items-center gap-1 rounded-md bg-muted/40 p-1 border border-border/10">
+                        <button
+                          onClick={() => setLayoutMode('compact')}
+                          className={cn(
+                            'flex-1 flex items-center justify-center gap-2 h-8 rounded-md transition-all text-xs font-medium',
+                            layoutMode === 'compact'
+                              ? 'bg-background text-primary shadow-sm ring-1 ring-border/20'
+                              : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          <LayoutGrid size={14} />
+                          <span>Compact</span>
+                        </button>
+                        <button
+                          onClick={() => setLayoutMode('comfortable')}
+                          className={cn(
+                            'flex-1 flex items-center justify-center gap-2 h-8 rounded-md transition-all text-xs font-medium',
+                            layoutMode === 'comfortable'
+                              ? 'bg-background text-primary shadow-sm ring-1 ring-border/20'
+                              : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          <LayoutList size={14} />
+                          <span>List</span>
+                        </button>
+                        <button
+                          onClick={() => setLayoutMode('spacious')}
+                          className={cn(
+                            'flex-1 flex items-center justify-center gap-2 h-8 rounded-md transition-all text-xs font-medium',
+                            layoutMode === 'spacious'
+                              ? 'bg-background text-primary shadow-sm ring-1 ring-border/20'
+                              : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          <LayoutPanelLeft size={14} />
+                          <span>Full</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </>
           )}
 
           {activeTab?.path !== SETTINGS_TAB_PATH && (
             <button
               onClick={handleOpenSettingsTab}
-              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground active:scale-95"
               title="Settings"
             >
               <Settings size={16} />
