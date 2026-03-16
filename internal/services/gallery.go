@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"pixora/internal/config"
 	"pixora/internal/db"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -37,6 +39,22 @@ type PaginatedImages struct {
 	Limit      int              `json:"limit"`
 }
 
+type FolderEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type FolderBrowseResponse struct {
+	RootPath    string           `json:"rootPath"`
+	CurrentPath string           `json:"currentPath"`
+	ParentPath  string           `json:"parentPath"`
+	Folders     []FolderEntry    `json:"folders"`
+	Images      []db.ImageRecord `json:"images"`
+	TotalCount  int              `json:"totalCount"`
+	Offset      int              `json:"offset"`
+	Limit       int              `json:"limit"`
+}
+
 func (s *GalleryService) GetImages(query string, folderPath string, offset, limit int, sortBy string, direction string) (*PaginatedImages, error) {
 	images, total, err := s.db.SearchImages(context.Background(), query, folderPath, offset, limit, sortBy, direction)
 	if err != nil {
@@ -49,6 +67,111 @@ func (s *GalleryService) GetImages(query string, folderPath string, offset, limi
 		Offset:     offset,
 		Limit:      limit,
 	}, nil
+}
+
+func (s *GalleryService) BrowseFolder(query string, rootPath string, currentPath string, offset, limit int, sortBy string, direction string) (*FolderBrowseResponse, error) {
+	normalizedRoot := strings.TrimSpace(filepath.Clean(rootPath))
+	if normalizedRoot == "" {
+		return &FolderBrowseResponse{
+			RootPath:    "",
+			CurrentPath: "",
+			ParentPath:  "",
+			Folders:     []FolderEntry{},
+			Images:      []db.ImageRecord{},
+			TotalCount:  0,
+			Offset:      offset,
+			Limit:       limit,
+		}, nil
+	}
+
+	normalizedCurrent := normalizedRoot
+	trimmedCurrent := strings.TrimSpace(currentPath)
+	if trimmedCurrent != "" {
+		candidate := filepath.Clean(trimmedCurrent)
+		if pathWithinRoot(candidate, normalizedRoot) {
+			normalizedCurrent = candidate
+		}
+	}
+
+	result, err := s.db.BrowseFolder(context.Background(), normalizedCurrent, query, offset, limit, sortBy, direction)
+	if err != nil {
+		return nil, err
+	}
+
+	parentPath := ""
+	if normalizedCurrent != normalizedRoot {
+		parent := filepath.Dir(normalizedCurrent)
+		if parent != "" && pathWithinRoot(parent, normalizedRoot) {
+			parentPath = parent
+		}
+	}
+
+	folders, err := listDirectFolders(normalizedCurrent, query)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FolderBrowseResponse{
+		RootPath:    normalizedRoot,
+		CurrentPath: normalizedCurrent,
+		ParentPath:  parentPath,
+		Folders:     folders,
+		Images:      result.Images,
+		TotalCount:  result.TotalImages,
+		Offset:      offset,
+		Limit:       limit,
+	}, nil
+}
+
+func listDirectFolders(currentPath string, query string) ([]FolderEntry, error) {
+	entries, err := os.ReadDir(currentPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []FolderEntry{}, nil
+		}
+		return nil, err
+	}
+
+	queryLower := strings.ToLower(strings.TrimSpace(query))
+	folders := make([]FolderEntry, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		name := strings.TrimSpace(entry.Name())
+		if name == "" {
+			continue
+		}
+
+		if queryLower != "" && !strings.Contains(strings.ToLower(name), queryLower) {
+			continue
+		}
+
+		folders = append(folders, FolderEntry{
+			Name: name,
+			Path: filepath.Join(currentPath, name),
+		})
+	}
+
+	return folders, nil
+}
+
+func pathWithinRoot(path string, root string) bool {
+	if path == root {
+		return true
+	}
+
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+
+	if rel == "." {
+		return true
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (s *GalleryService) GetConfig() config.AppConfig {

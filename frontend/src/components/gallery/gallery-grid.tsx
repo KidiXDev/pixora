@@ -4,7 +4,7 @@ import SettingsPage from '@/pages/settings-page';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { LayoutGrid } from 'lucide-react';
+import { ChevronUp, LayoutGrid } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -18,6 +18,7 @@ import { useDebouncedCallback } from 'use-debounce';
 import { ScrollablePage } from '../layout/scrollable-page';
 import { Skeleton } from '../ui/skeleton';
 import { Spinner } from '../ui/spinner';
+import { FolderTile } from './folder-tile';
 import { ImageTile } from './image-tile';
 import { TabSetup } from './tab-setup';
 
@@ -131,6 +132,19 @@ interface TabActivationProfile {
   restoreCalls: number;
   restoreTotalMs: number;
 }
+
+type GalleryGridEntry =
+  | {
+      kind: 'folder';
+      key: string;
+      folderPath: string;
+      folderName: string;
+    }
+  | {
+      kind: 'image';
+      key: string;
+      image: ReturnType<typeof useGalleryStore.getState>['images'][number];
+    };
 
 function logTabScroll(
   message: string,
@@ -325,6 +339,14 @@ function TabScopedImageGrid({
 }) {
   const layoutMode = useGalleryStore((state) => state.layoutMode);
   const images = useGalleryStore((state) => state.images);
+  const folders = useGalleryStore((state) => state.folders);
+  const rootFolderPath = useGalleryStore((state) => state.rootFolderPath);
+  const currentFolderPath = useGalleryStore((state) => state.currentFolderPath);
+  const parentFolderPath = useGalleryStore((state) => state.parentFolderPath);
+  const navigateToFolder = useGalleryStore((state) => state.navigateToFolder);
+  const navigateToParentFolder = useGalleryStore(
+    (state) => state.navigateToParentFolder
+  );
   const selectedImageId = useGalleryStore((state) => state.selectedImageId);
   const setSelectedImageId = useGalleryStore(
     (state) => state.setSelectedImageId
@@ -347,6 +369,7 @@ function TabScopedImageGrid({
   const restoreFetchInFlightRef = useRef(false);
   const isRestoringScrollRef = useRef(false);
   const didRestoreScrollRef = useRef(false);
+  const lastKnownTabScrollTopRef = useRef(0);
   const tabActivationProfileRef = useRef<TabActivationProfile | null>(null);
   const hasLoggedTabActivationProfileRef = useRef(false);
 
@@ -399,6 +422,7 @@ function TabScopedImageGrid({
     }
 
     const savedScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
+    lastKnownTabScrollTopRef.current = savedScrollTop;
     isRestoringScrollRef.current = savedScrollTop > 0;
     didRestoreScrollRef.current = savedScrollTop <= 0;
     logTabScroll('tab mount', {
@@ -412,22 +436,34 @@ function TabScopedImageGrid({
         return;
       }
 
+      lastKnownTabScrollTopRef.current = el.scrollTop;
       debouncedSetTabScrollTop(activeTabId, el.scrollTop);
     };
 
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
-      if (el.scrollTop > 0) {
-        setTabScrollTop(activeTabId, el.scrollTop);
-      }
+      debouncedSetTabScrollTop.flush();
+
+      const domScrollTop = el.scrollTop;
+      const currentStoredScrollTop = tabScrollTopById.get(activeTabId) ?? 0;
+      const finalizedScrollTop =
+        domScrollTop > 0 || lastKnownTabScrollTopRef.current === 0
+          ? domScrollTop
+          : Math.max(currentStoredScrollTop, lastKnownTabScrollTopRef.current);
+
+      setTabScrollTop(activeTabId, finalizedScrollTop);
       logTabScroll('tab unmount keep', {
         tabId: activeTabId,
-        domScrollTop: el.scrollTop,
+        domScrollTop,
+        lastKnownScrollTop: lastKnownTabScrollTopRef.current,
+        finalizedScrollTop,
         keptScrollTop: tabScrollTopById.get(activeTabId) ?? 0
       });
+
+      debouncedSetTabScrollTop.cancel();
       el.removeEventListener('scroll', handleScroll);
     };
-  }, [activeTabId]);
+  }, [activeTabId, debouncedSetTabScrollTop]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -479,7 +515,10 @@ function TabScopedImageGrid({
 
   // Virtualizer for the grid rows
   const rowVirtualizer = useVirtualizer({
-    count: Math.ceil(Math.max(images.length, totalImages) / columns),
+    count: Math.ceil(
+      Math.max(folders.length + images.length, folders.length + totalImages) /
+        columns
+    ),
     initialOffset,
     getScrollElement: () => parentRef.current,
     estimateSize: () =>
@@ -591,7 +630,7 @@ function TabScopedImageGrid({
     tabActivationProfileRef.current.virtualItemsTotalMs +=
       virtualItemsDurationMs;
   }
-  const loadedRows = Math.ceil(images.length / columns);
+  const loadedRows = Math.ceil((folders.length + images.length) / columns);
   const lastVirtualIndex =
     virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
@@ -680,6 +719,17 @@ function TabScopedImageGrid({
     [setSelectedImageId]
   );
 
+  const handleOpenFolder = useCallback(
+    (path: string) => {
+      void navigateToFolder(path);
+    },
+    [navigateToFolder]
+  );
+
+  const handleGoParent = useCallback(() => {
+    void navigateToParentFolder();
+  }, [navigateToParentFolder]);
+
   const handleCompareDragStart = useCallback((imageId: number) => {
     setDraggingImageId(imageId);
   }, []);
@@ -719,8 +769,31 @@ function TabScopedImageGrid({
 
   const rowContainerHeight = useMemo(
     () => `${rowVirtualizer.getTotalSize()}px`,
-    [rowVirtualizer, virtualItems.length, images.length, columns]
+    [
+      rowVirtualizer,
+      virtualItems.length,
+      images.length,
+      folders.length,
+      columns
+    ]
   );
+
+  const entries = useMemo<GalleryGridEntry[]>(() => {
+    const folderEntries: GalleryGridEntry[] = folders.map((folder) => ({
+      kind: 'folder',
+      key: `folder:${folder.path}`,
+      folderPath: folder.path,
+      folderName: folder.name
+    }));
+
+    const imageEntries: GalleryGridEntry[] = images.map((image) => ({
+      kind: 'image',
+      key: `image:${image.ID}`,
+      image
+    }));
+
+    return [...folderEntries, ...imageEntries];
+  }, [folders, images]);
 
   return (
     <ScrollablePage
@@ -729,7 +802,29 @@ function TabScopedImageGrid({
       containerClassName="h-full w-full"
     >
       <div className="h-full w-full">
-        {images.length === 0 ? (
+        {activeTabId && currentFolderPath && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGoParent}
+              disabled={!parentFolderPath}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border/60 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              title={
+                parentFolderPath
+                  ? `Go to parent: ${parentFolderPath}`
+                  : 'Already at root folder'
+              }
+            >
+              <ChevronUp size={14} />
+              Parent
+            </button>
+            <span className="max-w-[70ch] truncate text-xs text-muted-foreground">
+              {currentFolderPath || rootFolderPath}
+            </span>
+          </div>
+        )}
+
+        {images.length === 0 && folders.length === 0 ? (
           isLoading ? (
             <div
               className="grid gap-4"
@@ -752,7 +847,7 @@ function TabScopedImageGrid({
               ))}
             </div>
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
+            <div className="flex h-full -mt-8 w-full flex-col items-center justify-center text-muted-foreground p-12 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
                 <LayoutGrid size={40} className="text-muted-foreground/40" />
               </div>
@@ -767,29 +862,32 @@ function TabScopedImageGrid({
                 {!activeTabId
                   ? 'Start browsing your AI generated art by creating your first folder tab.'
                   : searchQuery
-                    ? `We couldn't find any images matching "${searchQuery}" in this folder.`
+                    ? `We couldn't find matching folders or images for "${searchQuery}" in this location.`
                     : 'This folder is being indexed or contains no supported image formats.'}
               </p>
             </div>
           )
         ) : (
-          <VirtualizedRows
-            rowContainerHeight={rowContainerHeight}
-            virtualItems={virtualItems}
-            columns={columns}
-            images={images}
-            selectedImageId={selectedImageId}
-            layoutMode={layoutMode}
-            draggingImageId={draggingImageId}
-            comparePickImageId={comparePickImageId}
-            onTileClick={handleTileClick}
-            onCompareDragStart={handleCompareDragStart}
-            onCompareDragEnd={handleCompareDragEnd}
-            onCompareDrop={handleCompareDrop}
-            onCompareQuickPick={handleCompareQuickPick}
-          />
+          <>
+            <VirtualizedRows
+              rowContainerHeight={rowContainerHeight}
+              virtualItems={virtualItems}
+              columns={columns}
+              entries={entries}
+              selectedImageId={selectedImageId}
+              layoutMode={layoutMode}
+              draggingImageId={draggingImageId}
+              comparePickImageId={comparePickImageId}
+              onTileClick={handleTileClick}
+              onFolderOpen={handleOpenFolder}
+              onCompareDragStart={handleCompareDragStart}
+              onCompareDragEnd={handleCompareDragEnd}
+              onCompareDrop={handleCompareDrop}
+              onCompareQuickPick={handleCompareQuickPick}
+            />
+          </>
         )}
-        {isLoading && images.length > 0 && (
+        {isLoading && (images.length > 0 || folders.length > 0) && (
           <div className="flex justify-center p-8">
             <Spinner className="size-6 text-primary" />
           </div>
@@ -805,12 +903,13 @@ interface VirtualizedRowsProps {
     ReturnType<typeof useVirtualizer>['getVirtualItems']
   >;
   columns: number;
-  images: ReturnType<typeof useGalleryStore.getState>['images'];
+  entries: GalleryGridEntry[];
   selectedImageId: number | null;
   layoutMode: 'compact' | 'comfortable' | 'spacious';
   draggingImageId: number | null;
   comparePickImageId: number | null;
   onTileClick: (imageId: number) => void;
+  onFolderOpen: (path: string) => void;
   onCompareDragStart: (imageId: number) => void;
   onCompareDragEnd: () => void;
   onCompareDrop: (sourceId: number, targetId: number) => void;
@@ -821,12 +920,13 @@ const VirtualizedRows = memo(function VirtualizedRows({
   rowContainerHeight,
   virtualItems,
   columns,
-  images,
+  entries,
   selectedImageId,
   layoutMode,
   draggingImageId,
   comparePickImageId,
   onTileClick,
+  onFolderOpen,
   onCompareDragStart,
   onCompareDragEnd,
   onCompareDrop,
@@ -854,15 +954,30 @@ const VirtualizedRows = memo(function VirtualizedRows({
           className="flex gap-4 pb-4"
         >
           {Array.from({ length: columns }).map((_, columnIndex) => {
-            const imageIndex = virtualRow.index * columns + columnIndex;
-            const image = images[imageIndex];
+            const entryIndex = virtualRow.index * columns + columnIndex;
+            const entry = entries[entryIndex];
 
-            if (!image) {
+            if (!entry) {
               return <div key={`empty-${columnIndex}`} className="flex-1" />;
             }
 
+            if (entry.kind === 'folder') {
+              return (
+                <div key={entry.key} className="flex-1">
+                  <FolderTile
+                    folderPath={entry.folderPath}
+                    folderName={entry.folderName}
+                    layoutMode={layoutMode}
+                    onOpen={onFolderOpen}
+                  />
+                </div>
+              );
+            }
+
+            const image = entry.image;
+
             return (
-              <div key={image.ID} className="flex-1">
+              <div key={entry.key} className="flex-1">
                 <ImageTile
                   image={image}
                   isSelected={selectedImageId === image.ID}

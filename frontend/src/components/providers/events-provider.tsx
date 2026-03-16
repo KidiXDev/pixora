@@ -1,6 +1,5 @@
 import { useGalleryStore } from '@/stores/gallery-store';
 import { ScanStatus, useIndexingStore } from '@/stores/indexing-store';
-import { useTabsStore } from '@/stores/tabs-store';
 import { Events } from '@wailsio/runtime';
 import { useEffect } from 'react';
 
@@ -8,6 +7,15 @@ interface ThumbnailReadyEvent {
   hash: string;
   path: string;
   folderPath: string;
+}
+
+interface LibraryChangeEvent {
+  operation: string;
+  path: string;
+  oldPath: string;
+  folderPath: string;
+  oldFolderPath: string;
+  isDir: boolean;
 }
 
 export function EventsProvider({ children }: { children: React.ReactNode }) {
@@ -22,26 +30,51 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let refreshInFlight = false;
+    let refreshPending = false;
+
+    const runRefresh = async () => {
+      refreshInFlight = true;
+      try {
+        await fetchImages();
+      } finally {
+        refreshInFlight = false;
+        if (refreshPending) {
+          refreshPending = false;
+          queueRefresh();
+        }
+      }
+    };
 
     const queueRefresh = () => {
-      if (refreshTimer || refreshInFlight) return;
+      if (refreshTimer || refreshInFlight) {
+        refreshPending = true;
+        return;
+      }
+
       refreshTimer = setTimeout(async () => {
         refreshTimer = null;
-        refreshInFlight = true;
-        try {
-          await fetchImages();
-        } finally {
-          refreshInFlight = false;
-        }
+        await runRefresh();
       }, 120);
     };
 
-    const isInActiveFolderScope = (imagePath: string): boolean => {
-      const { tabs, activeTabId } = useTabsStore.getState();
-      const activeTab = tabs.find((t) => t.id === activeTabId);
-      const activePath = (activeTab?.path || '').trim();
-      if (!activePath) return false;
-      return imagePath.startsWith(activePath);
+    const isInActiveScope = (path: string): boolean => {
+      const { rootFolderPath, currentFolderPath } = useGalleryStore.getState();
+      const activeRoot = rootFolderPath.trim();
+      const activeCurrent = currentFolderPath.trim();
+      if (!activeRoot || !activeCurrent || !path) {
+        return false;
+      }
+
+      if (path === activeCurrent) {
+        return true;
+      }
+
+      const withSep =
+        activeCurrent.endsWith('\\') || activeCurrent.endsWith('/')
+          ? activeCurrent
+          : `${activeCurrent}${activeCurrent.includes('\\') ? '\\' : '/'}`;
+
+      return path.startsWith(withSep);
     };
 
     // Listen for indexing events
@@ -61,25 +94,42 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
       const folderPath = getPayload<string>(e.data);
       if (!folderPath) return;
       removeScan(folderPath);
-      // Refresh gallery when indexing finishes to show new images
-      fetchImages();
+      queueRefresh();
     });
 
     const unsubThumbReady = Events.On('thumbnail:ready', (e) => {
       const payload = getPayload<ThumbnailReadyEvent>(e.data);
       if (!payload?.path) return;
-      if (!isInActiveFolderScope(payload.path)) return;
+      if (!isInActiveScope(payload.path)) return;
       queueRefresh();
+    });
+
+    const unsubLibraryChanged = Events.On('library:changed', (e) => {
+      const payload = getPayload<LibraryChangeEvent>(e.data);
+      if (!payload) {
+        return;
+      }
+
+      if (payload.path && isInActiveScope(payload.path)) {
+        queueRefresh();
+        return;
+      }
+
+      if (payload.oldPath && isInActiveScope(payload.oldPath)) {
+        queueRefresh();
+      }
     });
 
     return () => {
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
+      refreshPending = false;
       unsubStart();
       unsubProgress();
       unsubEnd();
       unsubThumbReady();
+      unsubLibraryChanged();
     };
   }, [upsertScan, startScan, removeScan, fetchImages]);
 

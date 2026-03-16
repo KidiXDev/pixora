@@ -7,6 +7,8 @@ export {
 };
 
 export {
+    FolderBrowseResponse,
+    FolderEntry,
     PaginatedImages,
     ParserPluginInfo,
     ParserPluginLogEntry

@@ -87,6 +87,17 @@ type ImageRecord struct {
 	AddedAt        time.Time
 }
 
+type FolderRecord struct {
+	Name string
+	Path string
+}
+
+type FolderBrowseResult struct {
+	Folders     []FolderRecord
+	Images      []ImageRecord
+	TotalImages int
+}
+
 const (
 	MetadataStatusUnknown = 0
 	MetadataStatusPresent = 1
@@ -385,17 +396,38 @@ func (d *DB) RemoveImage(ctx context.Context, path string) error {
 }
 
 func (d *DB) RemoveImageAndGetHash(ctx context.Context, path string) (string, error) {
-	var hash string
-	err := d.db.QueryRowContext(ctx, `SELECT hash FROM images WHERE path = ?`, path).Scan(&hash)
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
+		return "", err
+	}
+
+	var hash string
+	err = tx.QueryRowContext(ctx, `SELECT hash FROM images WHERE path = ?`, path).Scan(&hash)
+	if err != nil {
+		_ = tx.Rollback()
 		if err == sql.ErrNoRows {
 			return "", nil
 		}
 		return "", err
 	}
 
-	if err := d.RemoveImage(ctx, path); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM images WHERE path = ?`, path); err != nil {
+		_ = tx.Rollback()
 		return "", err
+	}
+
+	var remainingCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM images WHERE hash = ?`, hash).Scan(&remainingCount); err != nil {
+		_ = tx.Rollback()
+		return "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+
+	if remainingCount > 0 {
+		return "", nil
 	}
 
 	return hash, nil
@@ -404,26 +436,97 @@ func (d *DB) RemoveImageAndGetHash(ctx context.Context, path string) (string, er
 func (d *DB) RemoveImagesByFolder(ctx context.Context, folderPath string) ([]string, error) {
 	searchPath := folderPath + "%"
 
-	rows, err := d.db.QueryContext(ctx, `SELECT hash FROM images WHERE path LIKE ?`, searchPath)
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	hashes := []string{}
-	for rows.Next() {
-		var hash string
-		if err := rows.Scan(&hash); err != nil {
-			return nil, err
-		}
-		hashes = append(hashes, hash)
-	}
-
-	if _, err := d.db.ExecContext(ctx, `DELETE FROM images WHERE path LIKE ?;`, searchPath); err != nil {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT hash FROM images WHERE path LIKE ?`, searchPath)
+	if err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
 
-	return hashes, nil
+	hashes := make([]string, 0)
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			rows.Close()
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if strings.TrimSpace(hash) != "" {
+			hashes = append(hashes, hash)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		_ = tx.Rollback()
+		return nil, err
+	}
+	rows.Close()
+
+	if len(hashes) == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM images WHERE path LIKE ?;`, searchPath); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return []string{}, nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM images WHERE path LIKE ?;`, searchPath); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+
+	placeholders := make([]string, len(hashes))
+	args := make([]interface{}, len(hashes))
+	for idx, hash := range hashes {
+		placeholders[idx] = "?"
+		args[idx] = hash
+	}
+
+	remainingRows, err := tx.QueryContext(ctx,
+		`SELECT DISTINCT hash FROM images WHERE hash IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+
+	remainingHashes := make(map[string]struct{}, len(hashes))
+	for remainingRows.Next() {
+		var hash string
+		if err := remainingRows.Scan(&hash); err != nil {
+			remainingRows.Close()
+			_ = tx.Rollback()
+			return nil, err
+		}
+		remainingHashes[hash] = struct{}{}
+	}
+	if err := remainingRows.Err(); err != nil {
+		remainingRows.Close()
+		_ = tx.Rollback()
+		return nil, err
+	}
+	remainingRows.Close()
+
+	orphanHashes := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if _, exists := remainingHashes[hash]; !exists {
+			orphanHashes = append(orphanHashes, hash)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return orphanHashes, nil
 }
 
 func (d *DB) ClearImages(ctx context.Context) error {
@@ -541,6 +644,164 @@ func (d *DB) SearchImages(ctx context.Context, query string, folderPath string, 
 			return nil, 0, err
 		}
 		images = append(images, img)
+	}
+
+	return images, total, nil
+}
+
+func (d *DB) BrowseFolder(ctx context.Context, folderPath string, query string, offset, limit int, sortBy string, direction string) (FolderBrowseResult, error) {
+	normalizedFolderPath := strings.TrimSpace(filepath.Clean(folderPath))
+	if normalizedFolderPath == "" {
+		return FolderBrowseResult{}, nil
+	}
+
+	folderPrefix := normalizedFolderPath + string(filepath.Separator)
+	sep := string(filepath.Separator)
+
+	folderRows, err := d.db.QueryContext(ctx, `
+		SELECT DISTINCT substr(rest, 1, instr(rest, ?) - 1) AS folder_name
+		FROM (
+			SELECT substr(path, length(?) + 1) AS rest
+			FROM images
+			WHERE thumb_ready = 1 AND path LIKE ?
+		) AS children
+		WHERE instr(rest, ?) > 0
+		ORDER BY folder_name COLLATE NOCASE ASC
+	`, sep, folderPrefix, folderPrefix+"%", sep)
+	if err != nil {
+		return FolderBrowseResult{}, err
+	}
+	defer folderRows.Close()
+
+	folders := make([]FolderRecord, 0)
+	for folderRows.Next() {
+		var folderName string
+		if err := folderRows.Scan(&folderName); err != nil {
+			return FolderBrowseResult{}, err
+		}
+
+		trimmedFolderName := strings.TrimSpace(folderName)
+		if trimmedFolderName == "" {
+			continue
+		}
+
+		folders = append(folders, FolderRecord{
+			Name: trimmedFolderName,
+			Path: filepath.Join(normalizedFolderPath, trimmedFolderName),
+		})
+	}
+
+	if err := folderRows.Err(); err != nil {
+		return FolderBrowseResult{}, err
+	}
+
+	if query != "" {
+		queryLower := strings.ToLower(strings.TrimSpace(query))
+		if queryLower != "" {
+			filteredFolders := make([]FolderRecord, 0, len(folders))
+			for _, folder := range folders {
+				if strings.Contains(strings.ToLower(folder.Name), queryLower) {
+					filteredFolders = append(filteredFolders, folder)
+				}
+			}
+			folders = filteredFolders
+		}
+	}
+
+	images, total, err := d.searchImagesDirectChildren(ctx, normalizedFolderPath, query, offset, limit, sortBy, direction)
+	if err != nil {
+		return FolderBrowseResult{}, err
+	}
+
+	return FolderBrowseResult{
+		Folders:     folders,
+		Images:      images,
+		TotalImages: total,
+	}, nil
+}
+
+func (d *DB) searchImagesDirectChildren(ctx context.Context, folderPath string, query string, offset, limit int, sortBy string, direction string) ([]ImageRecord, int, error) {
+	var total int
+	var countQuery string
+	var rowsQuery string
+	var args []interface{}
+	var countArgs []interface{}
+
+	trimmedQuery := strings.TrimSpace(query)
+	normalizedSortBy, normalizedDirection := normalizeGallerySort(sortBy, direction)
+	folderPrefix := folderPath + string(filepath.Separator)
+	sep := string(filepath.Separator)
+
+	directChildClause := `thumb_ready = 1 AND path LIKE ? AND instr(substr(path, length(?) + 1), ?) = 0`
+
+	if trimmedQuery == "" {
+		countQuery = "SELECT COUNT(*) FROM images WHERE " + directChildClause
+		countArgs = append(countArgs, folderPrefix+"%", folderPrefix, sep)
+
+		rowsQuery = "SELECT id, path, hash, thumb_ready, metadata_status, file_size, modified_unix_ns, prompt, negative_prompt, model, sampler, seed, cfg_scale, width, height, added_at FROM images WHERE " + directChildClause
+		args = append(args, folderPrefix+"%", folderPrefix, sep)
+		rowsQuery += buildGalleryOrderClause("", normalizedSortBy, normalizedDirection)
+		rowsQuery += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+
+		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		searchStr := buildFTSQuery(trimmedQuery)
+		if searchStr == "" {
+			return d.searchImagesDirectChildren(ctx, folderPath, "", offset, limit, sortBy, direction)
+		}
+
+		countQuery = `SELECT COUNT(*)
+			FROM images_fts f
+			JOIN images i ON f.rowid = i.id
+			WHERE images_fts MATCH ?
+			  AND i.thumb_ready = 1
+			  AND i.path LIKE ?
+			  AND instr(substr(i.path, length(?) + 1), ?) = 0`
+		countArgs = append(countArgs, searchStr, folderPrefix+"%", folderPrefix, sep)
+
+		rowsQuery = `SELECT i.id, i.path, i.hash, i.thumb_ready, i.metadata_status, i.file_size, i.modified_unix_ns, i.prompt, i.negative_prompt, i.model, i.sampler, i.seed, i.cfg_scale, i.width, i.height, i.added_at
+			FROM images_fts f
+			JOIN images i ON f.rowid = i.id
+			WHERE images_fts MATCH ?
+			  AND i.thumb_ready = 1
+			  AND i.path LIKE ?
+			  AND instr(substr(i.path, length(?) + 1), ?) = 0`
+		args = append(args, searchStr, folderPrefix+"%", folderPrefix, sep)
+		rowsQuery += buildGalleryOrderClause("i", normalizedSortBy, normalizedDirection)
+		rowsQuery += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+
+		err := d.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	rows, err := d.db.QueryContext(ctx, rowsQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	images := make([]ImageRecord, 0)
+	for rows.Next() {
+		var img ImageRecord
+		if err := rows.Scan(
+			&img.ID, &img.Path, &img.Hash, &img.ThumbReady, &img.MetadataStatus, &img.FileSize, &img.ModifiedUnixNs,
+			&img.Prompt, &img.NegativePrompt, &img.Model, &img.Sampler, &img.Seed, &img.CfgScale,
+			&img.Width, &img.Height, &img.AddedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		images = append(images, img)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
 	}
 
 	return images, total, nil

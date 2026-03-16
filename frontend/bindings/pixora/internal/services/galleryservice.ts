@@ -23,6 +23,12 @@ export function AddFolder(path: string, mode: config$0.ScanMode): $CancellablePr
     return $Call.ByID(255073735, path, mode);
 }
 
+export function BrowseFolder(query: string, rootPath: string, currentPath: string, offset: number, limit: number, sortBy: string, direction: string): $CancellablePromise<$models.FolderBrowseResponse | null> {
+    return $Call.ByID(1188510034, query, rootPath, currentPath, offset, limit, sortBy, direction).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 /**
  * ClearIndexAndReindex clears indexed image data and thumbnail cache, then starts a fresh scan.
  */
@@ -36,31 +42,31 @@ export function ClearParserPluginLogs(): $CancellablePromise<void> {
 
 export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
     return $Call.ByID(1693510026).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
 export function GetImages(query: string, folderPath: string, offset: number, limit: number, sortBy: string, direction: string): $CancellablePromise<$models.PaginatedImages | null> {
     return $Call.ByID(3312439230, query, folderPath, offset, limit, sortBy, direction).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
 export function InstallParserPlugin(zipPath: string): $CancellablePromise<$models.ParserPluginInfo | null> {
     return $Call.ByID(2873676735, zipPath).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
 }
 
 export function ListParserPluginLogs(pluginID: string, limit: number): $CancellablePromise<$models.ParserPluginLogEntry[]> {
     return $Call.ByID(877205903, pluginID, limit).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
 export function ListParserPlugins(): $CancellablePromise<$models.ParserPluginInfo[]> {
     return $Call.ByID(607641509).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
@@ -70,7 +76,7 @@ export function OpenExternally(path: string): $CancellablePromise<void> {
 
 export function RefetchImageMetadata(path: string, mode: string, pluginID: string): $CancellablePromise<db$0.ImageRecord | null> {
     return $Call.ByID(2762129337, path, mode, pluginID).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -134,13 +140,15 @@ export function UpdateFolderAlias(path: string, alias: string): $CancellableProm
 }
 
 // Private type creation functions
-const $$createType0 = config$0.AppConfig.createFrom;
-const $$createType1 = $models.PaginatedImages.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = $models.ParserPluginInfo.createFrom;
+const $$createType0 = $models.FolderBrowseResponse.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = config$0.AppConfig.createFrom;
+const $$createType3 = $models.PaginatedImages.createFrom;
 const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $models.ParserPluginLogEntry.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $Create.Array($$createType3);
-const $$createType8 = db$0.ImageRecord.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
+const $$createType5 = $models.ParserPluginInfo.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = $models.ParserPluginLogEntry.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = $Create.Array($$createType5);
+const $$createType10 = db$0.ImageRecord.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);

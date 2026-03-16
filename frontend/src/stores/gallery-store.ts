@@ -1,17 +1,65 @@
 import { isPageTabPath } from '@/lib/tab-pages';
 import { create } from 'zustand';
 import { ImageRecord } from '../../bindings/pixora/internal/db/models';
-import { GetImages } from '../../bindings/pixora/internal/services/galleryservice';
+import {
+  BrowseFolder,
+  GetImages
+} from '../../bindings/pixora/internal/services/galleryservice';
 import { useTabsStore } from './tabs-store';
 
 type LayoutMode = 'compact' | 'comfortable' | 'spacious';
 export type GallerySortBy = 'created' | 'modified' | 'name' | 'size';
 export type GallerySortDirection = 'asc' | 'desc';
 
-const GALLERY_SORT_STORAGE_KEY = 'pixora:gallery-sort-preferences';
+export interface FolderEntry {
+  name: string;
+  path: string;
+}
 
+interface FolderBrowseResponse {
+  rootPath: string;
+  currentPath: string;
+  parentPath: string;
+  folders: FolderEntry[];
+  images: ImageRecord[];
+  totalCount: number;
+  offset: number;
+  limit: number;
+}
+
+const GALLERY_SORT_STORAGE_KEY = 'pixora:gallery-sort-preferences';
+const TAB_FOLDER_STORAGE_KEY = 'pixora:tab-folder-path';
 const DEFAULT_GALLERY_SORT_BY: GallerySortBy = 'modified';
 const DEFAULT_GALLERY_SORT_DIRECTION: GallerySortDirection = 'desc';
+const MAX_TAB_SNAPSHOT_ENTRIES = 12;
+
+let latestFetchRequestId = 0;
+let inFlightNextPageKey: string | null = null;
+let persistTabFolderTimer: ReturnType<typeof setTimeout> | null = null;
+
+interface ActiveTabContext {
+  tabId: string;
+  rootPath: string;
+  isWalk: boolean;
+}
+
+interface GalleryTabSnapshot {
+  rootFolderPath: string;
+  currentFolderPath: string;
+  parentFolderPath: string;
+  folders: FolderEntry[];
+  images: ImageRecord[];
+  totalImages: number;
+  selectedImageId: number | null;
+  compareImageIds: [number, number] | null;
+  compareSlider: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+const tabSnapshots = new Map<string, GalleryTabSnapshot>();
+
+const tabFolderPathById = readPersistedTabFolderPaths();
 
 function isGallerySortBy(value: unknown): value is GallerySortBy {
   return (
@@ -24,6 +72,41 @@ function isGallerySortBy(value: unknown): value is GallerySortBy {
 
 function isGallerySortDirection(value: unknown): value is GallerySortDirection {
   return value === 'asc' || value === 'desc';
+}
+
+function normalizePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const sep = trimmed.includes('\\') ? '\\' : '/';
+  const splitPattern = /[/\\]+/;
+  const root = /^[A-Za-z]:/.test(trimmed) ? trimmed.slice(0, 2) : '';
+  const tail = root ? trimmed.slice(2) : trimmed;
+  const parts = tail.split(splitPattern).filter((part) => part.length > 0);
+  const joined = parts.join(sep);
+
+  return root ? `${root}${sep}${joined}` : `${sep}${joined}`;
+}
+
+function pathWithinRoot(path: string, root: string): boolean {
+  const normalizedPath = normalizePath(path);
+  const normalizedRoot = normalizePath(root);
+  if (!normalizedPath || !normalizedRoot) {
+    return false;
+  }
+
+  if (normalizedPath === normalizedRoot) {
+    return true;
+  }
+
+  const rootWithSep =
+    normalizedRoot.endsWith('\\') || normalizedRoot.endsWith('/')
+      ? normalizedRoot
+      : `${normalizedRoot}${normalizedRoot.includes('\\') ? '\\' : '/'}`;
+
+  return normalizedPath.startsWith(rootWithSep);
 }
 
 function readPersistedGallerySortPreferences(): {
@@ -87,28 +170,136 @@ function persistGallerySortPreferences(
   } catch {}
 }
 
-const persistedSortPreferences = readPersistedGallerySortPreferences();
+function readPersistedTabFolderPaths(): Map<string, string> {
+  if (typeof window === 'undefined') {
+    return new Map<string, string>();
+  }
 
-let latestFetchRequestId = 0;
-let inFlightNextPageKey: string | null = null;
-const MAX_TAB_SNAPSHOT_ENTRIES = 8;
+  try {
+    const raw = window.localStorage.getItem(TAB_FOLDER_STORAGE_KEY);
+    if (!raw) {
+      return new Map<string, string>();
+    }
 
-interface ActiveTabContext {
-  tabId: string;
-  folderPath: string;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return new Map<string, string>();
+    }
+
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .map(([tabId, value]) => {
+        const path = typeof value === 'string' ? normalizePath(value) : '';
+        return [tabId, path] as const;
+      })
+      .filter((entry) => entry[1].length > 0);
+
+    return new Map<string, string>(entries);
+  } catch {
+    return new Map<string, string>();
+  }
 }
 
-interface GalleryTabSnapshot {
-  images: ImageRecord[];
-  totalImages: number;
-  selectedImageId: number | null;
-  compareImageIds: [number, number] | null;
-  compareSlider: number;
-  offset: number;
-  hasMore: boolean;
+function queuePersistTabFolderPaths(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (persistTabFolderTimer) {
+    clearTimeout(persistTabFolderTimer);
+  }
+
+  persistTabFolderTimer = setTimeout(() => {
+    persistTabFolderTimer = null;
+    try {
+      const serialized = Object.fromEntries(tabFolderPathById.entries());
+      window.localStorage.setItem(
+        TAB_FOLDER_STORAGE_KEY,
+        JSON.stringify(serialized)
+      );
+    } catch {}
+  }, 120);
 }
 
-const tabSnapshots = new Map<string, GalleryTabSnapshot>();
+function setPersistedTabFolderPath(tabId: string, path: string): void {
+  if (!tabId) {
+    return;
+  }
+
+  const normalizedPath = normalizePath(path);
+  if (!normalizedPath) {
+    if (tabFolderPathById.delete(tabId)) {
+      queuePersistTabFolderPaths();
+    }
+    return;
+  }
+
+  const current = tabFolderPathById.get(tabId);
+  if (current === normalizedPath) {
+    return;
+  }
+
+  tabFolderPathById.set(tabId, normalizedPath);
+  queuePersistTabFolderPaths();
+}
+
+function getPersistedTabFolderPath(tabId: string): string {
+  return tabFolderPathById.get(tabId) || '';
+}
+
+function prunePersistedTabFolderPaths(validTabIds: Set<string>): void {
+  let changed = false;
+  for (const tabId of tabFolderPathById.keys()) {
+    if (!validTabIds.has(tabId)) {
+      tabFolderPathById.delete(tabId);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    queuePersistTabFolderPaths();
+  }
+}
+
+function getActiveTabContext(): ActiveTabContext | null {
+  const { tabs, activeTabId } = useTabsStore.getState();
+  if (!activeTabId) {
+    return null;
+  }
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const rootPath = typeof activeTab?.path === 'string' ? activeTab.path : '';
+
+  return {
+    tabId: activeTabId,
+    rootPath: normalizePath(rootPath),
+    isWalk: Boolean(activeTab?.isWalk)
+  };
+}
+
+function buildTabSnapshotKey(
+  tabId: string,
+  isWalk: boolean,
+  currentFolderPath: string,
+  query: string,
+  sortBy: GallerySortBy,
+  sortDirection: GallerySortDirection
+): string {
+  return `${tabId}|${isWalk ? 'walk' : 'normal'}|${currentFolderPath}|${query}|${sortBy}|${sortDirection}`;
+}
+
+function buildNextPageRequestKey(
+  tabId: string,
+  isWalk: boolean,
+  rootPath: string,
+  currentPath: string,
+  query: string,
+  sortBy: GallerySortBy,
+  sortDirection: GallerySortDirection,
+  offset: number,
+  limit: number
+): string {
+  return `${tabId}|${isWalk ? 'walk' : 'normal'}|${rootPath}|${currentPath}|${query}|${sortBy}|${sortDirection}|${offset}|${limit}`;
+}
 
 function getSnapshot(key: string): GalleryTabSnapshot | null {
   const snapshot = tabSnapshots.get(key);
@@ -138,42 +329,12 @@ function setSnapshot(key: string, snapshot: GalleryTabSnapshot): void {
   }
 }
 
-function buildTabSnapshotKey(
-  tabId: string,
-  query: string,
-  sortBy: GallerySortBy,
-  sortDirection: GallerySortDirection
-): string {
-  return `${tabId}|${query}|${sortBy}|${sortDirection}`;
-}
-
-function getActiveTabContext(): ActiveTabContext | null {
-  const { tabs, activeTabId } = useTabsStore.getState();
-  if (!activeTabId) {
-    return null;
-  }
-
-  const activeTab = tabs?.find((t) => t.id === activeTabId);
-  return {
-    tabId: activeTabId,
-    folderPath: typeof activeTab?.path === 'string' ? activeTab.path : ''
-  };
-}
-
-function buildNextPageRequestKey(
-  tabId: string,
-  folderPath: string,
-  query: string,
-  sortBy: GallerySortBy,
-  sortDirection: GallerySortDirection,
-  offset: number,
-  limit: number
-): string {
-  return `${tabId}|${folderPath}|${query}|${sortBy}|${sortDirection}|${offset}|${limit}`;
-}
-
 function toSnapshot(state: GalleryState): GalleryTabSnapshot {
   return {
+    rootFolderPath: state.rootFolderPath,
+    currentFolderPath: state.currentFolderPath,
+    parentFolderPath: state.parentFolderPath,
+    folders: state.folders,
     images: state.images,
     totalImages: state.totalImages,
     selectedImageId: state.selectedImageId,
@@ -185,6 +346,10 @@ function toSnapshot(state: GalleryState): GalleryTabSnapshot {
 }
 
 interface GalleryState {
+  rootFolderPath: string;
+  currentFolderPath: string;
+  parentFolderPath: string;
+  folders: FolderEntry[];
   images: ImageRecord[];
   totalImages: number;
   searchQuery: string;
@@ -212,11 +377,20 @@ interface GalleryState {
   updateImageRecord: (image: ImageRecord) => void;
   pruneTabScopedState: (tabIds: string[]) => void;
   hydrateActiveTabSnapshot: () => boolean;
+  navigateToFolder: (path: string) => Promise<void>;
+  navigateToParentFolder: () => Promise<void>;
+  setCurrentFolderPath: (path: string) => void;
   fetchImages: (clear?: boolean) => Promise<void>;
   fetchNextPage: () => Promise<void>;
 }
 
+const persistedSortPreferences = readPersistedGallerySortPreferences();
+
 export const useGalleryStore = create<GalleryState>((set, get) => ({
+  rootFolderPath: '',
+  currentFolderPath: '',
+  parentFolderPath: '',
+  folders: [],
   images: [],
   totalImages: 0,
   searchQuery: '',
@@ -228,20 +402,23 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   layoutMode: 'comfortable',
   offset: 0,
   limit: 100,
-  hasMore: true,
+  hasMore: false,
   isLoading: false,
 
   setImages: (images, total) =>
-    set({ images, totalImages: total, hasMore: images.length < total }),
+    set({
+      folders: [],
+      images,
+      totalImages: total,
+      hasMore: images.length < total
+    }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setSortBy: (sortBy) => {
-    const nextDirection = get().sortDirection;
-    persistGallerySortPreferences(sortBy, nextDirection);
+    persistGallerySortPreferences(sortBy, get().sortDirection);
     set({ sortBy });
   },
   setSortDirection: (sortDirection) => {
-    const nextSortBy = get().sortBy;
-    persistGallerySortPreferences(nextSortBy, sortDirection);
+    persistGallerySortPreferences(get().sortBy, sortDirection);
     set({ sortDirection });
   },
   setSelectedImageId: (selectedImageId) =>
@@ -267,7 +444,9 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   closeCompare: () => set({ compareImageIds: null, compareSlider: 50 }),
   swapCompareImages: () => {
     const compareImageIds = get().compareImageIds;
-    if (!compareImageIds) return;
+    if (!compareImageIds) {
+      return;
+    }
 
     set({ compareImageIds: [compareImageIds[1], compareImageIds[0]] });
   },
@@ -284,13 +463,70 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         tabSnapshots.delete(key);
       }
     }
+
+    prunePersistedTabFolderPaths(validTabIds);
+  },
+
+  setCurrentFolderPath: (path) => {
+    const normalizedTarget = normalizePath(path);
+    const root = get().rootFolderPath;
+    if (!normalizedTarget || !root || !pathWithinRoot(normalizedTarget, root)) {
+      return;
+    }
+
+    set({
+      currentFolderPath: normalizedTarget,
+      selectedImageId: null,
+      compareImageIds: null,
+      compareSlider: 50
+    });
+
+    const activeContext = getActiveTabContext();
+    if (activeContext && !activeContext.isWalk) {
+      setPersistedTabFolderPath(activeContext.tabId, normalizedTarget);
+    }
+  },
+
+  navigateToFolder: async (path) => {
+    const normalizedPath = normalizePath(path);
+    const root = get().rootFolderPath;
+    if (!normalizedPath || !root || !pathWithinRoot(normalizedPath, root)) {
+      return;
+    }
+
+    set({
+      currentFolderPath: normalizedPath,
+      selectedImageId: null,
+      compareImageIds: null,
+      compareSlider: 50
+    });
+
+    const activeContext = getActiveTabContext();
+    if (activeContext && !activeContext.isWalk) {
+      setPersistedTabFolderPath(activeContext.tabId, normalizedPath);
+    }
+
+    await get().fetchImages(true);
+  },
+
+  navigateToParentFolder: async () => {
+    const { parentFolderPath, rootFolderPath } = get();
+    const nextPath = parentFolderPath || rootFolderPath;
+    if (!nextPath) {
+      return;
+    }
+
+    await get().navigateToFolder(nextPath);
   },
 
   hydrateActiveTabSnapshot: () => {
-    const { searchQuery, sortBy, sortDirection } = get();
     const activeContext = getActiveTabContext();
-    if (!activeContext || !activeContext.folderPath) {
+    if (!activeContext || !activeContext.rootPath) {
       set({
+        rootFolderPath: '',
+        currentFolderPath: '',
+        parentFolderPath: '',
+        folders: [],
         images: [],
         totalImages: 0,
         selectedImageId: null,
@@ -303,9 +539,13 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       return false;
     }
 
-    const { tabId, folderPath } = activeContext;
-    if (isPageTabPath(folderPath)) {
+    const { tabId, rootPath, isWalk } = activeContext;
+    if (isPageTabPath(rootPath)) {
       set({
+        rootFolderPath: rootPath,
+        currentFolderPath: rootPath,
+        parentFolderPath: '',
+        folders: [],
         images: [],
         totalImages: 0,
         selectedImageId: null,
@@ -318,24 +558,44 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       return false;
     }
 
+    const { searchQuery, sortBy, sortDirection } = get();
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
-    const tabSnapshotKey = buildTabSnapshotKey(
+    const persistedCurrentPath = getPersistedTabFolderPath(tabId);
+    const preferredCurrentPath = isWalk
+      ? rootPath
+      : pathWithinRoot(get().currentFolderPath, rootPath) &&
+          get().currentFolderPath.length > 0
+        ? get().currentFolderPath
+        : pathWithinRoot(persistedCurrentPath, rootPath)
+          ? persistedCurrentPath
+          : rootPath;
+
+    const snapshotKey = buildTabSnapshotKey(
       tabId,
+      isWalk,
+      preferredCurrentPath,
       safeQuery,
       sortBy,
       sortDirection
     );
-    const cachedSnapshot = getSnapshot(tabSnapshotKey);
+    const snapshot = getSnapshot(snapshotKey);
 
-    if (cachedSnapshot) {
-      set({
-        ...cachedSnapshot,
-        isLoading: false
-      });
+    if (snapshot) {
+      set({ ...snapshot, isLoading: false });
+      if (!isWalk) {
+        setPersistedTabFolderPath(
+          tabId,
+          snapshot.currentFolderPath || rootPath
+        );
+      }
       return true;
     }
 
     set({
+      rootFolderPath: rootPath,
+      currentFolderPath: rootPath,
+      parentFolderPath: '',
+      folders: [],
       images: [],
       totalImages: 0,
       selectedImageId: null,
@@ -345,16 +605,27 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       isLoading: false,
       hasMore: false
     });
+
+    if (!isWalk) {
+      setPersistedTabFolderPath(tabId, rootPath);
+    }
+
     return false;
   },
 
   fetchImages: async (clear = false) => {
     const { searchQuery, limit, isLoading, sortBy, sortDirection } = get();
-    if (isLoading && !clear) return;
+    if (isLoading && !clear) {
+      return;
+    }
 
     const activeContext = getActiveTabContext();
-    if (!activeContext || !activeContext.folderPath) {
+    if (!activeContext || !activeContext.rootPath) {
       set({
+        rootFolderPath: '',
+        currentFolderPath: '',
+        parentFolderPath: '',
+        folders: [],
         images: [],
         totalImages: 0,
         selectedImageId: null,
@@ -366,10 +637,13 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       return;
     }
 
-    const { tabId, folderPath } = activeContext;
-
-    if (isPageTabPath(folderPath)) {
+    const { tabId, rootPath, isWalk } = activeContext;
+    if (isPageTabPath(rootPath)) {
       set({
+        rootFolderPath: rootPath,
+        currentFolderPath: rootPath,
+        parentFolderPath: '',
+        folders: [],
         images: [],
         totalImages: 0,
         selectedImageId: null,
@@ -383,20 +657,30 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
-    const tabSnapshotKey = buildTabSnapshotKey(
+    const currentStateCurrentPath = get().currentFolderPath;
+    const persistedCurrentPath = getPersistedTabFolderPath(tabId);
+    const requestedCurrentPath = isWalk
+      ? rootPath
+      : pathWithinRoot(currentStateCurrentPath, rootPath) &&
+          currentStateCurrentPath.length > 0
+        ? currentStateCurrentPath
+        : pathWithinRoot(persistedCurrentPath, rootPath)
+          ? persistedCurrentPath
+          : rootPath;
+
+    const snapshotKey = buildTabSnapshotKey(
       tabId,
+      isWalk,
+      requestedCurrentPath,
       safeQuery,
       sortBy,
       sortDirection
     );
 
     if (clear) {
-      const cachedSnapshot = getSnapshot(tabSnapshotKey);
+      const cachedSnapshot = getSnapshot(snapshotKey);
       if (cachedSnapshot) {
-        set({
-          ...cachedSnapshot,
-          isLoading: false
-        });
+        set({ ...cachedSnapshot, isLoading: false });
         return;
       }
     }
@@ -404,9 +688,13 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const requestId = ++latestFetchRequestId;
 
     set({
+      rootFolderPath: rootPath,
+      currentFolderPath: requestedCurrentPath,
       isLoading: true,
       ...(clear
         ? {
+            parentFolderPath: '',
+            folders: [],
             images: [],
             totalImages: 0,
             selectedImageId: null,
@@ -417,15 +705,63 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
           }
         : {})
     });
+
     try {
-      const res = await GetImages(
+      if (isWalk) {
+        const response = await GetImages(
+          safeQuery,
+          rootPath,
+          0,
+          safeLimit,
+          sortBy,
+          sortDirection
+        );
+
+        if (requestId !== latestFetchRequestId) {
+          return;
+        }
+
+        const currentContext = getActiveTabContext();
+        if (!currentContext || currentContext.tabId !== tabId) {
+          return;
+        }
+
+        if (!response) {
+          set({ isLoading: false });
+          return;
+        }
+
+        const nextState = {
+          rootFolderPath: rootPath,
+          currentFolderPath: rootPath,
+          parentFolderPath: '',
+          folders: [] as FolderEntry[],
+          images: (response.images || []) as ImageRecord[],
+          totalImages: response.totalCount || 0,
+          offset: 0,
+          hasMore: (response.images?.length || 0) < (response.totalCount || 0),
+          isLoading: false
+        };
+
+        set(nextState);
+        setPersistedTabFolderPath(tabId, rootPath);
+        setSnapshot(snapshotKey, {
+          ...toSnapshot(get()),
+          ...nextState
+        });
+        return;
+      }
+
+      const response = (await BrowseFolder(
         safeQuery,
-        folderPath,
+        rootPath,
+        requestedCurrentPath,
         0,
         safeLimit,
         sortBy,
         sortDirection
-      );
+      )) as FolderBrowseResponse | null;
+
       if (requestId !== latestFetchRequestId) {
         return;
       }
@@ -435,33 +771,37 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         return;
       }
 
-      if (res) {
-        const nextState = {
-          images: (res.images as ImageRecord[]) || [],
-          totalImages: res.totalCount || 0,
-          offset: 0,
-          hasMore: (res.images?.length || 0) < (res.totalCount || 0),
-          isLoading: false
-        };
-        set(nextState);
-        setSnapshot(tabSnapshotKey, {
-          images: nextState.images,
-          totalImages: nextState.totalImages,
-          selectedImageId: null,
-          compareImageIds: null,
-          compareSlider: 50,
-          offset: nextState.offset,
-          hasMore: nextState.hasMore
-        });
-      } else {
+      if (!response) {
         set({ isLoading: false });
+        return;
       }
-    } catch (e) {
+
+      const nextState = {
+        rootFolderPath: normalizePath(response.rootPath || rootPath),
+        currentFolderPath: normalizePath(
+          response.currentPath || requestedCurrentPath
+        ),
+        parentFolderPath: normalizePath(response.parentPath || ''),
+        folders: (response.folders || []) as FolderEntry[],
+        images: (response.images || []) as ImageRecord[],
+        totalImages: response.totalCount || 0,
+        offset: 0,
+        hasMore: (response.images?.length || 0) < (response.totalCount || 0),
+        isLoading: false
+      };
+
+      set(nextState);
+      setPersistedTabFolderPath(tabId, nextState.currentFolderPath || rootPath);
+      setSnapshot(snapshotKey, {
+        ...toSnapshot(get()),
+        ...nextState
+      });
+    } catch (error) {
       if (requestId !== latestFetchRequestId) {
         return;
       }
 
-      console.error('Failed to fetch images:', e);
+      console.error('Failed to browse folder:', error);
       set({ isLoading: false });
     }
   },
@@ -474,71 +814,85 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       isLoading,
       hasMore,
       sortBy,
-      sortDirection
+      sortDirection,
+      currentFolderPath
     } = get();
-    if (isLoading || !hasMore) return;
+    if (isLoading || !hasMore) {
+      return;
+    }
 
     const activeContext = getActiveTabContext();
-    if (!activeContext || !activeContext.folderPath) return;
+    if (!activeContext || !activeContext.rootPath) {
+      return;
+    }
 
-    const { tabId, folderPath } = activeContext;
-
-    if (isPageTabPath(folderPath)) {
+    const { tabId, rootPath, isWalk } = activeContext;
+    if (isPageTabPath(rootPath)) {
       set({ isLoading: false, hasMore: false });
       return;
     }
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
+    const effectiveCurrentPath =
+      pathWithinRoot(currentFolderPath, rootPath) &&
+      currentFolderPath.length > 0
+        ? currentFolderPath
+        : rootPath;
 
     const nextOffset = offset + safeLimit;
     const requestKey = buildNextPageRequestKey(
       tabId,
-      folderPath,
+      isWalk,
+      rootPath,
+      effectiveCurrentPath,
       safeQuery,
       sortBy,
       sortDirection,
       nextOffset,
       safeLimit
     );
-    if (inFlightNextPageKey === requestKey) return;
+    if (inFlightNextPageKey === requestKey) {
+      return;
+    }
     inFlightNextPageKey = requestKey;
 
     set({ isLoading: true });
     try {
-      const res = await GetImages(
-        safeQuery,
-        folderPath,
-        nextOffset,
-        safeLimit,
-        sortBy,
-        sortDirection
-      );
-      const currentContext = getActiveTabContext();
-      const currentSearchQuery = get().searchQuery;
-      const currentSortBy = get().sortBy;
-      const currentSortDirection = get().sortDirection;
-      if (
-        !currentContext ||
-        currentContext.tabId !== tabId ||
-        currentSearchQuery !== safeQuery ||
-        currentSortBy !== sortBy ||
-        currentSortDirection !== sortDirection
-      ) {
-        return;
-      }
+      if (isWalk) {
+        const response = await GetImages(
+          safeQuery,
+          rootPath,
+          nextOffset,
+          safeLimit,
+          sortBy,
+          sortDirection
+        );
 
-      if (res) {
-        const incoming = (res.images as ImageRecord[]) || [];
+        const currentContext = getActiveTabContext();
+        if (!currentContext || currentContext.tabId !== tabId) {
+          return;
+        }
+
+        if (!response) {
+          set({ isLoading: false });
+          return;
+        }
+
         set((state) => {
           const existingIds = new Set(state.images.map((img) => img.ID));
+          const incoming = (response.images || []) as ImageRecord[];
           const dedupedIncoming = incoming.filter(
             (img) => !existingIds.has(img.ID)
           );
           const mergedImages = [...state.images, ...dedupedIncoming];
-          const totalCount = res.totalCount || 0;
+          const totalCount = response.totalCount || 0;
 
           return {
+            rootFolderPath: rootPath,
+            currentFolderPath: rootPath,
+            parentFolderPath: '',
+            folders: [] as FolderEntry[],
             images: mergedImages,
             totalImages: totalCount,
             offset: nextOffset,
@@ -546,15 +900,83 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
             isLoading: false
           };
         });
+
         setSnapshot(
-          buildTabSnapshotKey(tabId, safeQuery, sortBy, sortDirection),
+          buildTabSnapshotKey(
+            tabId,
+            isWalk,
+            rootPath,
+            safeQuery,
+            sortBy,
+            sortDirection
+          ),
           toSnapshot(get())
         );
-      } else {
-        set({ isLoading: false });
+        setPersistedTabFolderPath(tabId, rootPath);
+        return;
       }
-    } catch (e) {
-      console.error('Failed to fetch next page:', e);
+
+      const response = (await BrowseFolder(
+        safeQuery,
+        rootPath,
+        effectiveCurrentPath,
+        nextOffset,
+        safeLimit,
+        sortBy,
+        sortDirection
+      )) as FolderBrowseResponse | null;
+
+      const currentContext = getActiveTabContext();
+      if (!currentContext || currentContext.tabId !== tabId) {
+        return;
+      }
+
+      if (!response) {
+        set({ isLoading: false });
+        return;
+      }
+
+      set((state) => {
+        const existingIds = new Set(state.images.map((img) => img.ID));
+        const incoming = (response.images || []) as ImageRecord[];
+        const dedupedIncoming = incoming.filter(
+          (img) => !existingIds.has(img.ID)
+        );
+        const mergedImages = [...state.images, ...dedupedIncoming];
+        const totalCount = response.totalCount || 0;
+
+        return {
+          rootFolderPath: normalizePath(response.rootPath || rootPath),
+          currentFolderPath: normalizePath(
+            response.currentPath || effectiveCurrentPath
+          ),
+          parentFolderPath: normalizePath(response.parentPath || ''),
+          folders: (response.folders || []) as FolderEntry[],
+          images: mergedImages,
+          totalImages: totalCount,
+          offset: nextOffset,
+          hasMore: mergedImages.length < totalCount,
+          isLoading: false
+        };
+      });
+
+      setSnapshot(
+        buildTabSnapshotKey(
+          tabId,
+          isWalk,
+          effectiveCurrentPath,
+          safeQuery,
+          sortBy,
+          sortDirection
+        ),
+        toSnapshot(get())
+      );
+      setPersistedTabFolderPath(
+        tabId,
+        normalizePath(response.currentPath || effectiveCurrentPath || rootPath)
+      );
+    } catch (error) {
+      console.error('Failed to fetch next folder page:', error);
       set({ isLoading: false });
     } finally {
       if (inFlightNextPageKey === requestKey) {

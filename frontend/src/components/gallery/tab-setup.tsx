@@ -20,10 +20,12 @@ function SectionHeader({
   description?: string;
 }) {
   return (
-    <div className="space-y-1 mb-10">
-      <h2 className="text-xl font-bold text-foreground/90">{title}</h2>
+    <div className="space-y-2.5 mb-8 pb-6 border-b border-white/5">
+      <h2 className="text-lg font-bold text-foreground tracking-tight">
+        {title}
+      </h2>
       {description && (
-        <p className="text-sm text-muted-foreground font-medium tracking-wider">
+        <p className="text-xs text-muted-foreground/70 font-medium tracking-wider leading-relaxed uppercase">
           {description}
         </p>
       )}
@@ -93,10 +95,10 @@ function FolderItem({
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        'group flex items-center justify-between py-3.5 px-4 rounded-xl transition-all duration-200 mb-2 border',
+        'group flex items-center justify-between py-3 px-4 rounded-lg transition-all duration-200 mb-2.5 border',
         active
-          ? 'bg-primary/10 border-primary/20 shadow-sm'
-          : 'bg-accent/20 border-white/5 hover:bg-accent/40 hover:border-white/10'
+          ? 'bg-primary/15 border-primary/40 shadow-md hover:shadow-lg'
+          : 'bg-white/3 border-white/8 hover:bg-white/5 hover:border-white/12'
       )}
     >
       {isEditing ? (
@@ -116,42 +118,42 @@ function FolderItem({
       ) : (
         <button
           onClick={() => onSelect(folder.scanMode === ScanMode.ScanModeWalk)}
-          className="flex flex-col flex-1 text-left min-w-0"
+          className="flex flex-col flex-1 text-left min-w-0 cursor-pointer"
         >
           <span
             className={cn(
-              'truncate text-base transition-colors',
+              'truncate text-sm font-semibold transition-colors',
               active
-                ? 'text-primary font-bold'
-                : 'text-foreground/80 group-hover:text-foreground'
+                ? 'text-primary'
+                : 'text-foreground/75 group-hover:text-foreground'
             )}
           >
             {folder.alias || folder.path.split(/[/\\]/).pop()}
           </span>
           {active ? (
-            <span className="text-[10px] text-primary/70 font-bold tracking-[0.15em] mt-1">
+            <span className="text-[9px] text-primary/60 font-bold tracking-[0.12em] mt-1.5 uppercase">
               Active Selection
             </span>
           ) : (
-            <span className="text-[10px] text-muted-foreground/40 font-medium truncate mt-1">
+            <span className="text-[9px] text-muted-foreground/50 font-medium truncate mt-1.5">
               {folder.path}
             </span>
           )}
         </button>
       )}
 
-      <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-4 shrink-0">
+      <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-4 shrink-0">
         {!isEditing && (
           <button
             onClick={handleAlias}
-            className="text-[11px] font-bold tracking-widest text-muted-foreground hover:text-primary transition-colors"
+            className="text-[10px] font-bold tracking-wider text-muted-foreground/60 hover:text-primary transition-colors uppercase"
           >
-            Alias
+            Rename
           </button>
         )}
         <button
           onClick={handleRemove}
-          className="text-[11px] font-bold tracking-widest text-destructive/50 hover:text-destructive transition-colors"
+          className="text-[10px] font-bold tracking-wider text-destructive/40 hover:text-destructive transition-colors uppercase"
         >
           Remove
         </button>
@@ -207,19 +209,16 @@ export function TabSetup() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Column 1: Walk */}
           <section className="lg:col-span-4 space-y-8">
-            <SectionHeader
-              title="Recursive Scan"
-              description="Deep folder discovery"
-            />
+            <SectionHeader title="Recursive Scan" />
             <div className="space-y-6">
               <button
                 onClick={() => handlePickFolder(ScanMode.ScanModeWalk)}
-                className="group w-full flex items-center justify-between py-4 px-5 rounded-xl bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-all"
+                className="group w-full flex items-center justify-between py-3.5 px-5 rounded-lg bg-primary/10 border border-primary/30 hover:bg-primary/15 hover:border-primary/40 transition-all shadow-sm hover:shadow-md"
               >
-                <span className="text-base font-bold text-primary">
-                  Add New Library
+                <span className="text-sm font-bold text-primary tracking-tight">
+                  Add New Folder
                 </span>
-                <span className="text-xl text-primary/50 group-hover:text-primary transition-colors">
+                <span className="text-lg text-primary/60 group-hover:text-primary transition-colors font-light">
                   +
                 </span>
               </button>
@@ -243,9 +242,9 @@ export function TabSetup() {
                   ))}
                 </AnimatePresence>
                 {walkFolders.length === 0 && (
-                  <div className="py-12 px-4 text-center border border-dashed border-white/5 rounded-2xl bg-white/2">
-                    <p className="text-[11px] text-muted-foreground/30 font-bold tracking-widest leading-relaxed">
-                      No walk folder added
+                  <div className="py-14 px-4 text-center border border-dashed border-white/10 rounded-lg bg-white/3">
+                    <p className="text-[11px] text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
+                      No folders yet
                     </p>
                   </div>
                 )}
@@ -255,17 +254,16 @@ export function TabSetup() {
 
           {/* Column 2: Normal */}
           <section className="lg:col-span-4 space-y-8">
-            <SectionHeader
-              title="Standard View"
-              description="Single level browsing"
-            />
+            <SectionHeader title="Standard View" />
             <div className="space-y-6">
               <button
                 onClick={() => handlePickFolder(ScanMode.ScanModeNormal)}
-                className="group w-full flex items-center justify-between py-4 px-5 rounded-xl bg-accent/30 border border-white/5 hover:bg-accent/50 transition-all font-medium text-foreground/70"
+                className="group w-full flex items-center justify-between py-3.5 px-5 rounded-lg bg-accent/20 border border-white/10 hover:bg-accent/30 hover:border-white/15 transition-all shadow-sm hover:shadow-md"
               >
-                <span className="text-base font-bold">View Local Folder</span>
-                <span className="text-xl text-foreground/20 group-hover:text-foreground/50 transition-colors">
+                <span className="text-sm font-bold text-foreground/80 tracking-tight">
+                  Add New Folder
+                </span>
+                <span className="text-lg text-foreground/30 group-hover:text-foreground/50 transition-colors font-light">
                   +
                 </span>
               </button>
@@ -289,9 +287,9 @@ export function TabSetup() {
                   ))}
                 </AnimatePresence>
                 {normalFolders.length === 0 && (
-                  <div className="py-12 px-4 text-center border border-dashed border-white/5 rounded-2xl bg-white/2">
-                    <p className="text-[11px] text-muted-foreground/30 font-bold tracking-widest leading-relaxed">
-                      No normal folder added
+                  <div className="py-14 px-4 text-center border border-dashed border-white/10 rounded-lg bg-white/3">
+                    <p className="text-[11px] text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
+                      No folders yet
                     </p>
                   </div>
                 )}
@@ -301,10 +299,7 @@ export function TabSetup() {
 
           {/* Column 3: Recent */}
           <section className="lg:col-span-4 space-y-8">
-            <SectionHeader
-              title="Quick History"
-              description="Recently added sources"
-            />
+            <SectionHeader title="Quick History" />
             <div className="flex flex-col space-y-1.5">
               {config?.folders
                 ?.slice()
@@ -329,30 +324,30 @@ export function TabSetup() {
                         });
                       }}
                       className={cn(
-                        'group flex flex-col items-start py-3.5 px-5 rounded-xl transition-all text-left border',
+                        'group flex flex-col items-start py-3 px-4 rounded-lg transition-all text-left border',
                         isActive
-                          ? 'bg-primary/5 border-primary/20'
-                          : 'bg-white/1 border-white/5 hover:bg-accent/40 hover:border-white/10'
+                          ? 'bg-primary/12 border-primary/35 shadow-sm hover:shadow-md'
+                          : 'bg-white/2 border-white/8 hover:bg-white/4 hover:border-white/12'
                       )}
                     >
                       <span
                         className={cn(
-                          'text-[15px] truncate w-full transition-colors',
+                          'text-sm font-semibold truncate w-full transition-colors',
                           isActive
-                            ? 'text-primary font-bold'
-                            : 'text-foreground/80 group-hover:text-foreground'
+                            ? 'text-primary'
+                            : 'text-foreground/75 group-hover:text-foreground'
                         )}
                       >
                         {f.alias || f.path.split(/[/\\]/).pop()}
                       </span>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[10px] text-muted-foreground font-bold tracking-[0.05em]">
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[9px] text-muted-foreground/60 font-semibold tracking-wide uppercase">
                           {f.scanMode === ScanMode.ScanModeWalk
                             ? 'Deep Scan'
                             : 'Standard'}
                         </span>
                         {isActive && (
-                          <span className="text-[10px] text-primary/60 font-black tracking-[0.05em]">
+                          <span className="text-[9px] text-primary/50 font-bold tracking-wide">
                             • Active
                           </span>
                         )}
@@ -361,9 +356,9 @@ export function TabSetup() {
                   );
                 })}
               {(!config?.folders || config.folders.length === 0) && (
-                <div className="py-20 text-center border border-dashed border-white/5 rounded-2xl bg-white/1">
-                  <p className="text-[11px] text-muted-foreground/20 font-bold tracking-widest">
-                    No history recorded
+                <div className="py-20 text-center border border-dashed border-white/10 rounded-lg bg-white/2">
+                  <p className="text-[11px] text-muted-foreground/35 font-semibold tracking-wide uppercase">
+                    No history yet
                   </p>
                 </div>
               )}

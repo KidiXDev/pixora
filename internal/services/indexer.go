@@ -48,6 +48,15 @@ type thumbnailReadyEvent struct {
 	FolderPath string `json:"folderPath"`
 }
 
+type libraryChangeEvent struct {
+	Operation     string `json:"operation"`
+	Path          string `json:"path"`
+	OldPath       string `json:"oldPath"`
+	FolderPath    string `json:"folderPath"`
+	OldFolderPath string `json:"oldFolderPath"`
+	IsDir         bool   `json:"isDir"`
+}
+
 type Indexer struct {
 	configManager *config.Manager
 	database      *db.DB
@@ -603,32 +612,60 @@ func (i *Indexer) watchLoop() {
 				if err == nil {
 					if info.IsDir() {
 						cfg := i.configManager.GetConfig()
+						isTrackedFolder := false
 						isWalkMode := false
 
 						for _, folder := range cfg.Folders {
-							if strings.HasPrefix(event.Name, folder.Path) && folder.ScanMode == config.ScanModeWalk {
-								isWalkMode = true
-								break
+							if strings.HasPrefix(event.Name, folder.Path) {
+								isTrackedFolder = true
+								if folder.ScanMode == config.ScanModeWalk {
+									isWalkMode = true
+								}
 							}
 						}
 
+						if isTrackedFolder {
+							i.emitLibraryChangeEvent("folder-upsert", event.Name, "", true)
+						}
+
 						if isWalkMode {
-							i.watcher.Add(event.Name)
+							if err := i.watcher.Add(event.Name); err != nil {
+								log.Printf("Failed to watch new folder %s: %v", event.Name, err)
+							}
 							go i.ScanFolder(config.FolderConfig{Path: event.Name, ScanMode: config.ScanModeWalk})
 						}
 					} else {
 						i.processFile(event.Name, nil)
+						i.emitLibraryChangeEvent("image-upsert", event.Name, "", false)
 					}
 				}
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				hash, err := i.database.RemoveImageAndGetHash(context.Background(), event.Name)
-				if err != nil {
-					log.Printf("Failed removing image %s from DB: %v", event.Name, err)
+				if i.isImageFile(event.Name) {
+					hash, err := i.database.RemoveImageAndGetHash(context.Background(), event.Name)
+					if err != nil {
+						log.Printf("Failed removing image %s from DB: %v", event.Name, err)
+						continue
+					}
+					if hash != "" {
+						if err := i.thumbnailSvc.Delete(hash); err != nil {
+							log.Printf("Failed removing thumbnail for %s: %v", event.Name, err)
+						}
+					}
+					i.emitLibraryChangeEvent("image-remove", event.Name, "", false)
 					continue
 				}
-				if err := i.thumbnailSvc.Delete(hash); err != nil {
-					log.Printf("Failed removing thumbnail for %s: %v", event.Name, err)
+
+				hashes, err := i.database.RemoveImagesByFolder(context.Background(), event.Name)
+				if err != nil {
+					log.Printf("Failed removing folder images %s from DB: %v", event.Name, err)
+					continue
 				}
+				if len(hashes) > 0 {
+					if err := i.thumbnailSvc.DeleteMany(hashes); err != nil {
+						log.Printf("Failed removing folder thumbnails for %s: %v", event.Name, err)
+					}
+				}
+				i.emitLibraryChangeEvent("folder-remove", event.Name, "", true)
 			}
 		case err, ok := <-i.watcher.Errors:
 			if !ok {
@@ -636,6 +673,19 @@ func (i *Indexer) watchLoop() {
 			}
 			log.Println("error:", err)
 		}
+	}
+}
+
+func (i *Indexer) emitLibraryChangeEvent(operation string, path string, oldPath string, isDir bool) {
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("library:changed", libraryChangeEvent{
+			Operation:     operation,
+			Path:          path,
+			OldPath:       oldPath,
+			FolderPath:    filepath.Dir(path),
+			OldFolderPath: filepath.Dir(oldPath),
+			IsDir:         isDir,
+		})
 	}
 }
 

@@ -9,6 +9,88 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as db$0 from "../db/models.js";
 
+export class FolderBrowseResponse {
+    "rootPath": string;
+    "currentPath": string;
+    "parentPath": string;
+    "folders": FolderEntry[];
+    "images": db$0.ImageRecord[];
+    "totalCount": number;
+    "offset": number;
+    "limit": number;
+
+    /** Creates a new FolderBrowseResponse instance. */
+    constructor($$source: Partial<FolderBrowseResponse> = {}) {
+        if (!("rootPath" in $$source)) {
+            this["rootPath"] = "";
+        }
+        if (!("currentPath" in $$source)) {
+            this["currentPath"] = "";
+        }
+        if (!("parentPath" in $$source)) {
+            this["parentPath"] = "";
+        }
+        if (!("folders" in $$source)) {
+            this["folders"] = [];
+        }
+        if (!("images" in $$source)) {
+            this["images"] = [];
+        }
+        if (!("totalCount" in $$source)) {
+            this["totalCount"] = 0;
+        }
+        if (!("offset" in $$source)) {
+            this["offset"] = 0;
+        }
+        if (!("limit" in $$source)) {
+            this["limit"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FolderBrowseResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FolderBrowseResponse {
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("folders" in $$parsedSource) {
+            $$parsedSource["folders"] = $$createField3_0($$parsedSource["folders"]);
+        }
+        if ("images" in $$parsedSource) {
+            $$parsedSource["images"] = $$createField4_0($$parsedSource["images"]);
+        }
+        return new FolderBrowseResponse($$parsedSource as Partial<FolderBrowseResponse>);
+    }
+}
+
+export class FolderEntry {
+    "name": string;
+    "path": string;
+
+    /** Creates a new FolderEntry instance. */
+    constructor($$source: Partial<FolderEntry> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FolderEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FolderEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FolderEntry($$parsedSource as Partial<FolderEntry>);
+    }
+}
+
 export class PaginatedImages {
     "images": db$0.ImageRecord[];
     "totalCount": number;
@@ -37,7 +119,7 @@ export class PaginatedImages {
      * Creates a new PaginatedImages instance from a string or object.
      */
     static createFrom($$source: any = {}): PaginatedImages {
-        const $$createField0_0 = $$createType1;
+        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("images" in $$parsedSource) {
             $$parsedSource["images"] = $$createField0_0($$parsedSource["images"]);
@@ -145,5 +227,7 @@ export class ParserPluginLogEntry {
 }
 
 // Private type creation functions
-const $$createType0 = db$0.ImageRecord.createFrom;
+const $$createType0 = FolderEntry.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = db$0.ImageRecord.createFrom;
+const $$createType3 = $Create.Array($$createType2);
