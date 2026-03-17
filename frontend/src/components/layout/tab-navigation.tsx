@@ -1,4 +1,8 @@
-import { SETTINGS_TAB_PATH, isPageTabPath } from '@/lib/tab-pages';
+import {
+  IMAGE_GENERATION_TAB_PATH,
+  SETTINGS_TAB_PATH,
+  isPageTabPath
+} from '@/lib/tab-pages';
 import { cn } from '@/lib/utils';
 import type {
   GallerySortBy,
@@ -41,6 +45,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  WandSparkles,
   X
 } from 'lucide-react';
 import {
@@ -463,6 +468,22 @@ export function TabNavigation() {
     await addTab({ label: 'Settings', path: SETTINGS_TAB_PATH, isWalk: false });
   }, [tabs, setActiveTabId, addTab]);
 
+  const handleOpenImageGenerationTab = useCallback(async () => {
+    const existingImageGenerationTab = tabs.find(
+      (tab) => tab.path === IMAGE_GENERATION_TAB_PATH
+    );
+    if (existingImageGenerationTab) {
+      setActiveTabId(existingImageGenerationTab.id);
+      return;
+    }
+
+    await addTab({
+      label: 'Image Generation',
+      path: IMAGE_GENERATION_TAB_PATH,
+      isWalk: false
+    });
+  }, [tabs, setActiveTabId, addTab]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   }, []);
@@ -673,6 +694,16 @@ export function TabNavigation() {
                 </PopoverContent>
               </Popover>
             </>
+          )}
+
+          {activeTab?.path !== IMAGE_GENERATION_TAB_PATH && (
+            <button
+              onClick={handleOpenImageGenerationTab}
+              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground active:scale-95"
+              title="Image Generation"
+            >
+              <WandSparkles size={16} />
+            </button>
           )}
 
           {activeTab?.path !== SETTINGS_TAB_PATH && (

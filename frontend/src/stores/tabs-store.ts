@@ -1,4 +1,4 @@
-import { isPageTabPath, SETTINGS_TAB_PATH } from '@/lib/tab-pages';
+import { isPageTabPath, isSingleInstancePageTabPath } from '@/lib/tab-pages';
 import { create } from 'zustand';
 import {
   ScanMode,
@@ -65,17 +65,21 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     try {
       const config = await GetConfig();
       if (config && config.tabs && config.tabs.length > 0) {
-        let seenSettingsTab = false;
+        const seenSingleInstancePagePaths = new Set<string>();
         const normalizedTabs = config.tabs.filter((t) => {
-          if (t.path !== SETTINGS_TAB_PATH) {
+          if (!isSingleInstancePageTabPath(t.path)) {
             return true;
           }
 
-          if (seenSettingsTab) {
+          if (!t.path) {
             return false;
           }
 
-          seenSettingsTab = true;
+          if (seenSingleInstancePagePaths.has(t.path)) {
+            return false;
+          }
+
+          seenSingleInstancePagePaths.add(t.path);
           return true;
         });
 
@@ -133,13 +137,11 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   addTab: async (tab) => {
-    if (tab.path === SETTINGS_TAB_PATH) {
-      const existingSettingsTab = get().tabs.find(
-        (t) => t.path === SETTINGS_TAB_PATH
-      );
-      if (existingSettingsTab) {
-        persistLastActiveTabId(existingSettingsTab.id);
-        set({ activeTabId: existingSettingsTab.id });
+    if (isSingleInstancePageTabPath(tab.path)) {
+      const existingPageTab = get().tabs.find((t) => t.path === tab.path);
+      if (existingPageTab) {
+        persistLastActiveTabId(existingPageTab.id);
+        set({ activeTabId: existingPageTab.id });
         return;
       }
     }

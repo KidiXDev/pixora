@@ -1,5 +1,6 @@
-import { isSettingsTabPath } from '@/lib/tab-pages';
+import { isImageGenerationTabPath, isSettingsTabPath } from '@/lib/tab-pages';
 import { cn } from '@/lib/utils';
+import ImageGenerationPage from '@/pages/image-generation-page';
 import SettingsPage from '@/pages/settings-page';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
@@ -271,6 +272,10 @@ export function GalleryGrid() {
 
   if (activeTab && isSettingsTabPath(activeTab.path)) {
     return <SettingsPage />;
+  }
+
+  if (activeTab && isImageGenerationTabPath(activeTab.path)) {
+    return <ImageGenerationPage />;
   }
 
   if (activeTab && !activeTab.path) {

@@ -13,3 +13,33 @@ export function getBaseName(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean);
   return parts[parts.length - 1] || 'Image';
 }
+
+/**
+ * Filters a string to only include numeric characters.
+ * @param value The raw input string
+ * @param allowFloat Whether to allow a single decimal point
+ */
+export function filterNumeric(value: string, allowFloat = false): string {
+  if (allowFloat) {
+    // Keep only numbers and dots, then ensure only one dot remains
+    const cleaned = value.replace(/[^0-9.]/g, '');
+    const dotIndex = cleaned.indexOf('.');
+    if (dotIndex !== -1) {
+      return (
+        cleaned.slice(0, dotIndex + 1) +
+        cleaned.slice(dotIndex + 1).replace(/\./g, '')
+      );
+    }
+    return cleaned;
+  }
+  return value.replace(/[^0-9]/g, '');
+}
+
+/**
+ * Parses a string to a number, returning 0 for empty or invalid inputs.
+ */
+export function parseNumeric(value: string): number {
+  if (!value || value === '.') return 0;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
