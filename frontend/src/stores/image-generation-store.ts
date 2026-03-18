@@ -3,6 +3,7 @@ import {
   ComfyUILogEntry,
   ComfyUIStatus,
   GeneratedPreviewItem,
+  GenerationModelCatalog,
   ImageGenerationBackend,
   ImageGenerationMode,
   Img2ImgParameters,
@@ -21,6 +22,7 @@ import {
   Start,
   Stop
 } from '../../bindings/pixora/internal/services/comfyuimanager';
+import { GetModelCatalog } from '../../bindings/pixora/internal/services/generationservice';
 
 const STORAGE_KEY = 'pixora:image-generation-ui';
 
@@ -35,13 +37,17 @@ interface PersistedImageGenerationState {
 
 interface ImageGenerationState extends PersistedImageGenerationState {
   comfyStatus: ComfyUIStatus;
+  modelCatalog: GenerationModelCatalog;
   comfyLogs: ComfyUILogEntry[];
   comfyError: string;
+  modelCatalogError: string;
   isComfyActionPending: boolean;
+  isModelCatalogLoading: boolean;
   isComfyLogsLoading: boolean;
   isComfyConfigSaving: boolean;
 
   initializeComfyLifecycle: () => Promise<void>;
+  loadModelCatalog: () => Promise<void>;
   saveComfyUIConfig: () => Promise<void>;
   startComfyUI: () => Promise<void>;
   stopComfyUI: () => Promise<void>;
@@ -70,6 +76,27 @@ const DEFAULT_COMFYUI_API_URL = buildComfyApiURL(
 
 let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
+
+const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
+  samplers: [
+    'Euler a',
+    'Euler',
+    'Heun',
+    'DPM++ 2M Karras',
+    'DPM++ SDE Karras',
+    'DPM++ 2S a Karras',
+    'DPM2 a Karras',
+    'LMS Karras'
+  ],
+  checkpoints: [],
+  vaes: ['Auto'],
+  loras: [],
+  controlnets: [],
+  upscaleModels: [],
+  textEncoders: [],
+  diffusionModels: [],
+  unets: []
+};
 
 const defaultTxt2Img: Txt2ImgParameters = {
   prompt: '',
@@ -248,6 +275,64 @@ function mapLog(input: {
   };
 }
 
+function mapModelCatalog(
+  input: {
+    samplers: string[];
+    checkpoints: string[];
+    vaes: string[];
+    loras: string[];
+    controlnets: string[];
+    upscaleModels: string[];
+    textEncoders: string[];
+    diffusionModels: string[];
+    unets: string[];
+  } | null
+): GenerationModelCatalog {
+  if (!input) {
+    return DEFAULT_MODEL_CATALOG;
+  }
+
+  return {
+    samplers:
+      input.samplers.length > 0
+        ? input.samplers
+        : DEFAULT_MODEL_CATALOG.samplers,
+    checkpoints: input.checkpoints,
+    vaes: input.vaes.length > 0 ? input.vaes : DEFAULT_MODEL_CATALOG.vaes,
+    loras: input.loras,
+    controlnets: input.controlnets,
+    upscaleModels: input.upscaleModels,
+    textEncoders: input.textEncoders,
+    diffusionModels: input.diffusionModels,
+    unets: input.unets
+  };
+}
+
+function applyCatalogDefaults(
+  txt2img: Txt2ImgParameters,
+  img2img: Img2ImgParameters,
+  catalog: GenerationModelCatalog
+): { txt2img: Txt2ImgParameters; img2img: Img2ImgParameters } {
+  const firstCheckpoint = catalog.checkpoints[0] ?? '';
+  const firstSampler = catalog.samplers[0] ?? txt2img.sampler;
+  const firstVAE = catalog.vaes[0] ?? 'Auto';
+
+  return {
+    txt2img: {
+      ...txt2img,
+      model: txt2img.model || firstCheckpoint,
+      sampler: txt2img.sampler || firstSampler,
+      vae: txt2img.vae || firstVAE
+    },
+    img2img: {
+      ...img2img,
+      model: img2img.model || firstCheckpoint,
+      sampler: img2img.sampler || firstSampler,
+      vae: img2img.vae || firstVAE
+    }
+  };
+}
+
 function getEventPayload<T>(data: unknown): T | undefined {
   if (Array.isArray(data)) {
     return data[0] as T | undefined;
@@ -358,11 +443,42 @@ export const useImageGenerationStore = create<ImageGenerationState>(
   (set, get) => ({
     ...initialState,
     comfyStatus: defaultComfyStatus,
+    modelCatalog: DEFAULT_MODEL_CATALOG,
     comfyLogs: [],
     comfyError: '',
+    modelCatalogError: '',
     isComfyActionPending: false,
+    isModelCatalogLoading: false,
     isComfyLogsLoading: false,
     isComfyConfigSaving: false,
+
+    loadModelCatalog: async () => {
+      set({ isModelCatalogLoading: true, modelCatalogError: '' });
+      try {
+        const catalogResponse = await GetModelCatalog();
+        const catalog = mapModelCatalog(catalogResponse);
+        set((state) => {
+          const withDefaults = applyCatalogDefaults(
+            state.txt2img,
+            state.img2img,
+            catalog
+          );
+
+          return {
+            modelCatalog: catalog,
+            txt2img: withDefaults.txt2img,
+            img2img: withDefaults.img2img,
+            isModelCatalogLoading: false
+          };
+        });
+        persistState(toPersistedState(get()));
+      } catch (error) {
+        set({
+          isModelCatalogLoading: false,
+          modelCatalogError: toErrorMessage(error)
+        });
+      }
+    },
 
     initializeComfyLifecycle: async () => {
       if (!comfyEventsBound) {
@@ -422,13 +538,19 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       try {
-        const [backendConfig, status, logs] = await Promise.all([
-          GetComfyUIConfig(),
-          GetStatus(),
-          ListLogs(400)
-        ]);
+        const [backendConfig, status, logs, catalogResponse] =
+          await Promise.all([
+            GetComfyUIConfig(),
+            GetStatus(),
+            ListLogs(400),
+            GetModelCatalog()
+          ]);
+
+        const catalog = mapModelCatalog(catalogResponse);
 
         set((state) => ({
+          ...applyCatalogDefaults(state.txt2img, state.img2img, catalog),
+          modelCatalog: catalog,
           comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
           comfyStatus: mapStatus(status),
           comfyLogs: logs.map(mapLog),

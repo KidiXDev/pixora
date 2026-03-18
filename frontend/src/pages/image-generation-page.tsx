@@ -13,8 +13,10 @@ export default function ImageGenerationPage() {
     mode,
     comfyUI,
     comfyStatus,
+    modelCatalog,
     comfyLogs,
     comfyError,
+    isModelCatalogLoading,
     isComfyActionPending,
     isComfyLogsLoading,
     isComfyConfigSaving,
@@ -60,6 +62,8 @@ export default function ImageGenerationPage() {
           <aside className="w-100 shrink-0 overflow-y-auto overflow-x-hidden pr-4">
             <GenerationParametersPanel
               mode={mode}
+              modelCatalog={modelCatalog}
+              modelCatalogLoading={isModelCatalogLoading}
               txt2img={txt2img}
               img2img={img2img}
               onTxt2ImgChange={updateTxt2Img}

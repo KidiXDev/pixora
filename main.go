@@ -76,6 +76,7 @@ func main() {
 	}()
 
 	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer, pluginManager)
+	generationSvc := services.NewGenerationService(cfgMgr)
 
 	if appDataDir, err := os.UserConfigDir(); err == nil {
 		log.Printf("[pixora] Config dir  : %s", filepath.Join(appDataDir, "pixora"))
@@ -103,6 +104,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(gallerySvc),
 			application.NewService(comfySvc),
+			application.NewService(generationSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

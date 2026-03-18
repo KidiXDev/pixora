@@ -169,6 +169,95 @@ export class FolderEntry {
     }
 }
 
+export class GenerationModelCatalog {
+    "samplers": string[];
+    "checkpoints": string[];
+    "vaes": string[];
+    "loras": string[];
+    "controlnets": string[];
+    "upscaleModels": string[];
+    "textEncoders": string[];
+    "diffusionModels": string[];
+    "unets": string[];
+
+    /** Creates a new GenerationModelCatalog instance. */
+    constructor($$source: Partial<GenerationModelCatalog> = {}) {
+        if (!("samplers" in $$source)) {
+            this["samplers"] = [];
+        }
+        if (!("checkpoints" in $$source)) {
+            this["checkpoints"] = [];
+        }
+        if (!("vaes" in $$source)) {
+            this["vaes"] = [];
+        }
+        if (!("loras" in $$source)) {
+            this["loras"] = [];
+        }
+        if (!("controlnets" in $$source)) {
+            this["controlnets"] = [];
+        }
+        if (!("upscaleModels" in $$source)) {
+            this["upscaleModels"] = [];
+        }
+        if (!("textEncoders" in $$source)) {
+            this["textEncoders"] = [];
+        }
+        if (!("diffusionModels" in $$source)) {
+            this["diffusionModels"] = [];
+        }
+        if (!("unets" in $$source)) {
+            this["unets"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationModelCatalog instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationModelCatalog {
+        const $$createField0_0 = $$createType4;
+        const $$createField1_0 = $$createType4;
+        const $$createField2_0 = $$createType4;
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType4;
+        const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType4;
+        const $$createField8_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("samplers" in $$parsedSource) {
+            $$parsedSource["samplers"] = $$createField0_0($$parsedSource["samplers"]);
+        }
+        if ("checkpoints" in $$parsedSource) {
+            $$parsedSource["checkpoints"] = $$createField1_0($$parsedSource["checkpoints"]);
+        }
+        if ("vaes" in $$parsedSource) {
+            $$parsedSource["vaes"] = $$createField2_0($$parsedSource["vaes"]);
+        }
+        if ("loras" in $$parsedSource) {
+            $$parsedSource["loras"] = $$createField3_0($$parsedSource["loras"]);
+        }
+        if ("controlnets" in $$parsedSource) {
+            $$parsedSource["controlnets"] = $$createField4_0($$parsedSource["controlnets"]);
+        }
+        if ("upscaleModels" in $$parsedSource) {
+            $$parsedSource["upscaleModels"] = $$createField5_0($$parsedSource["upscaleModels"]);
+        }
+        if ("textEncoders" in $$parsedSource) {
+            $$parsedSource["textEncoders"] = $$createField6_0($$parsedSource["textEncoders"]);
+        }
+        if ("diffusionModels" in $$parsedSource) {
+            $$parsedSource["diffusionModels"] = $$createField7_0($$parsedSource["diffusionModels"]);
+        }
+        if ("unets" in $$parsedSource) {
+            $$parsedSource["unets"] = $$createField8_0($$parsedSource["unets"]);
+        }
+        return new GenerationModelCatalog($$parsedSource as Partial<GenerationModelCatalog>);
+    }
+}
+
 export class PaginatedImages {
     "images": db$0.ImageRecord[];
     "totalCount": number;
@@ -309,3 +398,4 @@ const $$createType0 = FolderEntry.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = db$0.ImageRecord.createFrom;
 const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $Create.Array($Create.Any);

@@ -63,6 +63,18 @@ export interface ComfyUILogEntry {
   message: string;
 }
 
+export interface GenerationModelCatalog {
+  samplers: string[];
+  checkpoints: string[];
+  vaes: string[];
+  loras: string[];
+  controlnets: string[];
+  upscaleModels: string[];
+  textEncoders: string[];
+  diffusionModels: string[];
+  unets: string[];
+}
+
 export interface GeneratedPreviewItem {
   id: string;
   backend: ImageGenerationBackend;

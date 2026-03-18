@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { filterNumeric, parseNumeric } from '@/lib/utils';
 import { img2imgSchema, txt2imgSchema } from '@/schema/generation-schema';
 import {
+  GenerationModelCatalog,
   ImageGenerationMode,
   Img2ImgParameters,
   Txt2ImgParameters
@@ -37,31 +38,6 @@ type FormValues = {
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
 };
-
-const SD_SAMPLERS = [
-  'Euler a',
-  'Euler',
-  'Heun',
-  'DPM++ 2M Karras',
-  'DPM++ SDE Karras',
-  'DPM++ 2S a Karras',
-  'DPM2 a Karras',
-  'LMS Karras'
-] as const;
-
-const SD_MODELS = [
-  'v1-5-pruned-emaonly.safetensors',
-  'sd_xl_base_1.0.safetensors',
-  'sd_xl_refiner_1.0.safetensors',
-  'dreamshaper_8.safetensors',
-  'realisticVisionV60B1_v51VAE.safetensors'
-] as const;
-
-const SD_VAES = [
-  'Auto',
-  'vae-ft-mse-840000-ema-pruned.safetensors',
-  'sdxl_vae.safetensors'
-] as const;
 
 const RESOLUTION_PRESETS = {
   SDXL: [
@@ -87,6 +63,8 @@ const RESOLUTION_PRESETS = {
 
 interface GenerationParametersPanelProps {
   mode: ImageGenerationMode;
+  modelCatalog: GenerationModelCatalog;
+  modelCatalogLoading: boolean;
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
   onTxt2ImgChange: (patch: Partial<Txt2ImgParameters>) => void;
@@ -101,12 +79,27 @@ interface RenderNumericParameterFieldsOptions {
 
 export function GenerationParametersPanel({
   mode,
+  modelCatalog,
+  modelCatalogLoading,
   txt2img,
   img2img,
   onTxt2ImgChange,
   onImg2ImgChange,
   onGenerate
 }: GenerationParametersPanelProps) {
+  const samplerOptions = React.useMemo(
+    () => modelCatalog.samplers,
+    [modelCatalog.samplers]
+  );
+  const modelOptions = React.useMemo(
+    () => modelCatalog.checkpoints,
+    [modelCatalog.checkpoints]
+  );
+  const vaeOptions = React.useMemo(
+    () => modelCatalog.vaes,
+    [modelCatalog.vaes]
+  );
+
   const defaultValues = React.useMemo(
     () => ({
       txt2img,
@@ -452,7 +445,7 @@ export function GenerationParametersPanel({
                     <SelectValue placeholder="Select sampler" />
                   </SelectTrigger>
                   <SelectContent>
-                    {SD_SAMPLERS.map((item) => (
+                    {samplerOptions.map((item) => (
                       <SelectItem key={item} value={item} className="text-xs">
                         {item}
                       </SelectItem>
@@ -520,10 +513,16 @@ export function GenerationParametersPanel({
                     aria-invalid={isInvalid}
                     className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
                   >
-                    <SelectValue placeholder="Select model" />
+                    <SelectValue
+                      placeholder={
+                        modelCatalogLoading
+                          ? 'Loading checkpoints...'
+                          : 'Select model'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {SD_MODELS.map((item) => (
+                    {modelOptions.map((item) => (
                       <SelectItem key={item} value={item} className="text-xs">
                         {item}
                       </SelectItem>
@@ -559,10 +558,14 @@ export function GenerationParametersPanel({
                     aria-invalid={isInvalid}
                     className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
                   >
-                    <SelectValue placeholder="Select VAE" />
+                    <SelectValue
+                      placeholder={
+                        modelCatalogLoading ? 'Loading VAEs...' : 'Select VAE'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {SD_VAES.map((item) => (
+                    {vaeOptions.map((item) => (
                       <SelectItem key={item} value={item} className="text-xs">
                         {item}
                       </SelectItem>
@@ -810,7 +813,7 @@ export function GenerationParametersPanel({
               className="w-full gap-2 h-11 text-sm font-semibold shadow-lg shadow-primary/25 bg-linear-to-r from-primary to-primary/90 hover:opacity-90 transition-all duration-300 rounded-xl"
             >
               <WandSparkles className="size-4" />
-              Generate Preview
+              Generate
             </Button>
           </div>
         </form>

@@ -3,9 +3,11 @@
 
 import * as ComfyUIManager from "./comfyuimanager.js";
 import * as GalleryService from "./galleryservice.js";
+import * as GenerationService from "./generationservice.js";
 export {
     ComfyUIManager,
-    GalleryService
+    GalleryService,
+    GenerationService
 };
 
 export {
@@ -13,6 +15,7 @@ export {
     ComfyUIStatus,
     FolderBrowseResponse,
     FolderEntry,
+    GenerationModelCatalog,
     PaginatedImages,
     ParserPluginInfo,
     ParserPluginLogEntry
