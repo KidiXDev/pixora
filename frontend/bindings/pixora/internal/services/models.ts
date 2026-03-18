@@ -9,6 +9,84 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as db$0 from "../db/models.js";
 
+export class ComfyUILogEntry {
+    "timestamp": string;
+    "level": string;
+    "stream": string;
+    "message": string;
+
+    /** Creates a new ComfyUILogEntry instance. */
+    constructor($$source: Partial<ComfyUILogEntry> = {}) {
+        if (!("timestamp" in $$source)) {
+            this["timestamp"] = "";
+        }
+        if (!("level" in $$source)) {
+            this["level"] = "";
+        }
+        if (!("stream" in $$source)) {
+            this["stream"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ComfyUILogEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ComfyUILogEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ComfyUILogEntry($$parsedSource as Partial<ComfyUILogEntry>);
+    }
+}
+
+export class ComfyUIStatus {
+    "state": string;
+    "running": boolean;
+    "pid": number;
+    "host": string;
+    "port": number;
+    "startedAt": string;
+    "lastError": string;
+
+    /** Creates a new ComfyUIStatus instance. */
+    constructor($$source: Partial<ComfyUIStatus> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("running" in $$source)) {
+            this["running"] = false;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("host" in $$source)) {
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+        if (!("startedAt" in $$source)) {
+            this["startedAt"] = "";
+        }
+        if (!("lastError" in $$source)) {
+            this["lastError"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ComfyUIStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ComfyUIStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ComfyUIStatus($$parsedSource as Partial<ComfyUIStatus>);
+    }
+}
+
 export class FolderBrowseResponse {
     "rootPath": string;
     "currentPath": string;

@@ -3,29 +3,48 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { ComfyUIConfig } from '@/types/image-generation';
+import { ComfyUIConfig, ComfyUIStatus } from '@/types/image-generation';
 import {
   Cpu,
   Folder,
+  LoaderCircle,
   Play,
   RotateCcw,
+  Save,
   ScrollText,
   Square,
   Terminal
 } from 'lucide-react';
 
-import { useState } from 'react';
-
 interface BackendConfigPanelProps {
   comfyUI: ComfyUIConfig;
+  status: ComfyUIStatus;
+  isActionPending: boolean;
+  isConfigSaving: boolean;
+  errorMessage: string;
   onComfyUIChange: (patch: Partial<ComfyUIConfig>) => void;
+  onSaveConfig: () => Promise<void>;
+  onStart: () => Promise<void>;
+  onStop: () => Promise<void>;
+  onRestart: () => Promise<void>;
+  onLogsClick: () => void;
 }
 
 export function BackendConfigPanel({
   comfyUI,
-  onComfyUIChange
+  status,
+  isActionPending,
+  isConfigSaving,
+  errorMessage,
+  onComfyUIChange,
+  onSaveConfig,
+  onStart,
+  onStop,
+  onRestart,
+  onLogsClick
 }: BackendConfigPanelProps) {
-  const [isRunning, setIsRunning] = useState(true);
+  const isRunning = status.running;
+
   return (
     <div className="space-y-6">
       {/* Backend Status Card */}
@@ -34,11 +53,8 @@ export function BackendConfigPanel({
           <div className="space-y-1">
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Cpu className="size-4 text-primary" />
-              Embedded ComfyUI
+              Comfy Engine
             </h3>
-            <p className="text-xs text-muted-foreground">
-              Manage your local generation engine
-            </p>
           </div>
           {isRunning ? (
             <Badge
@@ -66,20 +82,30 @@ export function BackendConfigPanel({
               variant="outline"
               size="sm"
               className="h-9 gap-2 text-xs font-medium text-destructive hover:bg-destructive/10 px-2"
-              onClick={() => setIsRunning(false)}
+              onClick={onStop}
+              disabled={isActionPending}
             >
-              <Square className="size-3.5 fill-current" />
-              Stop
+              {isActionPending ? (
+                <LoaderCircle className="size-3.5 animate-spin" />
+              ) : (
+                <Square className="size-3.5 fill-current" />
+              )}
+              {isActionPending ? 'Working...' : 'Stop'}
             </Button>
           ) : (
             <Button
               variant="outline"
               size="sm"
               className="h-9 gap-2 text-xs font-medium px-2"
-              onClick={() => setIsRunning(true)}
+              onClick={onStart}
+              disabled={isActionPending}
             >
-              <Play className="size-3.5 fill-current" />
-              Start
+              {isActionPending ? (
+                <LoaderCircle className="size-3.5 animate-spin" />
+              ) : (
+                <Play className="size-3.5 fill-current" />
+              )}
+              {isActionPending ? 'Working...' : 'Start'}
             </Button>
           )}
 
@@ -87,7 +113,8 @@ export function BackendConfigPanel({
             variant="outline"
             size="sm"
             className="h-9 gap-2 text-xs font-medium px-2"
-            disabled={!isRunning}
+            disabled={!isRunning || isActionPending}
+            onClick={onRestart}
           >
             <RotateCcw className="size-3.5" />
             Restart
@@ -96,11 +123,18 @@ export function BackendConfigPanel({
             variant="outline"
             size="sm"
             className="h-9 gap-2 text-xs font-medium px-2"
+            onClick={onLogsClick}
           >
             <ScrollText className="size-3.5" />
             Logs
           </Button>
         </div>
+
+        {errorMessage ? (
+          <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+            {errorMessage}
+          </p>
+        ) : null}
       </section>
 
       <Separator className="opacity-50" />
@@ -121,7 +155,7 @@ export function BackendConfigPanel({
               value={comfyUI.args}
               onChange={(e) => onComfyUIChange({ args: e.target.value })}
               className="h-10 bg-background/50 border-border/60 focus:border-primary/50 transition-all font-mono text-[13px]"
-              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method-auto --use-pytorch-cross-attention --enable-manager"
+              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
             />
             <p className="text-[10px] text-muted-foreground mt-1 px-1">
               Custom CLI arguments passed to the ComfyUI process on startup.
@@ -148,6 +182,22 @@ export function BackendConfigPanel({
                 <Folder className="size-4" />
               </Button>
             </div>
+          </div>
+
+          <div className="px-1">
+            <Button
+              variant="secondary"
+              className="h-9 gap-2 text-xs font-medium"
+              disabled={isConfigSaving}
+              onClick={onSaveConfig}
+            >
+              {isConfigSaving ? (
+                <LoaderCircle className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              Save Configuration
+            </Button>
           </div>
         </div>
       </div>

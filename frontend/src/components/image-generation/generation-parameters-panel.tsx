@@ -57,6 +57,12 @@ const SD_MODELS = [
   'realisticVisionV60B1_v51VAE.safetensors'
 ] as const;
 
+const SD_VAES = [
+  'Auto',
+  'vae-ft-mse-840000-ema-pruned.safetensors',
+  'sdxl_vae.safetensors'
+] as const;
+
 const RESOLUTION_PRESETS = {
   SDXL: [
     { label: 'SDXL Square 1024x1024', width: 1024, height: 1024 },
@@ -489,48 +495,86 @@ export function GenerationParametersPanel({
         />
       </div>
 
-      {/* Checkpoint */}
-      <form.Field
-        name={prefix === 'txt2img' ? 'txt2img.model' : 'img2img.model'}
-        children={(field) => {
-          const isInvalid =
-            field.state.meta.isTouched && !!field.state.meta.errors.length;
-          return (
-            <Field
-              className="space-y-2 pt-2 border-t border-border/10"
-              data-invalid={isInvalid}
-            >
-              <FieldLabel
-                htmlFor={field.name}
-                className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-              >
-                Checkpoint Model
-              </FieldLabel>
-              <Select
-                name={field.name}
-                value={field.state.value}
-                onValueChange={(value) => field.handleChange(value)}
-              >
-                <SelectTrigger
-                  id={field.name}
-                  aria-invalid={isInvalid}
-                  className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+      {/* Checkpoint & VAE Row */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-5 pt-2 border-t border-border/10">
+        <form.Field
+          name={prefix === 'txt2img' ? 'txt2img.model' : 'img2img.model'}
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !!field.state.meta.errors.length;
+            return (
+              <Field className="space-y-2" data-invalid={isInvalid}>
+                <FieldLabel
+                  htmlFor={field.name}
+                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
                 >
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SD_MODELS.map((item) => (
-                    <SelectItem key={item} value={item} className="text-xs">
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {isInvalid && <FieldError errors={field.state.meta.errors} />}
-            </Field>
-          );
-        }}
-      />
+                  Checkpoint
+                </FieldLabel>
+                <Select
+                  name={field.name}
+                  value={field.state.value}
+                  onValueChange={(value) => field.handleChange(value)}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={isInvalid}
+                    className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                  >
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SD_MODELS.map((item) => (
+                      <SelectItem key={item} value={item} className="text-xs">
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+              </Field>
+            );
+          }}
+        />
+
+        <form.Field
+          name={prefix === 'txt2img' ? 'txt2img.vae' : 'img2img.vae'}
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !!field.state.meta.errors.length;
+            return (
+              <Field className="space-y-2" data-invalid={isInvalid}>
+                <FieldLabel
+                  htmlFor={field.name}
+                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
+                >
+                  VAE
+                </FieldLabel>
+                <Select
+                  name={field.name}
+                  value={field.state.value}
+                  onValueChange={(value) => field.handleChange(value)}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={isInvalid}
+                    className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                  >
+                    <SelectValue placeholder="Select VAE" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SD_VAES.map((item) => (
+                      <SelectItem key={item} value={item} className="text-xs">
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+              </Field>
+            );
+          }}
+        />
+      </div>
     </div>
   );
 

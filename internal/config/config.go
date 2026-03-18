@@ -42,11 +42,23 @@ type WindowConfig struct {
 	HasNormalBounds bool         `json:"hasNormalBounds"`
 }
 
+type ComfyUIBackendConfig struct {
+	RootDir        string `json:"rootDir"`
+	PythonPath     string `json:"pythonPath"`
+	MainScriptPath string `json:"mainScriptPath"`
+	Args           string `json:"args"`
+	OutputDir      string `json:"outputDir"`
+	ModelPathsYAML string `json:"modelPathsYAML"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+}
+
 type AppConfig struct {
-	Folders []FolderConfig `json:"folders"`
-	Tabs    []TabConfig    `json:"tabs"`
-	Window  WindowConfig   `json:"window"`
-	DevMode bool           `json:"devMode"`
+	Folders []FolderConfig       `json:"folders"`
+	Tabs    []TabConfig          `json:"tabs"`
+	Window  WindowConfig         `json:"window"`
+	DevMode bool                 `json:"devMode"`
+	ComfyUI ComfyUIBackendConfig `json:"comfyUI"`
 }
 
 type Manager struct {
@@ -123,6 +135,21 @@ func (m *Manager) GetConfig() AppConfig {
 func (m *Manager) SetWindow(window WindowConfig) error {
 	m.mu.Lock()
 	m.config.Window = window
+	m.mu.Unlock()
+
+	return m.Save()
+}
+
+func (m *Manager) GetComfyUIConfig() ComfyUIBackendConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config.ComfyUI
+}
+
+func (m *Manager) SetComfyUIConfig(cfg ComfyUIBackendConfig) error {
+	m.mu.Lock()
+	m.config.ComfyUI = cfg
+	m.ensureDefaultsLocked()
 	m.mu.Unlock()
 
 	return m.Save()
@@ -215,5 +242,21 @@ func (m *Manager) ensureDefaultsLocked() {
 		}
 	} else if m.config.Window.NormalBounds.Width > 0 && m.config.Window.NormalBounds.Height > 0 {
 		m.config.Window.HasNormalBounds = true
+	}
+
+	if m.config.ComfyUI.Host == "" {
+		m.config.ComfyUI.Host = "127.0.0.1"
+	}
+
+	if m.config.ComfyUI.Port <= 0 {
+		m.config.ComfyUI.Port = 7180
+	}
+
+	if m.config.ComfyUI.Args == "" {
+		m.config.ComfyUI.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
+	}
+
+	if m.config.ComfyUI.OutputDir == "" {
+		m.config.ComfyUI.OutputDir = filepath.Join("data", "output")
 	}
 }

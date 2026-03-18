@@ -10,6 +10,7 @@ export class AppConfig {
     "tabs": TabConfig[];
     "window": WindowConfig;
     "devMode": boolean;
+    "comfyUI": ComfyUIBackendConfig;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -25,6 +26,9 @@ export class AppConfig {
         if (!("devMode" in $$source)) {
             this["devMode"] = false;
         }
+        if (!("comfyUI" in $$source)) {
+            this["comfyUI"] = (new ComfyUIBackendConfig());
+        }
 
         Object.assign(this, $$source);
     }
@@ -36,6 +40,7 @@ export class AppConfig {
         const $$createField0_0 = $$createType1;
         const $$createField1_0 = $$createType3;
         const $$createField2_0 = $$createType4;
+        const $$createField4_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
@@ -46,7 +51,59 @@ export class AppConfig {
         if ("window" in $$parsedSource) {
             $$parsedSource["window"] = $$createField2_0($$parsedSource["window"]);
         }
+        if ("comfyUI" in $$parsedSource) {
+            $$parsedSource["comfyUI"] = $$createField4_0($$parsedSource["comfyUI"]);
+        }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
+    }
+}
+
+export class ComfyUIBackendConfig {
+    "rootDir": string;
+    "pythonPath": string;
+    "mainScriptPath": string;
+    "args": string;
+    "outputDir": string;
+    "modelPathsYAML": string;
+    "host": string;
+    "port": number;
+
+    /** Creates a new ComfyUIBackendConfig instance. */
+    constructor($$source: Partial<ComfyUIBackendConfig> = {}) {
+        if (!("rootDir" in $$source)) {
+            this["rootDir"] = "";
+        }
+        if (!("pythonPath" in $$source)) {
+            this["pythonPath"] = "";
+        }
+        if (!("mainScriptPath" in $$source)) {
+            this["mainScriptPath"] = "";
+        }
+        if (!("args" in $$source)) {
+            this["args"] = "";
+        }
+        if (!("outputDir" in $$source)) {
+            this["outputDir"] = "";
+        }
+        if (!("modelPathsYAML" in $$source)) {
+            this["modelPathsYAML"] = "";
+        }
+        if (!("host" in $$source)) {
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ComfyUIBackendConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ComfyUIBackendConfig {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ComfyUIBackendConfig($$parsedSource as Partial<ComfyUIBackendConfig>);
     }
 }
 
@@ -191,8 +248,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType5;
-        const $$createField3_0 = $$createType5;
+        const $$createField1_0 = $$createType6;
+        const $$createField3_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -210,4 +267,5 @@ const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = TabConfig.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = WindowConfig.createFrom;
-const $$createType5 = WindowBounds.createFrom;
+const $$createType5 = ComfyUIBackendConfig.createFrom;
+const $$createType6 = WindowBounds.createFrom;

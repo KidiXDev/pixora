@@ -65,6 +65,16 @@ func main() {
 	}
 	defer indexer.Close()
 
+	comfySvc, err := services.NewComfyUIManager(cfgMgr)
+	if err != nil {
+		log.Fatalf("Failed to initialize ComfyUI manager: %v", err)
+	}
+	defer func() {
+		if stopErr := comfySvc.Stop(); stopErr != nil {
+			log.Printf("[pixora] Failed to stop ComfyUI process: %v", stopErr)
+		}
+	}()
+
 	gallerySvc := services.NewGalleryService(database, cfgMgr, indexer, pluginManager)
 
 	if appDataDir, err := os.UserConfigDir(); err == nil {
@@ -92,6 +102,7 @@ func main() {
 		},
 		Services: []application.Service{
 			application.NewService(gallerySvc),
+			application.NewService(comfySvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

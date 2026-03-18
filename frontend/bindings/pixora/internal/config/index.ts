@@ -3,6 +3,7 @@
 
 export {
     AppConfig,
+    ComfyUIBackendConfig,
     FolderConfig,
     ScanMode,
     TabConfig,

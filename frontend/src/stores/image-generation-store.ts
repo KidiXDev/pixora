@@ -1,12 +1,26 @@
 import {
   ComfyUIConfig,
+  ComfyUILogEntry,
+  ComfyUIStatus,
   GeneratedPreviewItem,
   ImageGenerationBackend,
   ImageGenerationMode,
   Img2ImgParameters,
   Txt2ImgParameters
 } from '@/types/image-generation';
+import { Events } from '@wailsio/runtime';
 import { create } from 'zustand';
+import { ComfyUIBackendConfig } from '../../bindings/pixora/internal/config/models';
+import {
+  ClearLogs,
+  GetComfyUIConfig,
+  GetStatus,
+  ListLogs,
+  Restart,
+  SetComfyUIConfig,
+  Start,
+  Stop
+} from '../../bindings/pixora/internal/services/comfyuimanager';
 
 const STORAGE_KEY = 'pixora:image-generation-ui';
 
@@ -20,6 +34,21 @@ interface PersistedImageGenerationState {
 }
 
 interface ImageGenerationState extends PersistedImageGenerationState {
+  comfyStatus: ComfyUIStatus;
+  comfyLogs: ComfyUILogEntry[];
+  comfyError: string;
+  isComfyActionPending: boolean;
+  isComfyLogsLoading: boolean;
+  isComfyConfigSaving: boolean;
+
+  initializeComfyLifecycle: () => Promise<void>;
+  saveComfyUIConfig: () => Promise<void>;
+  startComfyUI: () => Promise<void>;
+  stopComfyUI: () => Promise<void>;
+  restartComfyUI: () => Promise<void>;
+  loadComfyLogs: (limit?: number) => Promise<void>;
+  clearComfyLogs: () => Promise<void>;
+
   setMode: (mode: ImageGenerationMode) => void;
   updateComfyUIConfig: (patch: Partial<ComfyUIConfig>) => void;
   updateTxt2Img: (patch: Partial<Txt2ImgParameters>) => void;
@@ -28,7 +57,19 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   clearHistory: () => void;
 }
 
-const DEFAULT_COMFYUI_API_URL = 'http://127.0.0.1:8188';
+interface WailsEventLike {
+  data: unknown;
+}
+
+const DEFAULT_COMFYUI_HOST = '127.0.0.1';
+const DEFAULT_COMFYUI_PORT = 7180;
+const DEFAULT_COMFYUI_API_URL = buildComfyApiURL(
+  DEFAULT_COMFYUI_HOST,
+  DEFAULT_COMFYUI_PORT
+);
+
+let comfyEventUnsubscribers: Array<() => void> = [];
+let comfyEventsBound = false;
 
 const defaultTxt2Img: Txt2ImgParameters = {
   prompt: '',
@@ -38,6 +79,7 @@ const defaultTxt2Img: Txt2ImgParameters = {
   cfgScale: 7,
   resolution: { width: 1024, height: 1024 },
   model: '',
+  vae: 'Auto',
   sampler: 'DPM++ 2M Karras'
 };
 
@@ -53,8 +95,14 @@ const defaultState: PersistedImageGenerationState = {
   comfyUI: {
     apiUrl: DEFAULT_COMFYUI_API_URL,
     localPath: '',
-    args: '--listen 127.0.0.1 --port 8188',
-    outputDir: ''
+    args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager',
+    outputDir: '',
+    rootDir: '',
+    pythonPath: '',
+    mainScriptPath: '',
+    modelPathsYAML: '',
+    host: DEFAULT_COMFYUI_HOST,
+    port: DEFAULT_COMFYUI_PORT
   },
   txt2img: defaultTxt2Img,
   img2img: defaultImg2Img,
@@ -88,7 +136,8 @@ function sanitizePersistedState(
       resolution: {
         ...defaultState.txt2img.resolution,
         ...(candidate.txt2img?.resolution ?? {})
-      }
+      },
+      vae: candidate.txt2img?.vae || defaultState.txt2img.vae
     },
     img2img: {
       ...defaultState.img2img,
@@ -96,12 +145,127 @@ function sanitizePersistedState(
       resolution: {
         ...defaultState.img2img.resolution,
         ...(candidate.img2img?.resolution ?? {})
-      }
+      },
+      vae: candidate.img2img?.vae || defaultState.img2img.vae
     },
     history: Array.isArray(candidate.history)
       ? candidate.history.slice(0, 24).filter((item) => Boolean(item?.id))
       : []
   };
+}
+
+function normalizeComfyPort(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_COMFYUI_PORT;
+  }
+
+  const rounded = Math.round(value);
+  if (rounded <= 0 || rounded > 65535) {
+    return DEFAULT_COMFYUI_PORT;
+  }
+
+  return rounded;
+}
+
+function buildComfyApiURL(host: string, port: number): string {
+  const normalizedHost = host.trim() || DEFAULT_COMFYUI_HOST;
+  const normalizedPort = normalizeComfyPort(port);
+  return `http://${normalizedHost}:${normalizedPort.toString(10)}`;
+}
+
+function mapBackendConfigToComfyUI(
+  backend: ComfyUIBackendConfig,
+  current: ComfyUIConfig
+): ComfyUIConfig {
+  const host = backend.host.trim() || current.host || DEFAULT_COMFYUI_HOST;
+  const port = normalizeComfyPort(backend.port || current.port);
+
+  return {
+    ...current,
+    rootDir: backend.rootDir,
+    pythonPath: backend.pythonPath,
+    mainScriptPath: backend.mainScriptPath,
+    modelPathsYAML: backend.modelPathsYAML,
+    args: backend.args,
+    outputDir: backend.outputDir,
+    host,
+    port,
+    localPath: backend.mainScriptPath,
+    apiUrl: buildComfyApiURL(host, port)
+  };
+}
+
+function toBackendComfyConfig(input: ComfyUIConfig): ComfyUIBackendConfig {
+  return new ComfyUIBackendConfig({
+    rootDir: input.rootDir,
+    pythonPath: input.pythonPath,
+    mainScriptPath: input.mainScriptPath,
+    args: input.args,
+    outputDir: input.outputDir,
+    modelPathsYAML: input.modelPathsYAML,
+    host: input.host,
+    port: normalizeComfyPort(input.port)
+  });
+}
+
+function mapStatus(input: {
+  state: string;
+  running: boolean;
+  pid: number;
+  host: string;
+  port: number;
+  startedAt: string;
+  lastError: string;
+}): ComfyUIStatus {
+  return {
+    state:
+      input.state === 'starting' ||
+      input.state === 'running' ||
+      input.state === 'stopping' ||
+      input.state === 'error'
+        ? input.state
+        : 'stopped',
+    running: input.running,
+    pid: Number.isFinite(input.pid) ? input.pid : 0,
+    host: input.host || DEFAULT_COMFYUI_HOST,
+    port: normalizeComfyPort(input.port),
+    startedAt: input.startedAt || '',
+    lastError: input.lastError || ''
+  };
+}
+
+function mapLog(input: {
+  timestamp: string;
+  level: string;
+  stream: string;
+  message: string;
+}): ComfyUILogEntry {
+  return {
+    timestamp: input.timestamp || '',
+    level: (input.level || 'info').toLowerCase(),
+    stream: (input.stream || 'stdout').toLowerCase(),
+    message: input.message || ''
+  };
+}
+
+function getEventPayload<T>(data: unknown): T | undefined {
+  if (Array.isArray(data)) {
+    return data[0] as T | undefined;
+  }
+
+  return data as T | undefined;
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim() !== '') {
+    return error;
+  }
+
+  return 'Unknown ComfyUI error';
 }
 
 function readPersistedState(): PersistedImageGenerationState {
@@ -180,9 +344,190 @@ function buildPreviewItem(
 
 const initialState = readPersistedState();
 
+const defaultComfyStatus: ComfyUIStatus = {
+  state: 'stopped',
+  running: false,
+  pid: 0,
+  host: initialState.comfyUI.host,
+  port: normalizeComfyPort(initialState.comfyUI.port),
+  startedAt: '',
+  lastError: ''
+};
+
 export const useImageGenerationStore = create<ImageGenerationState>(
   (set, get) => ({
     ...initialState,
+    comfyStatus: defaultComfyStatus,
+    comfyLogs: [],
+    comfyError: '',
+    isComfyActionPending: false,
+    isComfyLogsLoading: false,
+    isComfyConfigSaving: false,
+
+    initializeComfyLifecycle: async () => {
+      if (!comfyEventsBound) {
+        const unsubscribeStatus = Events.On(
+          'comfyui:status',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<{
+              state: string;
+              running: boolean;
+              pid: number;
+              host: string;
+              port: number;
+              startedAt: string;
+              lastError: string;
+            }>(event.data);
+
+            if (!payload) {
+              return;
+            }
+
+            const status = mapStatus(payload);
+            set((state) => ({
+              comfyStatus: status,
+              comfyError: status.lastError || state.comfyError,
+              comfyUI: {
+                ...state.comfyUI,
+                host: status.host,
+                port: status.port,
+                apiUrl: buildComfyApiURL(status.host, status.port)
+              }
+            }));
+          }
+        );
+
+        const unsubscribeLog = Events.On(
+          'comfyui:log',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<{
+              timestamp: string;
+              level: string;
+              stream: string;
+              message: string;
+            }>(event.data);
+            if (!payload || !payload.message) {
+              return;
+            }
+
+            const entry = mapLog(payload);
+            set((state) => ({
+              comfyLogs: [...state.comfyLogs, entry].slice(-1000)
+            }));
+          }
+        );
+
+        comfyEventUnsubscribers = [unsubscribeStatus, unsubscribeLog];
+        comfyEventsBound = true;
+      }
+
+      try {
+        const [backendConfig, status, logs] = await Promise.all([
+          GetComfyUIConfig(),
+          GetStatus(),
+          ListLogs(400)
+        ]);
+
+        set((state) => ({
+          comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
+          comfyStatus: mapStatus(status),
+          comfyLogs: logs.map(mapLog),
+          comfyError: status.lastError || ''
+        }));
+
+        persistState(toPersistedState(get()));
+      } catch (error) {
+        set({ comfyError: toErrorMessage(error) });
+      }
+    },
+
+    saveComfyUIConfig: async () => {
+      set({ isComfyConfigSaving: true, comfyError: '' });
+      try {
+        const current = get().comfyUI;
+        const saved = await SetComfyUIConfig(toBackendComfyConfig(current));
+        set((state) => ({
+          comfyUI: mapBackendConfigToComfyUI(saved, state.comfyUI),
+          isComfyConfigSaving: false
+        }));
+        persistState(toPersistedState(get()));
+      } catch (error) {
+        set({
+          isComfyConfigSaving: false,
+          comfyError: toErrorMessage(error)
+        });
+        throw error;
+      }
+    },
+
+    startComfyUI: async () => {
+      set({ isComfyActionPending: true, comfyError: '' });
+      try {
+        await get().saveComfyUIConfig();
+        await Start();
+        const status = await GetStatus();
+        set({ comfyStatus: mapStatus(status), isComfyActionPending: false });
+      } catch (error) {
+        set({
+          isComfyActionPending: false,
+          comfyError: toErrorMessage(error)
+        });
+      }
+    },
+
+    stopComfyUI: async () => {
+      set({ isComfyActionPending: true, comfyError: '' });
+      try {
+        await Stop();
+        const status = await GetStatus();
+        set({ comfyStatus: mapStatus(status), isComfyActionPending: false });
+      } catch (error) {
+        set({
+          isComfyActionPending: false,
+          comfyError: toErrorMessage(error)
+        });
+      }
+    },
+
+    restartComfyUI: async () => {
+      set({ isComfyActionPending: true, comfyError: '' });
+      try {
+        await get().saveComfyUIConfig();
+        await Restart();
+        const status = await GetStatus();
+        set({ comfyStatus: mapStatus(status), isComfyActionPending: false });
+      } catch (error) {
+        set({
+          isComfyActionPending: false,
+          comfyError: toErrorMessage(error)
+        });
+      }
+    },
+
+    loadComfyLogs: async (limit = 400) => {
+      set({ isComfyLogsLoading: true });
+      try {
+        const logs = await ListLogs(limit);
+        set({
+          comfyLogs: logs.map(mapLog),
+          isComfyLogsLoading: false
+        });
+      } catch (error) {
+        set({
+          isComfyLogsLoading: false,
+          comfyError: toErrorMessage(error)
+        });
+      }
+    },
+
+    clearComfyLogs: async () => {
+      try {
+        await ClearLogs();
+        set({ comfyLogs: [] });
+      } catch (error) {
+        set({ comfyError: toErrorMessage(error) });
+      }
+    },
 
     setMode: (mode) => {
       set({ mode });
@@ -191,10 +536,23 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     updateComfyUIConfig: (patch) => {
       set((state) => ({
-        comfyUI: {
-          ...state.comfyUI,
-          ...patch
-        }
+        comfyUI: (() => {
+          const merged = {
+            ...state.comfyUI,
+            ...patch
+          };
+
+          const host = merged.host.trim() || DEFAULT_COMFYUI_HOST;
+          const port = normalizeComfyPort(merged.port);
+
+          return {
+            ...merged,
+            host,
+            port,
+            apiUrl: buildComfyApiURL(host, port),
+            localPath: merged.mainScriptPath || merged.localPath
+          };
+        })()
       }));
       persistState(toPersistedState(get()));
     },
@@ -259,3 +617,13 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     }
   })
 );
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    for (const unsubscribe of comfyEventUnsubscribers) {
+      unsubscribe();
+    }
+    comfyEventUnsubscribers = [];
+    comfyEventsBound = false;
+  });
+}

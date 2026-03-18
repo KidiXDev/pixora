@@ -1,47 +1,75 @@
 import { BackendConfigPanel } from '@/components/image-generation/backend-config-panel';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle
-} from '@/components/ui/drawer';
-import {
-  ComfyUIConfig,
-} from '@/types/image-generation';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from '@/components/ui/sheet';
+import { ComfyUIConfig, ComfyUIStatus } from '@/types/image-generation';
 
 interface BackendConfigDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   comfyUI: ComfyUIConfig;
+  status: ComfyUIStatus;
+  isActionPending: boolean;
+  isConfigSaving: boolean;
+  errorMessage: string;
   onComfyUIChange: (patch: Partial<ComfyUIConfig>) => void;
+  onSaveConfig: () => Promise<void>;
+  onStart: () => Promise<void>;
+  onStop: () => Promise<void>;
+  onRestart: () => Promise<void>;
+  onLogsClick: () => void;
 }
 
 export function BackendConfigDrawer({
   open,
   onOpenChange,
   comfyUI,
-  onComfyUIChange
+  status,
+  isActionPending,
+  isConfigSaving,
+  errorMessage,
+  onComfyUIChange,
+  onSaveConfig,
+  onStart,
+  onStop,
+  onRestart,
+  onLogsClick
 }: BackendConfigDrawerProps) {
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent>
-        <div className="mx-auto w-full max-w-lg h-full flex flex-col">
-          <DrawerHeader className="px-5 pt-6 pb-2">
-            <DrawerTitle className="text-xl font-bold tracking-tight">Embedded Engine Settings</DrawerTitle>
-            <DrawerDescription className="text-sm">
-              Configure your local ComfyUI instance, launch parameters, and storage locations.
-            </DrawerDescription>
-          </DrawerHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="p-0" style={{ maxWidth: '50vw' }}>
+        <div className="w-full h-full flex flex-col">
+          <SheetHeader className="px-5 pt-8 pb-2">
+            <SheetTitle className="text-xl font-bold tracking-tight">
+              Engine Settings
+            </SheetTitle>
+            <SheetDescription className="text-sm">
+              Configure your local ComfyUI instance, launch parameters, and
+              storage locations.
+            </SheetDescription>
+          </SheetHeader>
 
           <div className="flex-1 px-5 py-4 overflow-y-auto min-h-0 custom-scrollbar">
             <BackendConfigPanel
               comfyUI={comfyUI}
+              status={status}
+              isActionPending={isActionPending}
+              isConfigSaving={isConfigSaving}
+              errorMessage={errorMessage}
               onComfyUIChange={onComfyUIChange}
+              onSaveConfig={onSaveConfig}
+              onStart={onStart}
+              onStop={onStop}
+              onRestart={onRestart}
+              onLogsClick={onLogsClick}
             />
           </div>
         </div>
-      </DrawerContent>
-    </Drawer>
+      </SheetContent>
+    </Sheet>
   );
 }

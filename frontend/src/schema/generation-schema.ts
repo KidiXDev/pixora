@@ -13,6 +13,7 @@ export const baseGenerationSchema = z.object({
   cfgScale: z.coerce.number().min(1).max(30).default(7),
   resolution: resolutionSchema,
   model: z.string().min(1, 'Model is required'),
+  vae: z.string().default('Auto'),
   sampler: z.string().min(1, 'Sampler is required')
 });
 
