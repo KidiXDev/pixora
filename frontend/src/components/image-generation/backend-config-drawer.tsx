@@ -8,51 +8,38 @@ import {
 } from '@/components/ui/drawer';
 import {
   ComfyUIConfig,
-  ImageGenerationBackend,
-  StableDiffusionWebUIConfig
 } from '@/types/image-generation';
 
 interface BackendConfigDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  activeBackend: ImageGenerationBackend;
-  stableDiffusion: StableDiffusionWebUIConfig;
   comfyUI: ComfyUIConfig;
-  onBackendChange: (backend: ImageGenerationBackend) => void;
-  onStableDiffusionChange: (patch: Partial<StableDiffusionWebUIConfig>) => void;
   onComfyUIChange: (patch: Partial<ComfyUIConfig>) => void;
 }
 
 export function BackendConfigDrawer({
   open,
   onOpenChange,
-  activeBackend,
-  stableDiffusion,
   comfyUI,
-  onBackendChange,
-  onStableDiffusionChange,
   onComfyUIChange
 }: BackendConfigDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
       <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Generation Backend Configuration</DrawerTitle>
-          <DrawerDescription>
-            Configure API endpoints and local installation folders for Stable
-            Diffusion WebUI and ComfyUI.
-          </DrawerDescription>
-        </DrawerHeader>
+        <div className="mx-auto w-full max-w-lg h-full flex flex-col">
+          <DrawerHeader className="px-5 pt-6 pb-2">
+            <DrawerTitle className="text-xl font-bold tracking-tight">Embedded Engine Settings</DrawerTitle>
+            <DrawerDescription className="text-sm">
+              Configure your local ComfyUI instance, launch parameters, and storage locations.
+            </DrawerDescription>
+          </DrawerHeader>
 
-        <div className="px-5 overflow-y-auto">
-          <BackendConfigPanel
-            activeBackend={activeBackend}
-            stableDiffusion={stableDiffusion}
-            comfyUI={comfyUI}
-            onBackendChange={onBackendChange}
-            onStableDiffusionChange={onStableDiffusionChange}
-            onComfyUIChange={onComfyUIChange}
-          />
+          <div className="flex-1 px-5 py-4 overflow-y-auto min-h-0 custom-scrollbar">
+            <BackendConfigPanel
+              comfyUI={comfyUI}
+              onComfyUIChange={onComfyUIChange}
+            />
+          </div>
         </div>
       </DrawerContent>
     </Drawer>

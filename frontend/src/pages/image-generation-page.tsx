@@ -8,16 +8,12 @@ import { useState } from 'react';
 export default function ImageGenerationPage() {
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
   const {
-    activeBackend,
     mode,
-    stableDiffusion,
     comfyUI,
     txt2img,
     img2img,
     history,
-    setActiveBackend,
     setMode,
-    updateStableDiffusionConfig,
     updateComfyUIConfig,
     updateTxt2Img,
     updateImg2Img,
@@ -42,7 +38,6 @@ export default function ImageGenerationPage() {
               onTxt2ImgChange={updateTxt2Img}
               onImg2ImgChange={updateImg2Img}
               onGenerate={generatePreviewPlaceholder}
-              activeBackend={activeBackend}
             />
           </aside>
 
@@ -55,11 +50,7 @@ export default function ImageGenerationPage() {
       <BackendConfigDrawer
         open={isConfigSheetOpen}
         onOpenChange={setIsConfigSheetOpen}
-        activeBackend={activeBackend}
-        stableDiffusion={stableDiffusion}
         comfyUI={comfyUI}
-        onBackendChange={setActiveBackend}
-        onStableDiffusionChange={updateStableDiffusionConfig}
         onComfyUIChange={updateComfyUIConfig}
       />
     </div>

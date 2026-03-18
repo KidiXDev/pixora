@@ -94,8 +94,19 @@ function FolderItem({
       layout
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
+      onClick={() =>
+        !isEditing && onSelect(folder.scanMode === ScanMode.ScanModeWalk)
+      }
+      onKeyDown={(e) => {
+        if (!isEditing && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onSelect(folder.scanMode === ScanMode.ScanModeWalk);
+        }
+      }}
+      tabIndex={0}
+      role="button"
       className={cn(
-        'group flex items-center justify-between py-3 px-4 rounded-lg transition-all duration-200 mb-2.5 border',
+        'group flex items-center justify-between py-3 px-4 rounded-lg transition-all duration-200 mb-2.5 border cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
         active
           ? 'bg-primary/15 border-primary/40 shadow-md hover:shadow-lg'
           : 'bg-white/3 border-white/8 hover:bg-white/5 hover:border-white/12'
@@ -116,10 +127,7 @@ function FolderItem({
           />
         </div>
       ) : (
-        <button
-          onClick={() => onSelect(folder.scanMode === ScanMode.ScanModeWalk)}
-          className="flex flex-col flex-1 text-left min-w-0 cursor-pointer"
-        >
+        <div className="flex flex-col flex-1 text-left min-w-0">
           <span
             className={cn(
               'truncate text-sm font-semibold transition-colors',
@@ -139,7 +147,7 @@ function FolderItem({
               {folder.path}
             </span>
           )}
-        </button>
+        </div>
       )}
 
       <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-4 shrink-0">
@@ -243,7 +251,7 @@ export function TabSetup() {
                 </AnimatePresence>
                 {walkFolders.length === 0 && (
                   <div className="py-14 px-4 text-center border border-dashed border-white/10 rounded-lg bg-white/3">
-                    <p className="text-[11px] text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
+                    <p className="text-xs text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
                       No folders yet
                     </p>
                   </div>
@@ -288,7 +296,7 @@ export function TabSetup() {
                 </AnimatePresence>
                 {normalFolders.length === 0 && (
                   <div className="py-14 px-4 text-center border border-dashed border-white/10 rounded-lg bg-white/3">
-                    <p className="text-[11px] text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
+                    <p className="text-xs text-muted-foreground/40 font-semibold tracking-wide leading-relaxed uppercase">
                       No folders yet
                     </p>
                   </div>
@@ -357,7 +365,7 @@ export function TabSetup() {
                 })}
               {(!config?.folders || config.folders.length === 0) && (
                 <div className="py-20 text-center border border-dashed border-white/10 rounded-lg bg-white/2">
-                  <p className="text-[11px] text-muted-foreground/35 font-semibold tracking-wide uppercase">
+                  <p className="text-xs text-muted-foreground/35 font-semibold tracking-wide uppercase">
                     No history yet
                   </p>
                 </div>

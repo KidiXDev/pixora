@@ -1,150 +1,156 @@
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { ComfyUIConfig } from '@/types/image-generation';
 import {
-  ComfyUIConfig,
-  ImageGenerationBackend,
-  StableDiffusionWebUIConfig
-} from '@/types/image-generation';
-import { Link } from 'lucide-react';
+  Cpu,
+  Folder,
+  Play,
+  RotateCcw,
+  ScrollText,
+  Square,
+  Terminal
+} from 'lucide-react';
+
+import { useState } from 'react';
 
 interface BackendConfigPanelProps {
-  activeBackend: ImageGenerationBackend;
-  stableDiffusion: StableDiffusionWebUIConfig;
   comfyUI: ComfyUIConfig;
-  onBackendChange: (backend: ImageGenerationBackend) => void;
-  onStableDiffusionChange: (patch: Partial<StableDiffusionWebUIConfig>) => void;
   onComfyUIChange: (patch: Partial<ComfyUIConfig>) => void;
 }
 
 export function BackendConfigPanel({
-  activeBackend,
-  stableDiffusion,
   comfyUI,
-  onBackendChange,
-  onStableDiffusionChange,
   onComfyUIChange
 }: BackendConfigPanelProps) {
-
-
+  const [isRunning, setIsRunning] = useState(true);
   return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Active Backend</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onBackendChange('stable-diffusion-webui')}
-            className={cn(
-              'rounded-xl border px-3.5 py-3 text-left transition-colors',
-              activeBackend === 'stable-diffusion-webui'
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border hover:bg-muted/40'
-            )}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide">
-              Stable Diffusion WebUI
+    <div className="space-y-6">
+      {/* Backend Status Card */}
+      <section className="rounded-2xl border border-border/50 bg-card/50 p-5 shadow-sm backdrop-blur-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Cpu className="size-4 text-primary" />
+              Embedded ComfyUI
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Manage your local generation engine
             </p>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              API-compatible txt2img and img2img parameter mapping
-            </p>
-          </button>
+          </div>
+          {isRunning ? (
+            <Badge
+              variant="outline"
+              className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1.5 px-2 py-0.5"
+            >
+              <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Running
+            </Badge>
+          ) : (
+            <Badge
+              variant="outline"
+              className="bg-muted text-muted-foreground border-border gap-1.5 px-2 py-0.5"
+            >
+              <div className="size-1.5 rounded-full bg-muted-foreground/40" />
+              Stopped
+            </Badge>
+          )}
+        </div>
 
-          <button
-            type="button"
-            onClick={() => onBackendChange('comfyui')}
-            className={cn(
-              'rounded-xl border px-3.5 py-3 text-left transition-colors',
-              activeBackend === 'comfyui'
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border hover:bg-muted/40'
-            )}
+        <div className="grid grid-cols-3 gap-2">
+          {/* Start/Stop Toggle Button */}
+          {isRunning ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 text-xs font-medium text-destructive hover:bg-destructive/10 px-2"
+              onClick={() => setIsRunning(false)}
+            >
+              <Square className="size-3.5 fill-current" />
+              Stop
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 text-xs font-medium px-2"
+              onClick={() => setIsRunning(true)}
+            >
+              <Play className="size-3.5 fill-current" />
+              Start
+            </Button>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 text-xs font-medium px-2"
+            disabled={!isRunning}
           >
-            <p className="text-xs font-semibold uppercase tracking-wide">
-              ComfyUI
+            <RotateCcw className="size-3.5" />
+            Restart
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 text-xs font-medium px-2"
+          >
+            <ScrollText className="size-3.5" />
+            Logs
+          </Button>
+        </div>
+      </section>
+
+      <Separator className="opacity-50" />
+
+      {/* Operational Settings */}
+      <div className="space-y-4 pt-2">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70 px-1">
+          Operational Settings
+        </h4>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5 px-1">
+            <Label className="text-xs font-medium opacity-80 flex items-center gap-2">
+              <Terminal className="size-3.5" />
+              Launch Arguments
+            </Label>
+            <Input
+              value={comfyUI.args}
+              onChange={(e) => onComfyUIChange({ args: e.target.value })}
+              className="h-10 bg-background/50 border-border/60 focus:border-primary/50 transition-all font-mono text-[13px]"
+              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method-auto --use-pytorch-cross-attention --enable-manager"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1 px-1">
+              Custom CLI arguments passed to the ComfyUI process on startup.
             </p>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Workflow-driven generation via ComfyUI API
-            </p>
-          </button>
+          </div>
+
+          <div className="space-y-1.5 px-1">
+            <Label className="text-xs font-medium opacity-80 flex items-center gap-2">
+              <Folder className="size-3.5" />
+              Output Directory
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                value={comfyUI.outputDir}
+                onChange={(e) => onComfyUIChange({ outputDir: e.target.value })}
+                className="h-10 grow bg-background/50 border-border/60 focus:border-primary/50 transition-all text-[13px]"
+                placeholder="Relative to app or absolute path"
+              />
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-10 w-10 shrink-0 border border-border/60"
+              >
+                <Folder className="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
-
-      <section className="space-y-3 rounded-xl border border-border/70 bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Stable Diffusion WebUI</p>
-          {activeBackend === 'stable-diffusion-webui' && (
-            <Badge variant="default" className="text-[10px]">
-              Active
-            </Badge>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">API URL</label>
-          <div className="relative">
-            <Link className="size-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <Input
-              value={stableDiffusion.apiUrl}
-              onChange={(e) =>
-                onStableDiffusionChange({ apiUrl: e.target.value })
-              }
-              className="pl-8"
-              placeholder="http://127.0.0.1:7860"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">
-            Stable Diffusion WebUI directory location
-          </label>
-          <Input
-            value={stableDiffusion.localPath}
-            onChange={(e) =>
-              onStableDiffusionChange({ localPath: e.target.value })
-            }
-            placeholder="D:/Apps/stable-diffusion-webui"
-          />
-        </div>
-      </section>
-
-      <section className="space-y-3 rounded-xl border border-border/70 bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">ComfyUI</p>
-          {activeBackend === 'comfyui' && (
-            <Badge variant="default" className="text-[10px]">
-              Active
-            </Badge>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">API URL</label>
-          <div className="relative">
-            <Link className="size-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <Input
-              value={comfyUI.apiUrl}
-              onChange={(e) => onComfyUIChange({ apiUrl: e.target.value })}
-              className="pl-8"
-              placeholder="http://127.0.0.1:8188"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">
-            ComfyUI directory location
-          </label>
-          <Input
-            value={comfyUI.localPath}
-            onChange={(e) => onComfyUIChange({ localPath: e.target.value })}
-            placeholder="D:/Apps/ComfyUI"
-          />
-        </div>
-
-
-      </section>
     </div>
   );
 }

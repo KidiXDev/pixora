@@ -86,7 +86,6 @@ interface GenerationParametersPanelProps {
   onTxt2ImgChange: (patch: Partial<Txt2ImgParameters>) => void;
   onImg2ImgChange: (patch: Partial<Img2ImgParameters>) => void;
   onGenerate: () => void;
-  activeBackend: string;
 }
 
 interface RenderNumericParameterFieldsOptions {
@@ -100,8 +99,7 @@ export function GenerationParametersPanel({
   img2img,
   onTxt2ImgChange,
   onImg2ImgChange,
-  onGenerate,
-  activeBackend
+  onGenerate
 }: GenerationParametersPanelProps) {
   const defaultValues = React.useMemo(
     () => ({
@@ -551,12 +549,6 @@ export function GenerationParametersPanel({
           <CardTitle className="text-lg font-bold tracking-tight">
             Generation
           </CardTitle>
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20">
-            <div className="size-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary truncate max-w-[120px]">
-              {activeBackend}
-            </span>
-          </div>
         </div>
       </CardHeader>
       <CardContent>

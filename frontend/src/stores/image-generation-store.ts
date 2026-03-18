@@ -1,11 +1,9 @@
-
 import {
   ComfyUIConfig,
   GeneratedPreviewItem,
   ImageGenerationBackend,
   ImageGenerationMode,
   Img2ImgParameters,
-  StableDiffusionWebUIConfig,
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { create } from 'zustand';
@@ -15,7 +13,6 @@ const STORAGE_KEY = 'pixora:image-generation-ui';
 interface PersistedImageGenerationState {
   activeBackend: ImageGenerationBackend;
   mode: ImageGenerationMode;
-  stableDiffusion: StableDiffusionWebUIConfig;
   comfyUI: ComfyUIConfig;
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
@@ -23,11 +20,7 @@ interface PersistedImageGenerationState {
 }
 
 interface ImageGenerationState extends PersistedImageGenerationState {
-  setActiveBackend: (backend: ImageGenerationBackend) => void;
   setMode: (mode: ImageGenerationMode) => void;
-  updateStableDiffusionConfig: (
-    patch: Partial<StableDiffusionWebUIConfig>
-  ) => void;
   updateComfyUIConfig: (patch: Partial<ComfyUIConfig>) => void;
   updateTxt2Img: (patch: Partial<Txt2ImgParameters>) => void;
   updateImg2Img: (patch: Partial<Img2ImgParameters>) => void;
@@ -35,7 +28,6 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   clearHistory: () => void;
 }
 
-const DEFAULT_SD_WEBUI_API_URL = 'http://127.0.0.1:7860';
 const DEFAULT_COMFYUI_API_URL = 'http://127.0.0.1:8188';
 
 const defaultTxt2Img: Txt2ImgParameters = {
@@ -56,15 +48,13 @@ const defaultImg2Img: Img2ImgParameters = {
 };
 
 const defaultState: PersistedImageGenerationState = {
-  activeBackend: 'stable-diffusion-webui',
+  activeBackend: 'comfyui',
   mode: 'txt2img',
-  stableDiffusion: {
-    apiUrl: DEFAULT_SD_WEBUI_API_URL,
-    localPath: ''
-  },
   comfyUI: {
     apiUrl: DEFAULT_COMFYUI_API_URL,
-    localPath: ''
+    localPath: '',
+    args: '--listen 127.0.0.1 --port 8188',
+    outputDir: ''
   },
   txt2img: defaultTxt2Img,
   img2img: defaultImg2Img,
@@ -79,11 +69,6 @@ function sanitizePersistedState(
   }
 
   const candidate = raw as Partial<PersistedImageGenerationState>;
-  const activeBackend =
-    candidate.activeBackend === 'stable-diffusion-webui' ||
-    candidate.activeBackend === 'comfyui'
-      ? candidate.activeBackend
-      : defaultState.activeBackend;
   const mode =
     candidate.mode === 'txt2img' || candidate.mode === 'img2img'
       ? candidate.mode
@@ -91,12 +76,8 @@ function sanitizePersistedState(
 
   return {
     ...defaultState,
-    activeBackend,
+    activeBackend: 'comfyui',
     mode,
-    stableDiffusion: {
-      ...defaultState.stableDiffusion,
-      ...(candidate.stableDiffusion ?? {})
-    },
     comfyUI: {
       ...defaultState.comfyUI,
       ...(candidate.comfyUI ?? {})
@@ -157,7 +138,6 @@ function toPersistedState(
   return {
     activeBackend: state.activeBackend,
     mode: state.mode,
-    stableDiffusion: state.stableDiffusion,
     comfyUI: state.comfyUI,
     txt2img: state.txt2img,
     img2img: state.img2img,
@@ -184,7 +164,7 @@ function buildPreviewItem(
 
   return {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    backend: state.activeBackend,
+    backend: 'comfyui',
     mode: state.mode,
     prompt: current.prompt.trim() || '(empty prompt)',
     createdAtISO: new Date().toISOString(),
@@ -204,23 +184,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
   (set, get) => ({
     ...initialState,
 
-    setActiveBackend: (backend) => {
-      set({ activeBackend: backend });
-      persistState(toPersistedState(get()));
-    },
-
     setMode: (mode) => {
       set({ mode });
-      persistState(toPersistedState(get()));
-    },
-
-    updateStableDiffusionConfig: (patch) => {
-      set((state) => ({
-        stableDiffusion: {
-          ...state.stableDiffusion,
-          ...patch
-        }
-      }));
       persistState(toPersistedState(get()));
     },
 

@@ -1,4 +1,4 @@
-export type ImageGenerationBackend = 'stable-diffusion-webui' | 'comfyui';
+export type ImageGenerationBackend = 'comfyui';
 
 export type ImageGenerationMode = 'txt2img' | 'img2img';
 
@@ -25,17 +25,13 @@ export interface Img2ImgParameters extends BaseGenerationParameters {
   denoiseStrength: number;
 }
 
-export interface StableDiffusionWebUIConfig {
-  apiUrl: string;
-  localPath: string;
-}
 
 export interface ComfyUIConfig {
   apiUrl: string;
   localPath: string;
+  args: string;
+  outputDir: string;
 }
-
-
 
 export interface GeneratedPreviewItem {
   id: string;
@@ -47,5 +43,4 @@ export interface GeneratedPreviewItem {
   steps: number;
   cfgScale: number;
   seed: string;
-
 }
