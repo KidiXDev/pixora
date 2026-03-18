@@ -13,8 +13,9 @@ export const baseGenerationSchema = z.object({
   cfgScale: z.coerce.number().min(1).max(30).default(7),
   resolution: resolutionSchema,
   model: z.string().min(1, 'Model is required'),
-  vae: z.string().default('Auto'),
-  sampler: z.string().min(1, 'Sampler is required')
+  vae: z.string().min(1, 'VAE is required'),
+  sampler: z.string().min(1, 'Sampler is required'),
+  scheduler: z.string().min(1, 'Scheduler is required')
 });
 
 export const txt2imgSchema = baseGenerationSchema;

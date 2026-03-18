@@ -17,6 +17,7 @@ export interface BaseGenerationParameters {
   model: string;
   vae: string;
   sampler: string;
+  scheduler: string;
 }
 
 export type Txt2ImgParameters = BaseGenerationParameters;
@@ -65,6 +66,7 @@ export interface ComfyUILogEntry {
 
 export interface GenerationModelCatalog {
   samplers: string[];
+  schedulers: string[];
   checkpoints: string[];
   vaes: string[];
   loras: string[];
@@ -95,4 +97,9 @@ export interface GeneratedPreviewItem {
   steps: number;
   cfgScale: number;
   seed: string;
+}
+
+export interface ComfyUISamplerResponse {
+  samplers: string[];
+  schedulers: string[];
 }

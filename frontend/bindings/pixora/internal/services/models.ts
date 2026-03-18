@@ -241,6 +241,7 @@ export class FolderEntry {
 
 export class GenerationModelCatalog {
     "samplers": string[];
+    "schedulers": string[];
     "checkpoints": string[];
     "vaes": string[];
     "loras": string[];
@@ -254,6 +255,9 @@ export class GenerationModelCatalog {
     constructor($$source: Partial<GenerationModelCatalog> = {}) {
         if (!("samplers" in $$source)) {
             this["samplers"] = [];
+        }
+        if (!("schedulers" in $$source)) {
+            this["schedulers"] = [];
         }
         if (!("checkpoints" in $$source)) {
             this["checkpoints"] = [];
@@ -296,33 +300,37 @@ export class GenerationModelCatalog {
         const $$createField6_0 = $$createType4;
         const $$createField7_0 = $$createType4;
         const $$createField8_0 = $$createType4;
+        const $$createField9_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("samplers" in $$parsedSource) {
             $$parsedSource["samplers"] = $$createField0_0($$parsedSource["samplers"]);
         }
+        if ("schedulers" in $$parsedSource) {
+            $$parsedSource["schedulers"] = $$createField1_0($$parsedSource["schedulers"]);
+        }
         if ("checkpoints" in $$parsedSource) {
-            $$parsedSource["checkpoints"] = $$createField1_0($$parsedSource["checkpoints"]);
+            $$parsedSource["checkpoints"] = $$createField2_0($$parsedSource["checkpoints"]);
         }
         if ("vaes" in $$parsedSource) {
-            $$parsedSource["vaes"] = $$createField2_0($$parsedSource["vaes"]);
+            $$parsedSource["vaes"] = $$createField3_0($$parsedSource["vaes"]);
         }
         if ("loras" in $$parsedSource) {
-            $$parsedSource["loras"] = $$createField3_0($$parsedSource["loras"]);
+            $$parsedSource["loras"] = $$createField4_0($$parsedSource["loras"]);
         }
         if ("controlnets" in $$parsedSource) {
-            $$parsedSource["controlnets"] = $$createField4_0($$parsedSource["controlnets"]);
+            $$parsedSource["controlnets"] = $$createField5_0($$parsedSource["controlnets"]);
         }
         if ("upscaleModels" in $$parsedSource) {
-            $$parsedSource["upscaleModels"] = $$createField5_0($$parsedSource["upscaleModels"]);
+            $$parsedSource["upscaleModels"] = $$createField6_0($$parsedSource["upscaleModels"]);
         }
         if ("textEncoders" in $$parsedSource) {
-            $$parsedSource["textEncoders"] = $$createField6_0($$parsedSource["textEncoders"]);
+            $$parsedSource["textEncoders"] = $$createField7_0($$parsedSource["textEncoders"]);
         }
         if ("diffusionModels" in $$parsedSource) {
-            $$parsedSource["diffusionModels"] = $$createField7_0($$parsedSource["diffusionModels"]);
+            $$parsedSource["diffusionModels"] = $$createField8_0($$parsedSource["diffusionModels"]);
         }
         if ("unets" in $$parsedSource) {
-            $$parsedSource["unets"] = $$createField8_0($$parsedSource["unets"]);
+            $$parsedSource["unets"] = $$createField9_0($$parsedSource["unets"]);
         }
         return new GenerationModelCatalog($$parsedSource as Partial<GenerationModelCatalog>);
     }

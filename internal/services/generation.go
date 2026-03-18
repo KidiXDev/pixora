@@ -43,6 +43,7 @@ var textEncoderExtensions = map[string]struct{}{
 
 type GenerationModelCatalog struct {
 	Samplers        []string `json:"samplers"`
+	Schedulers      []string `json:"schedulers"`
 	Checkpoints     []string `json:"checkpoints"`
 	VAEs            []string `json:"vaes"`
 	Loras           []string `json:"loras"`
@@ -123,6 +124,7 @@ func (s *GenerationService) GetModelCatalog() (*GenerationModelCatalog, error) {
 
 	catalog := &GenerationModelCatalog{
 		Samplers:        defaultSamplers(),
+		Schedulers:      defaultSchedulers(),
 		Checkpoints:     listModelFiles(filepath.Join(modelsRoot, "checkpoints"), checkpointLikeExtensions),
 		VAEs:            listModelFiles(filepath.Join(modelsRoot, "vae"), checkpointLikeExtensions),
 		Loras:           listModelFiles(filepath.Join(modelsRoot, "loras"), checkpointLikeExtensions),
@@ -264,16 +266,66 @@ func (s *GenerationService) GetAutocompleteSuggestions(query AutocompleteQuery) 
 	return suggestions, nil
 }
 
+func defaultSchedulers() []string {
+	return []string{
+		"simple",
+		"sgm_uniform",
+		"karras",
+		"exponential",
+		"ddim_uniform",
+		"beta",
+		"normal",
+		"linear_quadratic",
+		"kl_optimal",
+	}
+}
+
 func defaultSamplers() []string {
 	return []string{
-		"Euler a",
-		"Euler",
-		"Heun",
-		"DPM++ 2M Karras",
-		"DPM++ SDE Karras",
-		"DPM++ 2S a Karras",
-		"DPM2 a Karras",
-		"LMS Karras",
+		"euler",
+		"euler_cfg_pp",
+		"euler_ancestral",
+		"euler_ancestral_cfg_pp",
+		"heun",
+		"heunpp2",
+		"exp_heun_2_x0",
+		"exp_heun_2_x0_sde",
+		"dpm_2",
+		"dpm_2_ancestral",
+		"lms",
+		"dpm_fast",
+		"dpm_adaptive",
+		"dpmpp_2s_ancestral",
+		"dpmpp_2s_ancestral_cfg_pp",
+		"dpmpp_sde",
+		"dpmpp_sde_gpu",
+		"dpmpp_2m",
+		"dpmpp_2m_cfg_pp",
+		"dpmpp_2m_sde",
+		"dpmpp_2m_sde_gpu",
+		"dpmpp_2m_sde_heun",
+		"dpmpp_2m_sde_heun_gpu",
+		"dpmpp_3m_sde",
+		"dpmpp_3m_sde_gpu",
+		"ddpm",
+		"lcm",
+		"ipndm",
+		"ipndm_v",
+		"deis",
+		"res_multistep",
+		"res_multistep_cfg_pp",
+		"res_multistep_ancestral",
+		"res_multistep_ancestral_cfg_pp",
+		"gradient_estimation",
+		"gradient_estimation_cfg_pp",
+		"er_sde",
+		"seeds_2",
+		"seeds_3",
+		"sa_solver",
+		"sa_solver_pece",
+		"ddim",
+		"uni_pc",
+		"uni_pc_bh2",
 	}
 }
 

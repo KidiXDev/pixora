@@ -91,6 +91,10 @@ export function GenerationParametersPanel({
     () => modelCatalog.samplers,
     [modelCatalog.samplers]
   );
+  const schedulerOptions = React.useMemo(
+    () => modelCatalog.schedulers,
+    [modelCatalog.schedulers]
+  );
   const modelOptions = React.useMemo(
     () => modelCatalog.checkpoints,
     [modelCatalog.checkpoints]
@@ -445,11 +449,56 @@ export function GenerationParametersPanel({
                     <SelectValue placeholder="Select sampler" />
                   </SelectTrigger>
                   <SelectContent>
-                    {samplerOptions.map((item) => (
-                      <SelectItem key={item} value={item} className="text-xs">
-                        {item}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                      {samplerOptions.map((item) => (
+                        <SelectItem key={item} value={item} className="text-xs">
+                          {item}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+              </Field>
+            );
+          }}
+        />
+
+        <form.Field
+          name={
+            prefix === 'txt2img' ? 'txt2img.scheduler' : 'img2img.scheduler'
+          }
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !!field.state.meta.errors.length;
+            return (
+              <Field className="space-y-2" data-invalid={isInvalid}>
+                <FieldLabel
+                  htmlFor={field.name}
+                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
+                >
+                  Scheduler
+                </FieldLabel>
+                <Select
+                  name={field.name}
+                  value={field.state.value}
+                  onValueChange={(value) => field.handleChange(value)}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={isInvalid}
+                    className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
+                  >
+                    <SelectValue placeholder="Select scheduler" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                      {schedulerOptions.map((item) => (
+                        <SelectItem key={item} value={item} className="text-xs">
+                          {item}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 {isInvalid && <FieldError errors={field.state.meta.errors} />}
@@ -464,7 +513,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field className="space-y-2 col-span-2" data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"

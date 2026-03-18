@@ -78,18 +78,10 @@ let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
 
 const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
-  samplers: [
-    'Euler a',
-    'Euler',
-    'Heun',
-    'DPM++ 2M Karras',
-    'DPM++ SDE Karras',
-    'DPM++ 2S a Karras',
-    'DPM2 a Karras',
-    'LMS Karras'
-  ],
+  samplers: [],
+  schedulers: [],
   checkpoints: [],
-  vaes: ['Auto'],
+  vaes: [],
   loras: [],
   controlnets: [],
   upscaleModels: [],
@@ -106,8 +98,9 @@ const defaultTxt2Img: Txt2ImgParameters = {
   cfgScale: 7,
   resolution: { width: 1024, height: 1024 },
   model: '',
-  vae: 'Auto',
-  sampler: 'DPM++ 2M Karras'
+  vae: '',
+  sampler: '',
+  scheduler: ''
 };
 
 const defaultImg2Img: Img2ImgParameters = {
@@ -164,7 +157,8 @@ function sanitizePersistedState(
         ...defaultState.txt2img.resolution,
         ...(candidate.txt2img?.resolution ?? {})
       },
-      vae: candidate.txt2img?.vae || defaultState.txt2img.vae
+      vae: candidate.txt2img?.vae || defaultState.txt2img.vae,
+      scheduler: candidate.txt2img?.scheduler || defaultState.txt2img.scheduler
     },
     img2img: {
       ...defaultState.img2img,
@@ -173,7 +167,8 @@ function sanitizePersistedState(
         ...defaultState.img2img.resolution,
         ...(candidate.img2img?.resolution ?? {})
       },
-      vae: candidate.img2img?.vae || defaultState.img2img.vae
+      vae: candidate.img2img?.vae || defaultState.img2img.vae,
+      scheduler: candidate.img2img?.scheduler || defaultState.img2img.scheduler
     },
     history: Array.isArray(candidate.history)
       ? candidate.history.slice(0, 24).filter((item) => Boolean(item?.id))
@@ -286,6 +281,7 @@ function mapModelCatalog(
     textEncoders: string[];
     diffusionModels: string[];
     unets: string[];
+    schedulers: string[];
   } | null
 ): GenerationModelCatalog {
   if (!input) {
@@ -293,18 +289,16 @@ function mapModelCatalog(
   }
 
   return {
-    samplers:
-      input.samplers.length > 0
-        ? input.samplers
-        : DEFAULT_MODEL_CATALOG.samplers,
+    samplers: input.samplers,
     checkpoints: input.checkpoints,
-    vaes: input.vaes.length > 0 ? input.vaes : DEFAULT_MODEL_CATALOG.vaes,
+    vaes: input.vaes,
     loras: input.loras,
     controlnets: input.controlnets,
     upscaleModels: input.upscaleModels,
     textEncoders: input.textEncoders,
     diffusionModels: input.diffusionModels,
-    unets: input.unets
+    unets: input.unets,
+    schedulers: input.schedulers
   };
 }
 
@@ -315,6 +309,7 @@ function applyCatalogDefaults(
 ): { txt2img: Txt2ImgParameters; img2img: Img2ImgParameters } {
   const firstCheckpoint = catalog.checkpoints[0] ?? '';
   const firstSampler = catalog.samplers[0] ?? txt2img.sampler;
+  const firstScheduler = catalog.schedulers[0] ?? txt2img.scheduler;
   const firstVAE = catalog.vaes[0] ?? 'Auto';
 
   return {
@@ -322,12 +317,14 @@ function applyCatalogDefaults(
       ...txt2img,
       model: txt2img.model || firstCheckpoint,
       sampler: txt2img.sampler || firstSampler,
+      scheduler: txt2img.scheduler || firstScheduler,
       vae: txt2img.vae || firstVAE
     },
     img2img: {
       ...img2img,
       model: img2img.model || firstCheckpoint,
       sampler: img2img.sampler || firstSampler,
+      scheduler: img2img.scheduler || firstScheduler,
       vae: img2img.vae || firstVAE
     }
   };
