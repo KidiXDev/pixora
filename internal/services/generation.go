@@ -67,6 +67,22 @@ func NewGenerationService(cfg *config.Manager) *GenerationService {
 	}
 }
 
+func (s *GenerationService) GetGenerationPanelConfig() (config.GenerationPanelConfig, error) {
+	if s.config == nil {
+		return config.GenerationPanelConfig{}, fmt.Errorf("missing config manager")
+	}
+
+	return s.config.GetGenerationPanelConfig(), nil
+}
+
+func (s *GenerationService) SetGenerationPanelConfig(cfg config.GenerationPanelConfig) error {
+	if s.config == nil {
+		return fmt.Errorf("missing config manager")
+	}
+
+	return s.config.SetGenerationPanelConfig(cfg)
+}
+
 type AutocompleteQuery struct {
 	Input string `json:"input"`
 	Limit int    `json:"limit"`

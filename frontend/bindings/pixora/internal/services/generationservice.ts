@@ -7,6 +7,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as config$0 from "../config/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 export function GetAutocompleteSources(): $CancellablePromise<string[]> {
@@ -21,15 +25,26 @@ export function GetAutocompleteSuggestions(query: $models.AutocompleteQuery): $C
     });
 }
 
+export function GetGenerationPanelConfig(): $CancellablePromise<config$0.GenerationPanelConfig> {
+    return $Call.ByID(2932798932).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function GetModelCatalog(): $CancellablePromise<$models.GenerationModelCatalog | null> {
     return $Call.ByID(483824322).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
+}
+
+export function SetGenerationPanelConfig(cfg: config$0.GenerationPanelConfig): $CancellablePromise<void> {
+    return $Call.ByID(2981044248, cfg);
 }
 
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $models.AutocompleteSuggestion.createFrom;
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.GenerationModelCatalog.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
+const $$createType3 = config$0.GenerationPanelConfig.createFrom;
+const $$createType4 = $models.GenerationModelCatalog.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);

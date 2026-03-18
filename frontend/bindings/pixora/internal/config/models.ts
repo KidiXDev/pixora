@@ -12,6 +12,7 @@ export class AppConfig {
     "devMode": boolean;
     "comfyUI": ComfyUIBackendConfig;
     "autocomplete": AutocompleteConfig;
+    "generation": GenerationPanelConfig;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -33,6 +34,9 @@ export class AppConfig {
         if (!("autocomplete" in $$source)) {
             this["autocomplete"] = (new AutocompleteConfig());
         }
+        if (!("generation" in $$source)) {
+            this["generation"] = (new GenerationPanelConfig());
+        }
 
         Object.assign(this, $$source);
     }
@@ -46,6 +50,7 @@ export class AppConfig {
         const $$createField2_0 = $$createType4;
         const $$createField4_0 = $$createType5;
         const $$createField5_0 = $$createType6;
+        const $$createField6_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
@@ -61,6 +66,9 @@ export class AppConfig {
         }
         if ("autocomplete" in $$parsedSource) {
             $$parsedSource["autocomplete"] = $$createField5_0($$parsedSource["autocomplete"]);
+        }
+        if ("generation" in $$parsedSource) {
+            $$parsedSource["generation"] = $$createField6_0($$parsedSource["generation"]);
         }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
     }
@@ -197,6 +205,267 @@ export class FolderConfig {
     }
 }
 
+export class GenerationPanelConfig {
+    "activeBackend": string;
+    "mode": string;
+    "txt2img": GenerationPanelTxt2Img;
+    "img2img": GenerationPanelImg2Img;
+    "history": GenerationPanelHistoryItem[];
+
+    /** Creates a new GenerationPanelConfig instance. */
+    constructor($$source: Partial<GenerationPanelConfig> = {}) {
+        if (!("activeBackend" in $$source)) {
+            this["activeBackend"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("txt2img" in $$source)) {
+            this["txt2img"] = (new GenerationPanelTxt2Img());
+        }
+        if (!("img2img" in $$source)) {
+            this["img2img"] = (new GenerationPanelImg2Img());
+        }
+        if (!("history" in $$source)) {
+            this["history"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelConfig {
+        const $$createField2_0 = $$createType8;
+        const $$createField3_0 = $$createType9;
+        const $$createField4_0 = $$createType11;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("txt2img" in $$parsedSource) {
+            $$parsedSource["txt2img"] = $$createField2_0($$parsedSource["txt2img"]);
+        }
+        if ("img2img" in $$parsedSource) {
+            $$parsedSource["img2img"] = $$createField3_0($$parsedSource["img2img"]);
+        }
+        if ("history" in $$parsedSource) {
+            $$parsedSource["history"] = $$createField4_0($$parsedSource["history"]);
+        }
+        return new GenerationPanelConfig($$parsedSource as Partial<GenerationPanelConfig>);
+    }
+}
+
+export class GenerationPanelHistoryItem {
+    "id": string;
+    "backend": string;
+    "mode": string;
+    "prompt": string;
+    "createdAtISO": string;
+    "resolution": GenerationPanelResolution;
+    "steps": number;
+    "cfgScale": number;
+    "seed": string;
+
+    /** Creates a new GenerationPanelHistoryItem instance. */
+    constructor($$source: Partial<GenerationPanelHistoryItem> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("backend" in $$source)) {
+            this["backend"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("prompt" in $$source)) {
+            this["prompt"] = "";
+        }
+        if (!("createdAtISO" in $$source)) {
+            this["createdAtISO"] = "";
+        }
+        if (!("resolution" in $$source)) {
+            this["resolution"] = (new GenerationPanelResolution());
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("cfgScale" in $$source)) {
+            this["cfgScale"] = 0;
+        }
+        if (!("seed" in $$source)) {
+            this["seed"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelHistoryItem instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelHistoryItem {
+        const $$createField5_0 = $$createType12;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("resolution" in $$parsedSource) {
+            $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+        }
+        return new GenerationPanelHistoryItem($$parsedSource as Partial<GenerationPanelHistoryItem>);
+    }
+}
+
+export class GenerationPanelImg2Img {
+    "prompt": string;
+    "negativePrompt": string;
+    "seed": string;
+    "steps": number;
+    "cfgScale": number;
+    "resolution": GenerationPanelResolution;
+    "model": string;
+    "vae": string;
+    "sampler": string;
+    "scheduler": string;
+    "sourceImagePath": string;
+    "denoiseStrength": number;
+
+    /** Creates a new GenerationPanelImg2Img instance. */
+    constructor($$source: Partial<GenerationPanelImg2Img> = {}) {
+        if (!("prompt" in $$source)) {
+            this["prompt"] = "";
+        }
+        if (!("negativePrompt" in $$source)) {
+            this["negativePrompt"] = "";
+        }
+        if (!("seed" in $$source)) {
+            this["seed"] = "";
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("cfgScale" in $$source)) {
+            this["cfgScale"] = 0;
+        }
+        if (!("resolution" in $$source)) {
+            this["resolution"] = (new GenerationPanelResolution());
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("vae" in $$source)) {
+            this["vae"] = "";
+        }
+        if (!("sampler" in $$source)) {
+            this["sampler"] = "";
+        }
+        if (!("scheduler" in $$source)) {
+            this["scheduler"] = "";
+        }
+        if (!("sourceImagePath" in $$source)) {
+            this["sourceImagePath"] = "";
+        }
+        if (!("denoiseStrength" in $$source)) {
+            this["denoiseStrength"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelImg2Img instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelImg2Img {
+        const $$createField5_0 = $$createType12;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("resolution" in $$parsedSource) {
+            $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+        }
+        return new GenerationPanelImg2Img($$parsedSource as Partial<GenerationPanelImg2Img>);
+    }
+}
+
+export class GenerationPanelResolution {
+    "width": number;
+    "height": number;
+
+    /** Creates a new GenerationPanelResolution instance. */
+    constructor($$source: Partial<GenerationPanelResolution> = {}) {
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelResolution instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelResolution {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationPanelResolution($$parsedSource as Partial<GenerationPanelResolution>);
+    }
+}
+
+export class GenerationPanelTxt2Img {
+    "prompt": string;
+    "negativePrompt": string;
+    "seed": string;
+    "steps": number;
+    "cfgScale": number;
+    "resolution": GenerationPanelResolution;
+    "model": string;
+    "vae": string;
+    "sampler": string;
+    "scheduler": string;
+
+    /** Creates a new GenerationPanelTxt2Img instance. */
+    constructor($$source: Partial<GenerationPanelTxt2Img> = {}) {
+        if (!("prompt" in $$source)) {
+            this["prompt"] = "";
+        }
+        if (!("negativePrompt" in $$source)) {
+            this["negativePrompt"] = "";
+        }
+        if (!("seed" in $$source)) {
+            this["seed"] = "";
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("cfgScale" in $$source)) {
+            this["cfgScale"] = 0;
+        }
+        if (!("resolution" in $$source)) {
+            this["resolution"] = (new GenerationPanelResolution());
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("vae" in $$source)) {
+            this["vae"] = "";
+        }
+        if (!("sampler" in $$source)) {
+            this["sampler"] = "";
+        }
+        if (!("scheduler" in $$source)) {
+            this["scheduler"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelTxt2Img instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelTxt2Img {
+        const $$createField5_0 = $$createType12;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("resolution" in $$parsedSource) {
+            $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+        }
+        return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
+    }
+}
+
 export enum ScanMode {
     /**
      * The Go zero value for the underlying type of the enum.
@@ -309,8 +578,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType7;
-        const $$createField3_0 = $$createType7;
+        const $$createField1_0 = $$createType13;
+        const $$createField3_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -330,4 +599,10 @@ const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = WindowConfig.createFrom;
 const $$createType5 = ComfyUIBackendConfig.createFrom;
 const $$createType6 = AutocompleteConfig.createFrom;
-const $$createType7 = WindowBounds.createFrom;
+const $$createType7 = GenerationPanelConfig.createFrom;
+const $$createType8 = GenerationPanelTxt2Img.createFrom;
+const $$createType9 = GenerationPanelImg2Img.createFrom;
+const $$createType10 = GenerationPanelHistoryItem.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = GenerationPanelResolution.createFrom;
+const $$createType13 = WindowBounds.createFrom;

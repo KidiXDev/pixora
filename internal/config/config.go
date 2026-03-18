@@ -65,13 +65,67 @@ type AutocompleteConfig struct {
 	SuggestionCap int    `json:"suggestionCap"`
 }
 
+type GenerationPanelResolution struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type GenerationPanelTxt2Img struct {
+	Prompt         string                    `json:"prompt"`
+	NegativePrompt string                    `json:"negativePrompt"`
+	Seed           string                    `json:"seed"`
+	Steps          int                       `json:"steps"`
+	CFGScale       float64                   `json:"cfgScale"`
+	Resolution     GenerationPanelResolution `json:"resolution"`
+	Model          string                    `json:"model"`
+	VAE            string                    `json:"vae"`
+	Sampler        string                    `json:"sampler"`
+	Scheduler      string                    `json:"scheduler"`
+}
+
+type GenerationPanelImg2Img struct {
+	Prompt          string                    `json:"prompt"`
+	NegativePrompt  string                    `json:"negativePrompt"`
+	Seed            string                    `json:"seed"`
+	Steps           int                       `json:"steps"`
+	CFGScale        float64                   `json:"cfgScale"`
+	Resolution      GenerationPanelResolution `json:"resolution"`
+	Model           string                    `json:"model"`
+	VAE             string                    `json:"vae"`
+	Sampler         string                    `json:"sampler"`
+	Scheduler       string                    `json:"scheduler"`
+	SourceImagePath string                    `json:"sourceImagePath"`
+	DenoiseStrength float64                   `json:"denoiseStrength"`
+}
+
+type GenerationPanelHistoryItem struct {
+	ID           string                    `json:"id"`
+	Backend      string                    `json:"backend"`
+	Mode         string                    `json:"mode"`
+	Prompt       string                    `json:"prompt"`
+	CreatedAtISO string                    `json:"createdAtISO"`
+	Resolution   GenerationPanelResolution `json:"resolution"`
+	Steps        int                       `json:"steps"`
+	CFGScale     float64                   `json:"cfgScale"`
+	Seed         string                    `json:"seed"`
+}
+
+type GenerationPanelConfig struct {
+	ActiveBackend string                       `json:"activeBackend"`
+	Mode          string                       `json:"mode"`
+	Txt2Img       GenerationPanelTxt2Img       `json:"txt2img"`
+	Img2Img       GenerationPanelImg2Img       `json:"img2img"`
+	History       []GenerationPanelHistoryItem `json:"history"`
+}
+
 type AppConfig struct {
-	Folders      []FolderConfig       `json:"folders"`
-	Tabs         []TabConfig          `json:"tabs"`
-	Window       WindowConfig         `json:"window"`
-	DevMode      bool                 `json:"devMode"`
-	ComfyUI      ComfyUIBackendConfig `json:"comfyUI"`
-	Autocomplete AutocompleteConfig   `json:"autocomplete"`
+	Folders      []FolderConfig        `json:"folders"`
+	Tabs         []TabConfig           `json:"tabs"`
+	Window       WindowConfig          `json:"window"`
+	DevMode      bool                  `json:"devMode"`
+	ComfyUI      ComfyUIBackendConfig  `json:"comfyUI"`
+	Autocomplete AutocompleteConfig    `json:"autocomplete"`
+	Generation   GenerationPanelConfig `json:"generation"`
 }
 
 type Manager struct {
@@ -171,6 +225,21 @@ func (m *Manager) SetComfyUIConfig(cfg ComfyUIBackendConfig) error {
 func (m *Manager) SetAutocompleteConfig(cfg AutocompleteConfig) error {
 	m.mu.Lock()
 	m.config.Autocomplete = cfg
+	m.ensureDefaultsLocked()
+	m.mu.Unlock()
+
+	return m.Save()
+}
+
+func (m *Manager) GetGenerationPanelConfig() GenerationPanelConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config.Generation
+}
+
+func (m *Manager) SetGenerationPanelConfig(cfg GenerationPanelConfig) error {
+	m.mu.Lock()
+	m.config.Generation = cfg
 	m.ensureDefaultsLocked()
 	m.mu.Unlock()
 
@@ -280,6 +349,58 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.ComfyUI.OutputDir == "" {
 		m.config.ComfyUI.OutputDir = filepath.Join("data", "output")
+	}
+
+	if m.config.Generation.ActiveBackend == "" {
+		m.config.Generation.ActiveBackend = "comfyui"
+	}
+
+	if m.config.Generation.Mode != "txt2img" && m.config.Generation.Mode != "img2img" {
+		m.config.Generation.Mode = "txt2img"
+	}
+
+	if m.config.Generation.Txt2Img.Steps <= 0 {
+		m.config.Generation.Txt2Img.Steps = 28
+	}
+
+	if m.config.Generation.Txt2Img.CFGScale <= 0 {
+		m.config.Generation.Txt2Img.CFGScale = 7
+	}
+
+	if m.config.Generation.Txt2Img.Resolution.Width <= 0 {
+		m.config.Generation.Txt2Img.Resolution.Width = 1024
+	}
+
+	if m.config.Generation.Txt2Img.Resolution.Height <= 0 {
+		m.config.Generation.Txt2Img.Resolution.Height = 1024
+	}
+
+	if m.config.Generation.Img2Img.Steps <= 0 {
+		m.config.Generation.Img2Img.Steps = m.config.Generation.Txt2Img.Steps
+	}
+
+	if m.config.Generation.Img2Img.CFGScale <= 0 {
+		m.config.Generation.Img2Img.CFGScale = m.config.Generation.Txt2Img.CFGScale
+	}
+
+	if m.config.Generation.Img2Img.Resolution.Width <= 0 {
+		m.config.Generation.Img2Img.Resolution.Width = m.config.Generation.Txt2Img.Resolution.Width
+	}
+
+	if m.config.Generation.Img2Img.Resolution.Height <= 0 {
+		m.config.Generation.Img2Img.Resolution.Height = m.config.Generation.Txt2Img.Resolution.Height
+	}
+
+	if m.config.Generation.Img2Img.DenoiseStrength <= 0 || m.config.Generation.Img2Img.DenoiseStrength > 1 {
+		m.config.Generation.Img2Img.DenoiseStrength = 0.55
+	}
+
+	if m.config.Generation.History == nil {
+		m.config.Generation.History = []GenerationPanelHistoryItem{}
+	}
+
+	if len(m.config.Generation.History) > 24 {
+		m.config.Generation.History = m.config.Generation.History[:24]
 	}
 
 	switch m.config.Autocomplete.MatchMode {

@@ -11,7 +11,10 @@ import {
 } from '@/types/image-generation';
 import { Events } from '@wailsio/runtime';
 import { create } from 'zustand';
-import { ComfyUIBackendConfig } from '../../bindings/pixora/internal/config/models';
+import {
+  ComfyUIBackendConfig,
+  GenerationPanelConfig
+} from '../../bindings/pixora/internal/config/models';
 import {
   ClearLogs,
   GetComfyUIConfig,
@@ -22,9 +25,11 @@ import {
   Start,
   Stop
 } from '../../bindings/pixora/internal/services/comfyuimanager';
-import { GetModelCatalog } from '../../bindings/pixora/internal/services/generationservice';
-
-const STORAGE_KEY = 'pixora:image-generation-ui';
+import {
+  GetGenerationPanelConfig,
+  GetModelCatalog,
+  SetGenerationPanelConfig
+} from '../../bindings/pixora/internal/services/generationservice';
 
 interface PersistedImageGenerationState {
   activeBackend: ImageGenerationBackend;
@@ -76,6 +81,7 @@ const DEFAULT_COMFYUI_API_URL = buildComfyApiURL(
 
 let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
+let generationPanelPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
   samplers: [],
@@ -350,34 +356,6 @@ function toErrorMessage(error: unknown): string {
   return 'Unknown ComfyUI error';
 }
 
-function readPersistedState(): PersistedImageGenerationState {
-  if (typeof window === 'undefined') {
-    return defaultState;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return defaultState;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    return sanitizePersistedState(parsed) ?? defaultState;
-  } catch {
-    return defaultState;
-  }
-}
-
-function persistState(state: PersistedImageGenerationState): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {}
-}
-
 function toPersistedState(
   state: ImageGenerationState
 ): PersistedImageGenerationState {
@@ -389,6 +367,34 @@ function toPersistedState(
     img2img: state.img2img,
     history: state.history
   };
+}
+
+function toGenerationPanelConfig(
+  state: PersistedImageGenerationState
+): GenerationPanelConfig {
+  return new GenerationPanelConfig({
+    activeBackend: state.activeBackend,
+    mode: state.mode,
+    txt2img: state.txt2img,
+    img2img: state.img2img,
+    history: state.history
+  });
+}
+
+function queuePersistGenerationPanelState(
+  state: PersistedImageGenerationState
+): void {
+  if (generationPanelPersistTimer !== null) {
+    clearTimeout(generationPanelPersistTimer);
+  }
+
+  const payload = toGenerationPanelConfig(state);
+  generationPanelPersistTimer = setTimeout(() => {
+    generationPanelPersistTimer = null;
+    void SetGenerationPanelConfig(payload).catch(() => {
+      // Ignore persistence failures here to keep typing/editing smooth.
+    });
+  }, 250);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -424,7 +430,7 @@ function buildPreviewItem(
   };
 }
 
-const initialState = readPersistedState();
+const initialState = defaultState;
 
 const defaultComfyStatus: ComfyUIStatus = {
   state: 'stopped',
@@ -468,7 +474,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             isModelCatalogLoading: false
           };
         });
-        persistState(toPersistedState(get()));
+        queuePersistGenerationPanelState(toPersistedState(get()));
       } catch (error) {
         set({
           isModelCatalogLoading: false,
@@ -535,18 +541,28 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       try {
-        const [backendConfig, status, logs, catalogResponse] =
+        const [backendConfig, status, logs, catalogResponse, panelConfig] =
           await Promise.all([
             GetComfyUIConfig(),
             GetStatus(),
             ListLogs(400),
-            GetModelCatalog()
+            GetModelCatalog(),
+            GetGenerationPanelConfig()
           ]);
 
         const catalog = mapModelCatalog(catalogResponse);
+        const persistedPanel =
+          sanitizePersistedState(panelConfig) ?? defaultState;
 
         set((state) => ({
-          ...applyCatalogDefaults(state.txt2img, state.img2img, catalog),
+          activeBackend: persistedPanel.activeBackend,
+          mode: persistedPanel.mode,
+          ...applyCatalogDefaults(
+            persistedPanel.txt2img,
+            persistedPanel.img2img,
+            catalog
+          ),
+          history: persistedPanel.history,
           modelCatalog: catalog,
           comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
           comfyStatus: mapStatus(status),
@@ -554,7 +570,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           comfyError: status.lastError || ''
         }));
 
-        persistState(toPersistedState(get()));
+        queuePersistGenerationPanelState(toPersistedState(get()));
       } catch (error) {
         set({ comfyError: toErrorMessage(error) });
       }
@@ -569,7 +585,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           comfyUI: mapBackendConfigToComfyUI(saved, state.comfyUI),
           isComfyConfigSaving: false
         }));
-        persistState(toPersistedState(get()));
+        queuePersistGenerationPanelState(toPersistedState(get()));
       } catch (error) {
         set({
           isComfyConfigSaving: false,
@@ -650,7 +666,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     setMode: (mode) => {
       set({ mode });
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     updateComfyUIConfig: (patch) => {
@@ -673,7 +689,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           };
         })()
       }));
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     updateTxt2Img: (patch) => {
@@ -693,7 +709,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30)
         }
       }));
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     updateImg2Img: (patch) => {
@@ -718,7 +734,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           )
         }
       }));
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     generatePreviewPlaceholder: () => {
@@ -727,18 +743,22 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       set((state) => ({
         history: [item, ...state.history].slice(0, 24)
       }));
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     clearHistory: () => {
       set({ history: [] });
-      persistState(toPersistedState(get()));
+      queuePersistGenerationPanelState(toPersistedState(get()));
     }
   })
 );
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    if (generationPanelPersistTimer !== null) {
+      clearTimeout(generationPanelPersistTimer);
+      generationPanelPersistTimer = null;
+    }
     for (const unsubscribe of comfyEventUnsubscribers) {
       unsubscribe();
     }
