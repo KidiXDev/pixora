@@ -9,12 +9,27 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function GetAutocompleteSources(): $CancellablePromise<string[]> {
+    return $Call.ByID(2803367964).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function GetAutocompleteSuggestions(query: $models.AutocompleteQuery): $CancellablePromise<$models.AutocompleteSuggestion[]> {
+    return $Call.ByID(1012996511, query).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 export function GetModelCatalog(): $CancellablePromise<$models.GenerationModelCatalog | null> {
     return $Call.ByID(483824322).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType4($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.GenerationModelCatalog.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $models.AutocompleteSuggestion.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $models.GenerationModelCatalog.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);

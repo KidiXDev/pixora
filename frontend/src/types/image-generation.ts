@@ -75,6 +75,16 @@ export interface GenerationModelCatalog {
   unets: string[];
 }
 
+export interface PromptAutocompleteSuggestion {
+  tag: string;
+  category: number;
+  popularity: number;
+  alternative: string;
+  insertText: string;
+  matchedBy: string;
+  matchedValue: string;
+}
+
 export interface GeneratedPreviewItem {
   id: string;
   backend: ImageGenerationBackend;

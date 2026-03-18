@@ -11,6 +11,8 @@ export {
 };
 
 export {
+    AutocompleteQuery,
+    AutocompleteSuggestion,
     ComfyUILogEntry,
     ComfyUIStatus,
     FolderBrowseResponse,

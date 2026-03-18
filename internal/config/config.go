@@ -53,12 +53,25 @@ type ComfyUIBackendConfig struct {
 	Port           int    `json:"port"`
 }
 
+type AutocompleteConfig struct {
+	Enabled       bool   `json:"enabled"`
+	Source        string `json:"source"`
+	Suffix        string `json:"suffix"`
+	MatchMode     string `json:"matchMode"`
+	SpacingMode   string `json:"spacingMode"`
+	SortMode      string `json:"sortMode"`
+	Whitespace    bool   `json:"whitespace"`
+	EscapeParens  bool   `json:"escapeParens"`
+	SuggestionCap int    `json:"suggestionCap"`
+}
+
 type AppConfig struct {
-	Folders []FolderConfig       `json:"folders"`
-	Tabs    []TabConfig          `json:"tabs"`
-	Window  WindowConfig         `json:"window"`
-	DevMode bool                 `json:"devMode"`
-	ComfyUI ComfyUIBackendConfig `json:"comfyUI"`
+	Folders      []FolderConfig       `json:"folders"`
+	Tabs         []TabConfig          `json:"tabs"`
+	Window       WindowConfig         `json:"window"`
+	DevMode      bool                 `json:"devMode"`
+	ComfyUI      ComfyUIBackendConfig `json:"comfyUI"`
+	Autocomplete AutocompleteConfig   `json:"autocomplete"`
 }
 
 type Manager struct {
@@ -149,6 +162,15 @@ func (m *Manager) GetComfyUIConfig() ComfyUIBackendConfig {
 func (m *Manager) SetComfyUIConfig(cfg ComfyUIBackendConfig) error {
 	m.mu.Lock()
 	m.config.ComfyUI = cfg
+	m.ensureDefaultsLocked()
+	m.mu.Unlock()
+
+	return m.Save()
+}
+
+func (m *Manager) SetAutocompleteConfig(cfg AutocompleteConfig) error {
+	m.mu.Lock()
+	m.config.Autocomplete = cfg
 	m.ensureDefaultsLocked()
 	m.mu.Unlock()
 
@@ -258,5 +280,27 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.ComfyUI.OutputDir == "" {
 		m.config.ComfyUI.OutputDir = filepath.Join("data", "output")
+	}
+
+	switch m.config.Autocomplete.MatchMode {
+	case "prefix", "contains", "fuzzy":
+	default:
+		m.config.Autocomplete.MatchMode = "prefix"
+	}
+
+	switch m.config.Autocomplete.SpacingMode {
+	case "underscore", "space":
+	default:
+		m.config.Autocomplete.SpacingMode = "underscore"
+	}
+
+	switch m.config.Autocomplete.SortMode {
+	case "popularity", "alphabetical":
+	default:
+		m.config.Autocomplete.SortMode = "popularity"
+	}
+
+	if m.config.Autocomplete.SuggestionCap <= 0 || m.config.Autocomplete.SuggestionCap > 50 {
+		m.config.Autocomplete.SuggestionCap = 12
 	}
 }

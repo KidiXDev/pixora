@@ -88,6 +88,10 @@ export function RemoveParserPlugin(pluginID: string): $CancellablePromise<void> 
     return $Call.ByID(3708498644, pluginID);
 }
 
+export function SetAutocompleteConfig(cfg: config$0.AutocompleteConfig): $CancellablePromise<void> {
+    return $Call.ByID(4274417458, cfg);
+}
+
 /**
  * SetDevMode updates the dev mode setting.
  */

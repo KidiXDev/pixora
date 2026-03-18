@@ -3,6 +3,7 @@
 
 export {
     AppConfig,
+    AutocompleteConfig,
     ComfyUIBackendConfig,
     FolderConfig,
     ScanMode,

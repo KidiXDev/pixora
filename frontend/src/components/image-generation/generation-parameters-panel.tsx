@@ -1,5 +1,6 @@
 'use client';
 
+import { PromptAutocompleteTextarea } from '@/components/image-generation/prompt-autocomplete-textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -20,7 +21,6 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Textarea } from '@/components/ui/textarea';
 import { filterNumeric, parseNumeric } from '@/lib/utils';
 import { img2imgSchema, txt2imgSchema } from '@/schema/generation-schema';
 import {
@@ -630,14 +630,14 @@ export function GenerationParametersPanel({
                         Prompt
                       </FieldLabel>
                       <FieldContent>
-                        <Textarea
+                        <PromptAutocompleteTextarea
                           id={field.name}
                           name={field.name}
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
+                          onChange={field.handleChange}
                           placeholder="Describe the image you want to generate"
-                          aria-invalid={isInvalid}
+                          ariaInvalid={isInvalid}
                           className="min-h-26"
                         />
                         {isInvalid && (
@@ -664,14 +664,14 @@ export function GenerationParametersPanel({
                         Negative Prompt
                       </FieldLabel>
                       <FieldContent>
-                        <Textarea
+                        <PromptAutocompleteTextarea
                           id={field.name}
                           name={field.name}
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
+                          onChange={field.handleChange}
                           placeholder="What to avoid"
-                          aria-invalid={isInvalid}
+                          ariaInvalid={isInvalid}
                           className="min-h-18"
                         />
                         {isInvalid && (
@@ -749,14 +749,14 @@ export function GenerationParametersPanel({
                         Prompt
                       </FieldLabel>
                       <FieldContent>
-                        <Textarea
+                        <PromptAutocompleteTextarea
                           id={field.name}
                           name={field.name}
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
+                          onChange={field.handleChange}
                           placeholder="Describe how the source image should be transformed"
-                          aria-invalid={isInvalid}
+                          ariaInvalid={isInvalid}
                           className="min-h-22"
                         />
                         {isInvalid && (
@@ -781,14 +781,14 @@ export function GenerationParametersPanel({
                         Negative Prompt
                       </FieldLabel>
                       <FieldContent>
-                        <Textarea
+                        <PromptAutocompleteTextarea
                           id={field.name}
                           name={field.name}
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
+                          onChange={field.handleChange}
                           placeholder="Artifacts or styles to avoid"
-                          aria-invalid={isInvalid}
+                          ariaInvalid={isInvalid}
                           className="min-h-16"
                         />
                         {isInvalid && (

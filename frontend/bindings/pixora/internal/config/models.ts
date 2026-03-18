@@ -11,6 +11,7 @@ export class AppConfig {
     "window": WindowConfig;
     "devMode": boolean;
     "comfyUI": ComfyUIBackendConfig;
+    "autocomplete": AutocompleteConfig;
 
     /** Creates a new AppConfig instance. */
     constructor($$source: Partial<AppConfig> = {}) {
@@ -29,6 +30,9 @@ export class AppConfig {
         if (!("comfyUI" in $$source)) {
             this["comfyUI"] = (new ComfyUIBackendConfig());
         }
+        if (!("autocomplete" in $$source)) {
+            this["autocomplete"] = (new AutocompleteConfig());
+        }
 
         Object.assign(this, $$source);
     }
@@ -41,6 +45,7 @@ export class AppConfig {
         const $$createField1_0 = $$createType3;
         const $$createField2_0 = $$createType4;
         const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
@@ -54,7 +59,63 @@ export class AppConfig {
         if ("comfyUI" in $$parsedSource) {
             $$parsedSource["comfyUI"] = $$createField4_0($$parsedSource["comfyUI"]);
         }
+        if ("autocomplete" in $$parsedSource) {
+            $$parsedSource["autocomplete"] = $$createField5_0($$parsedSource["autocomplete"]);
+        }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
+    }
+}
+
+export class AutocompleteConfig {
+    "enabled": boolean;
+    "source": string;
+    "suffix": string;
+    "matchMode": string;
+    "spacingMode": string;
+    "sortMode": string;
+    "whitespace": boolean;
+    "escapeParens": boolean;
+    "suggestionCap": number;
+
+    /** Creates a new AutocompleteConfig instance. */
+    constructor($$source: Partial<AutocompleteConfig> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("suffix" in $$source)) {
+            this["suffix"] = "";
+        }
+        if (!("matchMode" in $$source)) {
+            this["matchMode"] = "";
+        }
+        if (!("spacingMode" in $$source)) {
+            this["spacingMode"] = "";
+        }
+        if (!("sortMode" in $$source)) {
+            this["sortMode"] = "";
+        }
+        if (!("whitespace" in $$source)) {
+            this["whitespace"] = false;
+        }
+        if (!("escapeParens" in $$source)) {
+            this["escapeParens"] = false;
+        }
+        if (!("suggestionCap" in $$source)) {
+            this["suggestionCap"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutocompleteConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutocompleteConfig {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AutocompleteConfig($$parsedSource as Partial<AutocompleteConfig>);
     }
 }
 
@@ -248,8 +309,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType6;
-        const $$createField3_0 = $$createType6;
+        const $$createField1_0 = $$createType7;
+        const $$createField3_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -268,4 +329,5 @@ const $$createType2 = TabConfig.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = WindowConfig.createFrom;
 const $$createType5 = ComfyUIBackendConfig.createFrom;
-const $$createType6 = WindowBounds.createFrom;
+const $$createType6 = AutocompleteConfig.createFrom;
+const $$createType7 = WindowBounds.createFrom;

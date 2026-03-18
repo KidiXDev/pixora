@@ -265,6 +265,10 @@ func (s *GalleryService) SetDevMode(enabled bool) error {
 	return s.config.SetDevMode(enabled)
 }
 
+func (s *GalleryService) SetAutocompleteConfig(cfg config.AutocompleteConfig) error {
+	return s.config.SetAutocompleteConfig(cfg)
+}
+
 // SetWindow sets the main window for the service.
 func (s *GalleryService) SetWindow(window *application.WebviewWindow) {
 	s.window = window

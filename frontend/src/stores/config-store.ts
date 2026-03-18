@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   AppConfig,
+  AutocompleteConfig,
   ScanMode
 } from '../../bindings/pixora/internal/config/models';
 import {
@@ -13,6 +14,7 @@ import {
   ListParserPlugins,
   RemoveFolder,
   RemoveParserPlugin,
+  SetAutocompleteConfig,
   SetDevMode,
   SetParserPluginEnabled,
   TrustParserPlugin,
@@ -56,6 +58,7 @@ interface ConfigState {
   removeFolder: (path: string) => Promise<void>;
   updateFolderAlias: (path: string, alias: string) => Promise<void>;
   setDevMode: (enabled: boolean) => Promise<void>;
+  setAutocompleteConfig: (config: AutocompleteConfig) => Promise<void>;
   clearIndexAndReindex: () => Promise<void>;
   loadPluginLogs: (pluginID?: string, limit?: number) => Promise<void>;
   clearPluginLogs: () => Promise<void>;
@@ -156,6 +159,17 @@ export const useConfigStore = create<ConfigState>((set) => ({
       set({ config });
     } catch (e) {
       console.error('Failed to set dev mode', e);
+    }
+  },
+
+  setAutocompleteConfig: async (autocompleteConfig) => {
+    try {
+      await SetAutocompleteConfig(autocompleteConfig);
+      const config = await GetConfig();
+      set({ config });
+    } catch (e) {
+      console.error('Failed to set autocomplete config', e);
+      throw e;
     }
   },
 

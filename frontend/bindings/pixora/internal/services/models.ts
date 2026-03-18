@@ -9,6 +9,76 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as db$0 from "../db/models.js";
 
+export class AutocompleteQuery {
+    "input": string;
+    "limit": number;
+
+    /** Creates a new AutocompleteQuery instance. */
+    constructor($$source: Partial<AutocompleteQuery> = {}) {
+        if (!("input" in $$source)) {
+            this["input"] = "";
+        }
+        if (!("limit" in $$source)) {
+            this["limit"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutocompleteQuery instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutocompleteQuery {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AutocompleteQuery($$parsedSource as Partial<AutocompleteQuery>);
+    }
+}
+
+export class AutocompleteSuggestion {
+    "tag": string;
+    "category": number;
+    "popularity": number;
+    "alternative": string;
+    "insertText": string;
+    "matchedBy": string;
+    "matchedValue": string;
+
+    /** Creates a new AutocompleteSuggestion instance. */
+    constructor($$source: Partial<AutocompleteSuggestion> = {}) {
+        if (!("tag" in $$source)) {
+            this["tag"] = "";
+        }
+        if (!("category" in $$source)) {
+            this["category"] = 0;
+        }
+        if (!("popularity" in $$source)) {
+            this["popularity"] = 0;
+        }
+        if (!("alternative" in $$source)) {
+            this["alternative"] = "";
+        }
+        if (!("insertText" in $$source)) {
+            this["insertText"] = "";
+        }
+        if (!("matchedBy" in $$source)) {
+            this["matchedBy"] = "";
+        }
+        if (!("matchedValue" in $$source)) {
+            this["matchedValue"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutocompleteSuggestion instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutocompleteSuggestion {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AutocompleteSuggestion($$parsedSource as Partial<AutocompleteSuggestion>);
+    }
+}
+
 export class ComfyUILogEntry {
     "timestamp": string;
     "level": string;

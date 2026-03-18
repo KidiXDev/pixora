@@ -2,6 +2,7 @@ import { ScrollablePage } from '@/components/layout/scrollable-page';
 import { useConfirmation } from '@/components/providers/confirmation-provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -28,10 +29,27 @@ import {
   RefreshCw,
   ShieldAlert,
   Terminal,
-  Trash2
+  Trash2,
+  WandSparkles
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { ScanMode } from '../../bindings/pixora/internal/config/models';
+import {
+  AutocompleteConfig,
+  ScanMode
+} from '../../bindings/pixora/internal/config/models';
+import { GetAutocompleteSources } from '../../bindings/pixora/internal/services/generationservice';
+
+const defaultAutocompleteConfig = new AutocompleteConfig({
+  enabled: false,
+  source: '',
+  suffix: '',
+  matchMode: 'prefix',
+  spacingMode: 'underscore',
+  sortMode: 'popularity',
+  whitespace: false,
+  escapeParens: false,
+  suggestionCap: 12
+});
 
 export default function SettingsPage() {
   const {
@@ -48,6 +66,7 @@ export default function SettingsPage() {
     removeFolder,
     clearIndexAndReindex,
     setDevMode,
+    setAutocompleteConfig,
     setPluginEnabled,
     trustPlugin,
     installPlugin,
@@ -59,13 +78,59 @@ export default function SettingsPage() {
   const [isClearingIndex, setIsClearingIndex] = useState(false);
   const [isInstallingPlugin, setIsInstallingPlugin] = useState(false);
   const [logPluginFilter, setLogPluginFilter] = useState<string>('all');
+  const [autocompleteSources, setAutocompleteSources] = useState<string[]>([]);
+  const [autocompleteSourceError, setAutocompleteSourceError] =
+    useState<string>('');
+  const [isAutocompleteSaving, setIsAutocompleteSaving] = useState(false);
   const confirm = useConfirmation();
 
   useEffect(() => {
     loadConfig();
     loadPlugins();
     loadPluginLogs('', 300);
+
+    const loadAutocompleteSources = async () => {
+      try {
+        const sources = await GetAutocompleteSources();
+        setAutocompleteSources(sources);
+        setAutocompleteSourceError('');
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Failed to load completion sources.';
+        setAutocompleteSources([]);
+        setAutocompleteSourceError(message);
+      }
+    };
+
+    void loadAutocompleteSources();
   }, [loadConfig, loadPlugins, loadPluginLogs]);
+
+  const autocompleteConfig = config?.autocomplete ?? defaultAutocompleteConfig;
+
+  const applyAutocompletePatch = async (
+    patch: Partial<AutocompleteConfig>
+  ): Promise<void> => {
+    if (!config) {
+      return;
+    }
+
+    setIsAutocompleteSaving(true);
+    try {
+      const nextConfig = new AutocompleteConfig({
+        ...autocompleteConfig,
+        ...patch
+      });
+      await setAutocompleteConfig(nextConfig);
+    } catch (error) {
+      console.error('Failed to save autocomplete config', error);
+    } finally {
+      setIsAutocompleteSaving(false);
+    }
+  };
 
   const handleAddFolderClick = async () => {
     try {
@@ -219,6 +284,13 @@ export default function SettingsPage() {
               >
                 <Plug size={16} />
                 <span className="font-medium">Plugins</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="generation"
+                className="justify-start gap-3 px-3 py-2.5 h-auto w-full text-left"
+              >
+                <WandSparkles size={16} />
+                <span className="font-medium">Generation</span>
               </TabsTrigger>
               <TabsTrigger
                 value="advanced"
@@ -582,6 +654,236 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent
+                value="generation"
+                className="space-y-10 focus-visible:outline-none"
+              >
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold tracking-tight">
+                    Generation
+                  </h2>
+                  <p className="text-muted-foreground">
+                    Configure image generation behavior and prompt assistance.
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  <section className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex flex-col gap-1">
+                        <h3 className="font-semibold">Prompt Autocomplete</h3>
+                        <p className="text-sm text-muted-foreground max-w-2xl">
+                          Suggest tags while typing in generation prompts using
+                          a CSV source from{' '}
+                          <span className="font-mono">data/completion</span>.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={autocompleteConfig.enabled}
+                        onCheckedChange={(checked) =>
+                          void applyAutocompletePatch({ enabled: checked })
+                        }
+                        disabled={!config || isAutocompleteSaving}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Source
+                        </p>
+                        <Select
+                          value={autocompleteConfig.source}
+                          onValueChange={(value) =>
+                            void applyAutocompletePatch({ source: value })
+                          }
+                          disabled={autocompleteSources.length === 0}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select completion source" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {autocompleteSources.map((source) => (
+                                <SelectItem key={source} value={source}>
+                                  {source}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        {autocompleteSourceError ? (
+                          <p className="text-xs text-destructive">
+                            {autocompleteSourceError}
+                          </p>
+                        ) : null}
+                        {autocompleteSources.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            No CSV files found in data/completion.
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Suffix
+                        </p>
+                        <Input
+                          value={autocompleteConfig.suffix}
+                          onChange={(event) =>
+                            void applyAutocompletePatch({
+                              suffix: event.target.value
+                            })
+                          }
+                          placeholder=", "
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Optional text appended after inserting a suggestion.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Match Mode
+                        </p>
+                        <Select
+                          value={autocompleteConfig.matchMode}
+                          onValueChange={(value) =>
+                            void applyAutocompletePatch({ matchMode: value })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="prefix">Prefix</SelectItem>
+                              <SelectItem value="contains">Contains</SelectItem>
+                              <SelectItem value="fuzzy">Fuzzy</SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Spacing Mode
+                        </p>
+                        <Select
+                          value={autocompleteConfig.spacingMode}
+                          onValueChange={(value) =>
+                            void applyAutocompletePatch({ spacingMode: value })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="underscore">
+                                Keep underscore
+                              </SelectItem>
+                              <SelectItem value="space">
+                                Convert to spaces
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Sort Mode
+                        </p>
+                        <Select
+                          value={autocompleteConfig.sortMode}
+                          onValueChange={(value) =>
+                            void applyAutocompletePatch({ sortMode: value })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="popularity">
+                                Popularity
+                              </SelectItem>
+                              <SelectItem value="alphabetical">
+                                Alphabetical
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Suggestion Limit
+                        </p>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={autocompleteConfig.suggestionCap}
+                          onChange={(event) => {
+                            const parsed = Number.parseInt(
+                              event.target.value,
+                              10
+                            );
+                            if (Number.isNaN(parsed)) {
+                              return;
+                            }
+                            const clamped = Math.min(50, Math.max(1, parsed));
+                            void applyAutocompletePatch({
+                              suggestionCap: clamped
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-border/60 pt-4">
+                      <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Whitespace Match
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Treat spaces as underscores while matching.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={autocompleteConfig.whitespace}
+                          onCheckedChange={(checked) =>
+                            void applyAutocompletePatch({ whitespace: checked })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Escape Parentheses
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Insert tags as \( and \) when needed.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={autocompleteConfig.escapeParens}
+                          onCheckedChange={(checked) =>
+                            void applyAutocompletePatch({
+                              escapeParens: checked
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </section>
                 </div>
               </TabsContent>
 
