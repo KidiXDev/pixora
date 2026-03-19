@@ -214,9 +214,6 @@ func (i *Indexer) ScanFolder(folder config.FolderConfig) {
 		}
 
 		if d.IsDir() {
-			if path != folder.Path && folder.ScanMode == config.ScanModeNormal {
-				return filepath.SkipDir
-			}
 			// Add to watcher
 			if err := i.watcher.Add(path); err != nil {
 				log.Printf("Failed to watch folder %s: %v", path, err)
@@ -613,25 +610,20 @@ func (i *Indexer) watchLoop() {
 					if info.IsDir() {
 						cfg := i.configManager.GetConfig()
 						isTrackedFolder := false
-						isWalkMode := false
 
 						for _, folder := range cfg.Folders {
 							if strings.HasPrefix(event.Name, folder.Path) {
 								isTrackedFolder = true
-								if folder.ScanMode == config.ScanModeWalk {
-									isWalkMode = true
-								}
 							}
 						}
 
 						if isTrackedFolder {
 							i.emitLibraryChangeEvent("folder-upsert", event.Name, "", true)
-						}
-
-						if isWalkMode {
 							if err := i.watcher.Add(event.Name); err != nil {
 								log.Printf("Failed to watch new folder %s: %v", event.Name, err)
 							}
+
+							// Index the new folder recursively so standard mode also discovers nested images.
 							go i.ScanFolder(config.FolderConfig{Path: event.Name, ScanMode: config.ScanModeWalk})
 						}
 					} else {

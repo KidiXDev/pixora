@@ -278,7 +278,7 @@ export function GenerationParametersPanel({
             prefix === 'txt2img' ? 'txt2img.resolution' : 'img2img.resolution'
           }
           children={(field) => (
-            <Field className="col-span-2 space-y-2">
+            <Field className="col-span-2">
               <FieldLabel
                 htmlFor={`${prefix}-resolution-presets`}
                 className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -361,7 +361,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -398,7 +398,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -433,7 +433,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -476,7 +476,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -517,7 +517,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2 col-span-2" data-invalid={isInvalid}>
+              <Field className=" col-span-2" data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -549,7 +549,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
@@ -594,7 +594,7 @@ export function GenerationParametersPanel({
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="space-y-2" data-invalid={isInvalid}>
+              <Field data-invalid={isInvalid}>
                 <FieldLabel
                   htmlFor={field.name}
                   className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"

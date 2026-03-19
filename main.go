@@ -208,13 +208,17 @@ func isValidWindowBounds(bounds config.WindowBounds) bool {
 
 func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Manager, initial config.WindowConfig) {
 	var (
-		mu      sync.Mutex
-		current = initial
-		timer   *time.Timer
+		mu                    sync.Mutex
+		current               = initial
+		stateBeforeFullscreen = windowStateNormal
+		timer                 *time.Timer
 	)
 
 	if current.State == "" {
 		current.State = windowStateNormal
+	}
+	if current.State == windowStateNormal || current.State == windowStateMax {
+		stateBeforeFullscreen = current.State
 	}
 
 	saveNow := func() {
@@ -242,8 +246,22 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	updateState := func(state string) {
 		mu.Lock()
 		current.State = state
+		if state == windowStateNormal || state == windowStateMax {
+			stateBeforeFullscreen = state
+		}
 		mu.Unlock()
 		queueSave()
+	}
+
+	getRestoreStateAfterFullscreen := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if stateBeforeFullscreen == windowStateMax {
+			return windowStateMax
+		}
+
+		return windowStateNormal
 	}
 
 	updateBounds := func(updateNormal bool) {
@@ -321,13 +339,21 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowFullscreen, func(event *application.WindowEvent) {
+		mu.Lock()
+		if current.State == windowStateNormal || current.State == windowStateMax {
+			stateBeforeFullscreen = current.State
+		}
+		mu.Unlock()
 		updateState(windowStateFull)
 	})
 
 	window.OnWindowEvent(events.Common.WindowUnFullscreen, func(event *application.WindowEvent) {
-		updateState(windowStateNormal)
-		updateBounds(true)
-		window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+		restoreState := getRestoreStateAfterFullscreen()
+		updateState(restoreState)
+		if restoreState == windowStateNormal {
+			updateBounds(true)
+			window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
+		}
 	})
 
 	window.OnWindowEvent(events.Common.WindowMinimise, func(event *application.WindowEvent) {
@@ -344,10 +370,14 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if !window.IsFullscreen() && !window.IsMaximised() && !window.IsMinimised() {
+		if window.IsFullscreen() {
+			updateState(getRestoreStateAfterFullscreen())
+		} else if !window.IsMaximised() && !window.IsMinimised() {
 			updateBounds(true)
+			updateState(windowStateNormal)
+		} else {
+			updateState(currentWindowState())
 		}
-		updateState(currentWindowState())
 		saveNow()
 	})
 }

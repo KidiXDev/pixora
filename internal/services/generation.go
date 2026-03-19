@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -1474,7 +1475,13 @@ func resolveGenerationSeed(raw string) string {
 func snapshotImageFiles(root string) map[string]time.Time {
 	snapshot := make(map[string]time.Time)
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.EqualFold(strings.TrimSpace(d.Name()), ".preview") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !isImageFile(path) {
@@ -1495,7 +1502,13 @@ func findNewestImage(root string, known map[string]time.Time) string {
 	newestTime := time.Time{}
 
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.EqualFold(strings.TrimSpace(d.Name()), ".preview") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !isImageFile(path) {
@@ -1643,21 +1656,45 @@ func streamComfyPreview(
 				continue
 			}
 
-			previewDir := filepath.Join(outputDir, ".preview")
-			if err := os.MkdirAll(previewDir, 0755); err != nil {
-				debugGenerationWS("preview mkdir failed: prompt=%s dir=%s err=%v", promptID, previewDir, err)
+			previewDataURL := encodePreviewDataURL(imageBytes, ext)
+			if previewDataURL == "" {
+				debugGenerationWS("preview data url encode failed: prompt=%s ext=%s", promptID, ext)
 				continue
 			}
 
-			previewPath := filepath.Join(previewDir, fmt.Sprintf("%s-%d%s", promptID, time.Now().UnixNano(), ext))
-			if err := os.WriteFile(previewPath, imageBytes, 0644); err != nil {
-				debugGenerationWS("preview write failed: prompt=%s path=%s err=%v", promptID, previewPath, err)
-				continue
-			}
-			debugGenerationWS("preview saved: prompt=%s path=%s", promptID, previewPath)
-
-			onPreview(previewPath)
+			onPreview(previewDataURL)
 		}
+	}
+}
+
+func encodePreviewDataURL(imageBytes []byte, ext string) string {
+	if len(imageBytes) == 0 {
+		return ""
+	}
+
+	mimeType := previewMimeTypeByExt(ext)
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(imageBytes)
+	if strings.TrimSpace(encoded) == "" {
+		return ""
+	}
+
+	return "data:" + mimeType + ";base64," + encoded
+}
+
+func previewMimeTypeByExt(ext string) string {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return ""
 	}
 }
 

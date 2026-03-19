@@ -109,6 +109,16 @@ function pathWithinRoot(path: string, root: string): boolean {
   return normalizedPath.startsWith(rootWithSep);
 }
 
+function samePath(left: string, right: string): boolean {
+  const normalizedLeft = normalizePath(left);
+  const normalizedRight = normalizePath(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  return normalizedLeft.toLowerCase() === normalizedRight.toLowerCase();
+}
+
 function readPersistedGallerySortPreferences(): {
   sortBy: GallerySortBy;
   sortDirection: GallerySortDirection;
@@ -561,11 +571,15 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const { searchQuery, sortBy, sortDirection } = get();
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const persistedCurrentPath = getPersistedTabFolderPath(tabId);
+    const currentState = get();
+    const canReuseStateCurrentPath =
+      samePath(currentState.rootFolderPath, rootPath) &&
+      pathWithinRoot(currentState.currentFolderPath, rootPath) &&
+      currentState.currentFolderPath.length > 0;
     const preferredCurrentPath = isWalk
       ? rootPath
-      : pathWithinRoot(get().currentFolderPath, rootPath) &&
-          get().currentFolderPath.length > 0
-        ? get().currentFolderPath
+      : canReuseStateCurrentPath
+        ? currentState.currentFolderPath
         : pathWithinRoot(persistedCurrentPath, rootPath)
           ? persistedCurrentPath
           : rootPath;
@@ -657,12 +671,16 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const safeLimit = Number.isFinite(limit) ? limit : 100;
-    const currentStateCurrentPath = get().currentFolderPath;
+    const currentState = get();
+    const currentStateCurrentPath = currentState.currentFolderPath;
     const persistedCurrentPath = getPersistedTabFolderPath(tabId);
+    const canReuseStateCurrentPath =
+      samePath(currentState.rootFolderPath, rootPath) &&
+      pathWithinRoot(currentStateCurrentPath, rootPath) &&
+      currentStateCurrentPath.length > 0;
     const requestedCurrentPath = isWalk
       ? rootPath
-      : pathWithinRoot(currentStateCurrentPath, rootPath) &&
-          currentStateCurrentPath.length > 0
+      : canReuseStateCurrentPath
         ? currentStateCurrentPath
         : pathWithinRoot(persistedCurrentPath, rootPath)
           ? persistedCurrentPath
@@ -678,11 +696,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     );
 
     if (clear) {
-      const cachedSnapshot = getSnapshot(snapshotKey);
-      if (cachedSnapshot) {
-        set({ ...cachedSnapshot, isLoading: false });
-        return;
-      }
+      tabSnapshots.delete(snapshotKey);
     }
 
     const requestId = ++latestFetchRequestId;

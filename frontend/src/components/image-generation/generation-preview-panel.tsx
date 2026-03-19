@@ -11,6 +11,10 @@ function resolutionLabel(width: number, height: number): string {
 }
 
 function buildImageURL(imagePath: string): string {
+  if (imagePath.startsWith('data:image/')) {
+    return imagePath;
+  }
+
   const encoded = encodeURIComponent(imagePath);
   return `/image/?path=${encoded}`;
 }
