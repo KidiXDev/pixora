@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	comfyStateIdle     = "idle"
 	comfyStateStopped  = "stopped"
 	comfyStateStarting = "starting"
 	comfyStateRunning  = "running"
@@ -32,6 +33,21 @@ const (
 	comfyEventLog    = "comfyui:log"
 
 	maxComfyLogEntries = 1000
+
+	comfyStartupTimeout   = 90 * time.Second
+	comfyStopGraceTimeout = 8 * time.Second
+	comfyStopPollInterval = 80 * time.Millisecond
+)
+
+const comfyReadyBannerPrefix = "to see the gui go to:"
+
+type comfyStopIntent string
+
+const (
+	comfyStopIntentNone           comfyStopIntent = ""
+	comfyStopIntentUser           comfyStopIntent = "user"
+	comfyStopIntentRestart        comfyStopIntent = "restart"
+	comfyStopIntentStartupTimeout comfyStopIntent = "startup-timeout"
 )
 
 var comfyModelSubdirs = []string{
@@ -55,6 +71,7 @@ type ComfyUIStatus struct {
 	Port              int    `json:"port"`
 	StartedAt         string `json:"startedAt"`
 	LastError         string `json:"lastError"`
+	StatusMessage     string `json:"statusMessage"`
 	ManagedExternally bool   `json:"managedExternally"`
 }
 
@@ -75,14 +92,19 @@ type ComfyUIManager struct {
 	cancel    context.CancelFunc
 	startedAt time.Time
 	lastError string
+	statusMsg string
 
 	managedExternally bool
+	stopIntent        comfyStopIntent
+	forceStopIssued   bool
+	readinessSeen     bool
+	startupFailure    string
 }
 
 func NewComfyUIManager(cfgMgr *config.Manager) (*ComfyUIManager, error) {
 	manager := &ComfyUIManager{
 		configMgr: cfgMgr,
-		state:     comfyStateStopped,
+		state:     comfyStateIdle,
 		logs:      []ComfyUILogEntry{},
 	}
 
@@ -100,7 +122,11 @@ func NewComfyUIManager(cfgMgr *config.Manager) (*ComfyUIManager, error) {
 		manager.state = comfyStateRunning
 		manager.managedExternally = true
 		manager.startedAt = time.Now()
+		manager.statusMsg = fmt.Sprintf("Connected to external ComfyUI at http://%s:%d", normalized.Host, normalized.Port)
 		manager.appendLog("info", "system", "detected external ComfyUI instance and attached without launching a new process")
+	} else {
+		manager.state = comfyStateStopped
+		manager.statusMsg = "ComfyUI is stopped"
 	}
 
 	return manager, nil
@@ -147,6 +173,7 @@ func (m *ComfyUIManager) GetStatus() ComfyUIStatus {
 		Port:              cfg.Port,
 		StartedAt:         startedAt,
 		LastError:         m.lastError,
+		StatusMessage:     m.statusMsg,
 		ManagedExternally: m.managedExternally,
 	}
 }
@@ -157,8 +184,18 @@ func (m *ComfyUIManager) Start() error {
 		m.mu.Unlock()
 		return nil
 	}
+	if m.state == comfyStateStopping {
+		m.mu.Unlock()
+		return fmt.Errorf("ComfyUI is stopping; wait until stop completes before starting again")
+	}
 	m.state = comfyStateStarting
 	m.lastError = ""
+	m.statusMsg = "Starting ComfyUI..."
+	m.stopIntent = comfyStopIntentNone
+	m.forceStopIssued = false
+	m.readinessSeen = false
+	m.startupFailure = ""
+	m.managedExternally = false
 	m.mu.Unlock()
 	m.emitStatus()
 
@@ -185,6 +222,7 @@ func (m *ComfyUIManager) Start() error {
 		m.managedExternally = true
 		m.startedAt = time.Now()
 		m.lastError = ""
+		m.statusMsg = fmt.Sprintf("Connected to existing ComfyUI at http://%s:%d", normalized.Host, normalized.Port)
 		m.mu.Unlock()
 		m.appendLog("info", "system", "connected to existing ComfyUI instance; launch skipped")
 		m.emitStatus()
@@ -224,25 +262,36 @@ func (m *ComfyUIManager) Start() error {
 	m.mu.Lock()
 	m.cmd = cmd
 	m.cancel = cancel
-	m.state = comfyStateRunning
+	m.state = comfyStateStarting
 	m.startedAt = time.Now()
 	m.lastError = ""
+	m.statusMsg = fmt.Sprintf("ComfyUI process started (pid=%d). Waiting for readiness...", cmd.Process.Pid)
 	m.managedExternally = false
+	m.stopIntent = comfyStopIntentNone
+	m.forceStopIssued = false
+	m.readinessSeen = false
+	m.startupFailure = ""
 	m.mu.Unlock()
 
 	m.appendLog("info", "system", fmt.Sprintf("started ComfyUI pid=%d", cmd.Process.Pid))
+	m.appendLog("info", "system", "waiting for ComfyUI readiness signal and API availability")
 	m.emitStatus()
 
-	go m.readProcessStream("stdout", stdout)
-	go m.readProcessStream("stderr", stderr)
+	go m.readProcessStream("stdout", stdout, normalized.Host, normalized.Port)
+	go m.readProcessStream("stderr", stderr, normalized.Host, normalized.Port)
+	go m.waitForReadiness(cmd, normalized.Host, normalized.Port, comfyStartupTimeout)
 	go m.waitForExit(cmd)
 
 	return nil
 }
 
 func (m *ComfyUIManager) Stop() error {
+	return m.stopWithIntent(comfyStopIntentUser)
+}
+
+func (m *ComfyUIManager) stopWithIntent(intent comfyStopIntent) error {
 	m.mu.Lock()
-	if m.state == comfyStateStopped {
+	if m.state == comfyStateIdle || m.state == comfyStateStopped {
 		m.mu.Unlock()
 		return nil
 	}
@@ -255,6 +304,11 @@ func (m *ComfyUIManager) Stop() error {
 		m.state = comfyStateStopped
 		m.startedAt = time.Time{}
 		m.lastError = ""
+		m.statusMsg = "Detached from external ComfyUI instance"
+		m.stopIntent = comfyStopIntentNone
+		m.forceStopIssued = false
+		m.readinessSeen = false
+		m.startupFailure = ""
 		m.mu.Unlock()
 		m.appendLog("info", "system", "detached from external ComfyUI instance (process not managed by Pixora)")
 		m.emitStatus()
@@ -264,6 +318,9 @@ func (m *ComfyUIManager) Stop() error {
 	cmd := m.cmd
 	cancel := m.cancel
 	m.state = comfyStateStopping
+	m.statusMsg = "Stopping ComfyUI..."
+	m.stopIntent = intent
+	m.forceStopIssued = false
 	m.mu.Unlock()
 	m.emitStatus()
 
@@ -275,12 +332,14 @@ func (m *ComfyUIManager) Stop() error {
 		m.mu.Lock()
 		m.state = comfyStateStopped
 		m.startedAt = time.Time{}
+		m.statusMsg = "ComfyUI stopped"
+		m.stopIntent = comfyStopIntentNone
 		m.mu.Unlock()
 		m.emitStatus()
 		return nil
 	}
 
-	deadline := time.Now().Add(8 * time.Second)
+	deadline := time.Now().Add(comfyStopGraceTimeout)
 	for {
 		m.mu.RLock()
 		stillRunning := m.cmd != nil
@@ -291,21 +350,27 @@ func (m *ComfyUIManager) Stop() error {
 		}
 
 		if time.Now().After(deadline) {
+			m.appendLog("warn", "system", "ComfyUI did not stop gracefully in time; forcing termination")
+			m.mu.Lock()
+			m.forceStopIssued = true
+			m.mu.Unlock()
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
 			return nil
 		}
 
-		time.Sleep(80 * time.Millisecond)
+		time.Sleep(comfyStopPollInterval)
 	}
 }
 
 func (m *ComfyUIManager) Restart() error {
-	if err := m.Stop(); err != nil {
+	m.appendLog("info", "system", "Restart requested: stopping ComfyUI before relaunch")
+	if err := m.stopWithIntent(comfyStopIntentRestart); err != nil {
 		return err
 	}
 
+	m.appendLog("info", "system", "Restart continuing: launching ComfyUI")
 	return m.Start()
 }
 
@@ -346,10 +411,97 @@ func (m *ComfyUIManager) failStart(err error) {
 	m.state = comfyStateError
 	m.startedAt = time.Time{}
 	m.lastError = msg
+	m.statusMsg = msg
+	m.stopIntent = comfyStopIntentNone
+	m.forceStopIssued = false
+	m.readinessSeen = false
+	m.startupFailure = ""
 	m.mu.Unlock()
 
 	m.appendLog("error", "system", msg)
 	m.emitStatus()
+}
+
+func (m *ComfyUIManager) waitForReadiness(cmd *exec.Cmd, host string, port int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(600 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		m.mu.RLock()
+		sameProcess := m.cmd == cmd
+		state := m.state
+		readinessSeen := m.readinessSeen
+		startupFailure := m.startupFailure
+		m.mu.RUnlock()
+
+		if !sameProcess || state != comfyStateStarting {
+			return
+		}
+
+		if m.isComfyReachable(host, port, 1200*time.Millisecond) {
+			m.mu.Lock()
+			if m.cmd == cmd && m.state == comfyStateStarting {
+				m.state = comfyStateRunning
+				m.lastError = ""
+				m.statusMsg = fmt.Sprintf("ComfyUI is running at http://%s:%d", host, port)
+			}
+			m.mu.Unlock()
+			if readinessSeen {
+				m.appendLog("info", "system", fmt.Sprintf("ComfyUI readiness confirmed after banner detection at http://%s:%d", host, port))
+			} else {
+				m.appendLog("info", "system", fmt.Sprintf("ComfyUI API became reachable at http://%s:%d", host, port))
+			}
+			m.emitStatus()
+			return
+		}
+
+		if time.Now().After(deadline) {
+			msg := strings.TrimSpace(startupFailure)
+			if msg == "" {
+				if readinessSeen {
+					msg = "ComfyUI emitted a readiness banner but the API never became reachable. Check launch arguments and network binding."
+				} else {
+					msg = fmt.Sprintf("ComfyUI started but never became ready within %s. Readiness banner did not appear and API was unreachable.", timeout)
+				}
+			}
+
+			m.mu.Lock()
+			if m.cmd == cmd && m.state == comfyStateStarting {
+				m.startupFailure = msg
+				m.stopIntent = comfyStopIntentStartupTimeout
+				m.statusMsg = "ComfyUI startup timed out, terminating process..."
+			}
+			cancel := m.cancel
+			m.mu.Unlock()
+
+			m.appendLog("error", "system", msg)
+			m.emitStatus()
+
+			if cancel != nil {
+				cancel()
+			}
+
+			time.AfterFunc(2*time.Second, func() {
+				m.mu.RLock()
+				sameCmd := m.cmd == cmd
+				stillStarting := m.state == comfyStateStarting
+				m.mu.RUnlock()
+				if !sameCmd || !stillStarting {
+					return
+				}
+
+				m.appendLog("warn", "system", "ComfyUI startup timeout cancellation did not exit the process, forcing termination")
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+			})
+
+			return
+		}
+
+		<-ticker.C
+	}
 }
 
 func (m *ComfyUIManager) waitForExit(cmd *exec.Cmd) {
@@ -361,38 +513,82 @@ func (m *ComfyUIManager) waitForExit(cmd *exec.Cmd) {
 		return
 	}
 
-	wasStopping := m.state == comfyStateStopping
+	previousState := m.state
+	stopIntent := m.stopIntent
+	forcedStop := m.forceStopIssued
+	readinessSeen := m.readinessSeen
+	startupFailure := strings.TrimSpace(m.startupFailure)
+
 	m.cmd = nil
 	m.cancel = nil
 	m.startedAt = time.Time{}
+	m.managedExternally = false
+	m.stopIntent = comfyStopIntentNone
+	m.forceStopIssued = false
+	m.readinessSeen = false
+	m.startupFailure = ""
 
-	if err != nil && !errors.Is(err, context.Canceled) {
-		detailed := explainComfyExitError(err)
-		m.state = comfyStateError
-		m.lastError = detailed
-		m.managedExternally = false
-	} else {
+	unexpectedExit := err != nil && !errors.Is(err, context.Canceled)
+	userMessage := ""
+	logLevel := "info"
+
+	switch previousState {
+	case comfyStateStopping:
 		m.state = comfyStateStopped
-		m.managedExternally = false
-		if wasStopping {
-			m.lastError = ""
+		m.lastError = ""
+		if forcedStop {
+			logLevel = "warn"
+			userMessage = "ComfyUI was force stopped after not responding to graceful shutdown"
+		} else if stopIntent == comfyStopIntentRestart {
+			userMessage = "ComfyUI stopped gracefully for restart"
+		} else {
+			userMessage = "ComfyUI stopped gracefully"
 		}
+		m.statusMsg = userMessage
+	case comfyStateStarting:
+		m.state = comfyStateError
+		if startupFailure == "" {
+			if unexpectedExit {
+				startupFailure = explainComfyExitError(err)
+			} else if !readinessSeen {
+				startupFailure = "ComfyUI exited before initialization completed"
+			} else {
+				startupFailure = "ComfyUI exited during startup before Pixora could confirm readiness"
+			}
+		}
+		m.lastError = startupFailure
+		m.statusMsg = startupFailure
+		userMessage = startupFailure
+		logLevel = "error"
+	case comfyStateRunning:
+		if unexpectedExit {
+			userMessage = explainComfyExitError(err)
+		} else {
+			userMessage = "ComfyUI stopped unexpectedly while it was running"
+		}
+		m.state = comfyStateError
+		m.lastError = userMessage
+		m.statusMsg = userMessage
+		logLevel = "error"
+	default:
+		m.state = comfyStateStopped
+		m.lastError = ""
+		m.statusMsg = "ComfyUI stopped"
+		userMessage = "ComfyUI stopped"
 	}
 	m.mu.Unlock()
 
-	if err != nil && !errors.Is(err, context.Canceled) {
-		detailed := explainComfyExitError(err)
-		log.Printf("[pixora][comfyui] process exit error: %v", err)
-		m.appendLog("error", "system", detailed)
+	if err != nil {
+		log.Printf("[pixora][comfyui] process exited (state=%s intent=%s forced=%t): %v", previousState, stopIntent, forcedStop, err)
 	} else {
-		log.Printf("[pixora][comfyui] process stopped")
-		m.appendLog("info", "system", "ComfyUI stopped")
+		log.Printf("[pixora][comfyui] process exited cleanly (state=%s intent=%s forced=%t)", previousState, stopIntent, forcedStop)
 	}
+	m.appendLog(logLevel, "system", userMessage)
 
 	m.emitStatus()
 }
 
-func (m *ComfyUIManager) readProcessStream(stream string, r io.Reader) {
+func (m *ComfyUIManager) readProcessStream(stream string, r io.Reader, host string, port int) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -404,6 +600,28 @@ func (m *ComfyUIManager) readProcessStream(stream string, r io.Reader) {
 		log.Printf("[pixora][comfyui][%s] %s", stream, line)
 
 		level := detectStreamLogLevel(stream, line)
+		normalizedLine := strings.ToLower(line)
+
+		if strings.Contains(normalizedLine, comfyReadyBannerPrefix) {
+			m.mu.Lock()
+			if m.state == comfyStateStarting {
+				m.readinessSeen = true
+				m.statusMsg = "ComfyUI reported readiness banner, validating API..."
+			}
+			m.mu.Unlock()
+			m.appendLog("info", "system", fmt.Sprintf("readiness banner detected: %s", line))
+			m.emitStatus()
+		}
+
+		if looksLikePortInUse(normalizedLine) {
+			msg := fmt.Sprintf("Port %d is already in use. Stop the existing service or choose a different ComfyUI port.", port)
+			m.mu.Lock()
+			if m.state == comfyStateStarting {
+				m.startupFailure = msg
+			}
+			m.mu.Unlock()
+			m.appendLog("warn", "system", msg)
+		}
 
 		m.appendLog(level, stream, line)
 	}
@@ -465,26 +683,28 @@ func (m *ComfyUIManager) isComfyReachable(host string, port int, timeout time.Du
 }
 
 func explainComfyExitError(err error) string {
-	base := fmt.Sprintf("ComfyUI exited with error: %v", err)
-
 	msg := strings.ToLower(strings.TrimSpace(err.Error()))
 	if msg == "" {
-		return base
+		return "ComfyUI exited unexpectedly"
 	}
 
 	if strings.Contains(msg, "access violation") || strings.Contains(msg, "0xc0000005") {
-		return base + " (native crash/access violation detected; this is typically GPU driver/CUDA/runtime instability rather than a Pixora workflow error)"
+		return "ComfyUI crashed due to a native access violation. This is usually caused by GPU driver/CUDA runtime instability."
 	}
 
 	if strings.Contains(msg, "out of memory") || strings.Contains(msg, "cuda out of memory") {
-		return base + " (GPU memory exhausted; lower resolution/batch size or use lower VRAM settings)"
+		return "ComfyUI ran out of GPU memory. Lower resolution, steps, or VRAM usage and try again."
 	}
 
 	if strings.Contains(msg, "status 3221225786") {
-		return base + " (Windows native crash detected; often caused by GPU driver/runtime mismatch)"
+		return "ComfyUI hit a Windows native crash. This is often caused by GPU driver/runtime mismatch."
 	}
 
-	return base
+	if looksLikePortInUse(msg) {
+		return "ComfyUI could not start because the configured port is already in use."
+	}
+
+	return "ComfyUI exited unexpectedly. Check ComfyUI logs for details."
 }
 
 func (m *ComfyUIManager) buildLaunchArgs(cfg config.ComfyUIBackendConfig) []string {
@@ -872,6 +1092,18 @@ func hasFlag(args []string, flag string) bool {
 	}
 
 	return false
+}
+
+func looksLikePortInUse(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return false
+	}
+
+	return strings.Contains(normalized, "address already in use") ||
+		strings.Contains(normalized, "only one usage of each socket address") ||
+		strings.Contains(normalized, "errno 98") ||
+		strings.Contains(normalized, "eaddrinuse")
 }
 
 func detectStreamLogLevel(stream string, line string) string {

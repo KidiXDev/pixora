@@ -90,6 +90,7 @@ const DEFAULT_COMFYUI_API_URL = buildComfyApiURL(
 
 let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
+let generationPanelHydrated = false;
 let generationPanelPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
@@ -253,9 +254,12 @@ function mapStatus(input: {
   port: number;
   startedAt: string;
   lastError: string;
+  statusMessage?: string;
+  managedExternally?: boolean;
 }): ComfyUIStatus {
   return {
     state:
+      input.state === 'idle' ||
       input.state === 'starting' ||
       input.state === 'running' ||
       input.state === 'stopping' ||
@@ -267,7 +271,9 @@ function mapStatus(input: {
     host: input.host || DEFAULT_COMFYUI_HOST,
     port: normalizeComfyPort(input.port),
     startedAt: input.startedAt || '',
-    lastError: input.lastError || ''
+    lastError: input.lastError || '',
+    statusMessage: input.statusMessage || '',
+    managedExternally: Boolean(input.managedExternally)
   };
 }
 
@@ -472,13 +478,14 @@ function buildPreviewItem(
 const initialState = defaultState;
 
 const defaultComfyStatus: ComfyUIStatus = {
-  state: 'stopped',
+  state: 'idle',
   running: false,
   pid: 0,
   host: initialState.comfyUI.host,
   port: normalizeComfyPort(initialState.comfyUI.port),
   startedAt: '',
-  lastError: ''
+  lastError: '',
+  statusMessage: 'ComfyUI is idle'
 };
 
 export const useImageGenerationStore = create<ImageGenerationState>(
@@ -539,6 +546,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
               port: number;
               startedAt: string;
               lastError: string;
+              statusMessage?: string;
+              managedExternally?: boolean;
             }>(event.data);
 
             if (!payload) {
@@ -548,7 +557,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             const status = mapStatus(payload);
             set((state) => ({
               comfyStatus: status,
-              comfyError: status.lastError || state.comfyError,
+              comfyError: status.lastError || '',
               comfyUI: {
                 ...state.comfyUI,
                 host: status.host,
@@ -673,6 +682,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   : item
               )
             }));
+            queuePersistGenerationPanelState(toPersistedState(get()));
           }
         );
 
@@ -687,36 +697,58 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       try {
-        const [backendConfig, status, logs, catalogResponse, panelConfig] =
+        const [backendConfig, status, logs, catalogResponse] =
           await Promise.all([
             GetComfyUIConfig(),
             GetStatus(),
             ListLogs(400),
-            GetModelCatalog(),
-            GetGenerationPanelConfig()
+            GetModelCatalog()
           ]);
 
         const catalog = mapModelCatalog(catalogResponse);
-        const persistedPanel =
-          sanitizePersistedState(panelConfig) ?? defaultState;
 
-        set((state) => ({
-          activeBackend: persistedPanel.activeBackend,
-          mode: persistedPanel.mode,
-          ...applyCatalogDefaults(
-            persistedPanel.txt2img,
-            persistedPanel.img2img,
+        if (!generationPanelHydrated) {
+          const panelConfig = await GetGenerationPanelConfig();
+          const persistedPanel =
+            sanitizePersistedState(panelConfig) ?? defaultState;
+
+          set((state) => ({
+            activeBackend: persistedPanel.activeBackend,
+            mode: persistedPanel.mode,
+            ...applyCatalogDefaults(
+              persistedPanel.txt2img,
+              persistedPanel.img2img,
+              catalog
+            ),
+            history: persistedPanel.history,
+            modelCatalog: catalog,
+            comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
+            comfyStatus: mapStatus(status),
+            comfyLogs: logs.map(mapLog),
+            comfyError: status.lastError || ''
+          }));
+
+          generationPanelHydrated = true;
+          queuePersistGenerationPanelState(toPersistedState(get()));
+          return;
+        }
+
+        set((state) => {
+          const withDefaults = applyCatalogDefaults(
+            state.txt2img,
+            state.img2img,
             catalog
-          ),
-          history: persistedPanel.history,
-          modelCatalog: catalog,
-          comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
-          comfyStatus: mapStatus(status),
-          comfyLogs: logs.map(mapLog),
-          comfyError: status.lastError || ''
-        }));
+          );
 
-        queuePersistGenerationPanelState(toPersistedState(get()));
+          return {
+            ...withDefaults,
+            modelCatalog: catalog,
+            comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
+            comfyStatus: mapStatus(status),
+            comfyLogs: logs.map(mapLog),
+            comfyError: status.lastError || ''
+          };
+        });
       } catch (error) {
         set({ comfyError: toErrorMessage(error) });
       }
@@ -985,6 +1017,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             };
           })
         }));
+        queuePersistGenerationPanelState(toPersistedState(get()));
       }
     },
 
@@ -1013,6 +1046,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
               : item
           )
         }));
+        queuePersistGenerationPanelState(toPersistedState(get()));
       } catch (error) {
         set({ comfyError: toErrorMessage(error) });
       }
@@ -1036,5 +1070,6 @@ if (import.meta.hot) {
     }
     comfyEventUnsubscribers = [];
     comfyEventsBound = false;
+    generationPanelHydrated = false;
   });
 }

@@ -12,7 +12,6 @@ data/
 backend/comfy/
 backend/*7z
 backend/*yaml
-backend/redistribute
 backend/workflow/
 
 # venv

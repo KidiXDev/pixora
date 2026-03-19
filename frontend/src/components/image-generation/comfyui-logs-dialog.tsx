@@ -46,6 +46,7 @@ export function ComfyUILogsDialog({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [isAutoScrollDisabledByUser, setIsAutoScrollDisabledByUser] =
     useState(false);
+  const [isRawMode, setIsRawMode] = useState(false);
 
   const isAutoScrollEnabled = !isAutoScrollDisabledByUser && isNearBottom;
 
@@ -111,14 +112,27 @@ export function ComfyUILogsDialog({
     }
   };
 
+  const handleRawModeToggle = () => {
+    setIsRawMode((current) => !current);
+  };
+
   function buildStatusBadgeColor(status: ComfyUIStatus) {
     if (status.state === 'running') {
       return 'bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30 text-[11px] uppercase tracking-wide';
     }
-    if (status.state === 'stopped') {
-      return 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30 text-[11px] uppercase tracking-wide';
+    if (status.state === 'starting') {
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[11px] uppercase tracking-wide';
     }
-    return 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30 text-[11px] uppercase tracking-wide';
+    if (status.state === 'stopping') {
+      return 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30 text-[11px] uppercase tracking-wide';
+    }
+    if (status.state === 'error') {
+      return 'bg-destructive/15 text-destructive border-destructive/30 text-[11px] uppercase tracking-wide';
+    }
+    if (status.state === 'stopped') {
+      return 'bg-muted text-muted-foreground border-border text-[11px] uppercase tracking-wide';
+    }
+    return 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 text-[11px] uppercase tracking-wide';
   }
 
   return (
@@ -179,6 +193,14 @@ export function ComfyUILogsDialog({
                     ? 'Auto-scroll on'
                     : 'Auto-scroll paused'}
               </Button>
+              <Button
+                variant={isRawMode ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleRawModeToggle}
+              >
+                {isRawMode ? 'Raw mode on' : 'Raw mode off'}
+              </Button>
             </div>
           </div>
 
@@ -187,6 +209,23 @@ export function ComfyUILogsDialog({
               {logs.length === 0 ? (
                 <div className="flex h-90 items-center justify-center text-sm text-muted-foreground">
                   No log output yet.
+                </div>
+              ) : isRawMode ? (
+                <div className="rounded-md border border-border/50 bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-100">
+                  {logs.map((entry, index) => (
+                    <p
+                      key={`${entry.timestamp}-${entry.stream}-${index.toString()}`}
+                      className="wrap-break-word whitespace-pre-wrap"
+                    >
+                      <span className="text-zinc-400">
+                        [{entry.timestamp || '-'}]
+                      </span>{' '}
+                      <span className="text-zinc-500">
+                        ({entry.stream || 'stdout'})
+                      </span>{' '}
+                      <span>{entry.message}</span>
+                    </p>
+                  ))}
                 </div>
               ) : (
                 <div className="space-y-2">

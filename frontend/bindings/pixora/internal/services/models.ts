@@ -120,6 +120,7 @@ export class ComfyUIStatus {
     "port": number;
     "startedAt": string;
     "lastError": string;
+    "statusMessage": string;
     "managedExternally": boolean;
 
     /** Creates a new ComfyUIStatus instance. */
@@ -144,6 +145,9 @@ export class ComfyUIStatus {
         }
         if (!("lastError" in $$source)) {
             this["lastError"] = "";
+        }
+        if (!("statusMessage" in $$source)) {
+            this["statusMessage"] = "";
         }
         if (!("managedExternally" in $$source)) {
             this["managedExternally"] = false;

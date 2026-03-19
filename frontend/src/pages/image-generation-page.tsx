@@ -154,10 +154,14 @@ export default function ImageGenerationPage() {
       const backendState =
         comfyStatus.state === 'starting'
           ? 'ComfyUI is still starting.'
-          : 'ComfyUI is not running.';
+          : comfyStatus.state === 'stopping'
+            ? 'ComfyUI is shutting down.'
+            : comfyStatus.state === 'error'
+              ? 'ComfyUI is in an error state.'
+              : 'ComfyUI is not running.';
 
       toast.error('Cannot start generation', {
-        description: `${backendState} Start the backend first, then try again.`,
+        description: `${backendState} ${comfyStatus.statusMessage?.trim() || 'Start the backend first, then try again.'}`,
         action: {
           label: 'Open settings',
           onClick: () => setIsConfigSheetOpen(true)

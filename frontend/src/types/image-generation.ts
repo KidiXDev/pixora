@@ -28,6 +28,7 @@ export interface Img2ImgParameters extends BaseGenerationParameters {
 }
 
 export type ComfyUIEngineState =
+  | 'idle'
   | 'stopped'
   | 'starting'
   | 'running'
@@ -55,6 +56,8 @@ export interface ComfyUIStatus {
   port: number;
   startedAt: string;
   lastError: string;
+  statusMessage?: string;
+  managedExternally?: boolean;
 }
 
 export interface ComfyUILogEntry {

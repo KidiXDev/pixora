@@ -43,7 +43,47 @@ export function BackendConfigPanel({
   onRestart,
   onLogsClick
 }: BackendConfigPanelProps) {
-  const isRunning = status.running;
+  const isRunning = status.state === 'running';
+  const isStarting = status.state === 'starting';
+  const isStopping = status.state === 'stopping';
+  const isError = status.state === 'error';
+  const isBusy = isActionPending || isStarting || isStopping;
+
+  const badge = (() => {
+    if (isRunning) {
+      return {
+        label: 'Running',
+        className:
+          'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1.5 px-2 py-0.5'
+      };
+    }
+    if (isStarting) {
+      return {
+        label: 'Starting',
+        className:
+          'bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1.5 px-2 py-0.5'
+      };
+    }
+    if (isStopping) {
+      return {
+        label: 'Stopping',
+        className:
+          'bg-orange-500/10 text-orange-600 border-orange-500/20 gap-1.5 px-2 py-0.5'
+      };
+    }
+    if (isError) {
+      return {
+        label: 'Error',
+        className:
+          'bg-destructive/10 text-destructive border-destructive/30 gap-1.5 px-2 py-0.5'
+      };
+    }
+    return {
+      label: 'Stopped',
+      className:
+        'bg-muted text-muted-foreground border-border gap-1.5 px-2 py-0.5'
+    };
+  })();
 
   return (
     <div className="space-y-6">
@@ -56,23 +96,12 @@ export function BackendConfigPanel({
               Comfy Engine
             </h3>
           </div>
-          {isRunning ? (
-            <Badge
-              variant="outline"
-              className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1.5 px-2 py-0.5"
-            >
-              <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Running
-            </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className="bg-muted text-muted-foreground border-border gap-1.5 px-2 py-0.5"
-            >
-              <div className="size-1.5 rounded-full bg-muted-foreground/40" />
-              Stopped
-            </Badge>
-          )}
+          <Badge variant="outline" className={badge.className}>
+            <div
+              className={`size-1.5 rounded-full ${isRunning ? 'bg-emerald-500 animate-pulse' : isStarting || isStopping ? 'bg-amber-500 animate-pulse' : isError ? 'bg-destructive' : 'bg-muted-foreground/40'}`}
+            />
+            {badge.label}
+          </Badge>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -83,14 +112,14 @@ export function BackendConfigPanel({
               size="sm"
               className="h-9 gap-2 text-xs font-medium text-destructive hover:bg-destructive/10 px-2"
               onClick={onStop}
-              disabled={isActionPending}
+              disabled={isBusy}
             >
-              {isActionPending ? (
+              {isBusy ? (
                 <LoaderCircle className="size-3.5 animate-spin" />
               ) : (
                 <Square className="size-3.5 fill-current" />
               )}
-              {isActionPending ? 'Working...' : 'Stop'}
+              {isStopping ? 'Stopping...' : isBusy ? 'Working...' : 'Stop'}
             </Button>
           ) : (
             <Button
@@ -98,14 +127,14 @@ export function BackendConfigPanel({
               size="sm"
               className="h-9 gap-2 text-xs font-medium px-2"
               onClick={onStart}
-              disabled={isActionPending}
+              disabled={isBusy}
             >
-              {isActionPending ? (
+              {isBusy ? (
                 <LoaderCircle className="size-3.5 animate-spin" />
               ) : (
                 <Play className="size-3.5 fill-current" />
               )}
-              {isActionPending ? 'Working...' : 'Start'}
+              {isStarting ? 'Starting...' : isBusy ? 'Working...' : 'Start'}
             </Button>
           )}
 
@@ -113,7 +142,7 @@ export function BackendConfigPanel({
             variant="outline"
             size="sm"
             className="h-9 gap-2 text-xs font-medium px-2"
-            disabled={!isRunning || isActionPending}
+            disabled={!isRunning || isBusy}
             onClick={onRestart}
           >
             <RotateCcw className="size-3.5" />
@@ -133,6 +162,11 @@ export function BackendConfigPanel({
         {errorMessage ? (
           <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
             {errorMessage}
+          </p>
+        ) : null}
+        {!errorMessage && status.statusMessage ? (
+          <p className="mt-3 rounded-md border border-border/50 bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+            {status.statusMessage}
           </p>
         ) : null}
       </section>
