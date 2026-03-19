@@ -1,7 +1,9 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GeneratedPreviewItem } from '@/types/image-generation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { GitBranch, Image as ImageIcon, Square, WandSparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface GenerationPreviewPanelProps {
   history: ReadonlyArray<GeneratedPreviewItem>;
@@ -25,6 +27,14 @@ function buildImageURL(imagePath: string): string {
   return `/image/?path=${encoded}`;
 }
 
+function formatDuration(start: string, end?: string): string {
+  if (!start) return '0.0s';
+  const startTime = new Date(start).getTime();
+  const endTime = end ? new Date(end).getTime() : Date.now();
+  const diff = Math.max(0, (endTime - startTime) / 1000);
+  return diff.toFixed(1) + 's';
+}
+
 export function GenerationPreviewPanel({
   history,
   isGenerating,
@@ -34,6 +44,20 @@ export function GenerationPreviewPanel({
   onOpenWorkflow
 }: GenerationPreviewPanelProps) {
   const latest = history[0] ?? null;
+  const hasImage = !!latest?.imagePath;
+  const showLoading = isGenerating && !hasImage;
+
+  // Local state to trigger re-renders for the timer
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (isGenerating || (latest && !latest.completedAtISO && latest.status === 'running')) {
+      const interval = setInterval(() => setTick((t) => t + 1), 100);
+      return () => clearInterval(interval);
+    }
+  }, [isGenerating, latest?.status, latest?.completedAtISO]);
+
+  const duration = latest ? formatDuration(latest.createdAtISO, latest.completedAtISO) : '0.0s';
 
   return (
     <Card className="h-full bg-card/40 backdrop-blur-xl border-border/50 shadow-2xl overflow-hidden group flex flex-col">
@@ -70,7 +94,7 @@ export function GenerationPreviewPanel({
                 </>
               ) : (
                 <>
-                  <WandSparkles className="size-3.5 transition-transform duration-300" />
+                  <WandSparkles className="size-3.5 transition-transform duration-300 group-hover:rotate-12" />
                   Generate
                 </>
               )}
@@ -82,74 +106,158 @@ export function GenerationPreviewPanel({
         <section className="flex-1 w-full rounded-2xl border border-border/50 overflow-hidden bg-background/20 relative group/preview shadow-inner">
           {/* Result Gradient Placeholder / Image Display Area */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(14,165,233,0.4),transparent_40%),radial-gradient(circle_at_85%_20%,rgba(234,179,8,0.35),transparent_45%),radial-gradient(circle_at_45%_80%,rgba(16,185,129,0.3),transparent_50%),linear-gradient(160deg,rgba(2,6,23,1),rgba(30,41,59,0.95))] flex flex-col">
-            {latest?.imagePath ? (
-              <img
-                src={buildImageURL(latest.imagePath)}
-                alt="Generated result"
-                className="absolute inset-0 h-full w-full object-contain bg-black/35"
-              />
-            ) : null}
-
-            <div className="flex-1 flex items-center justify-center p-8">
-              {!latest?.imagePath && (
-                <div className="text-center space-y-4 opacity-30 transform transition-all duration-500">
-                  <div className="size-20 mx-auto rounded-3xl bg-linear-to-br from-white/10 to-transparent flex items-center justify-center ring-1 ring-white/20">
-                    <ImageIcon className="size-10 text-white" />
+            
+            <AnimatePresence mode="wait">
+              {showLoading ? (
+                <motion.div
+                  key="generating"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 bg-black/40 backdrop-blur-md rounded-2xl"
+                >
+                  <div className="relative">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      className="size-32 rounded-full border-t-2 border-r-2 border-primary shadow-[0_0_20px_rgba(var(--primary),0.3)]"
+                    />
+                    <motion.div
+                      animate={{ scale: [1, 1.1, 1], rotate: [-10, 10, -10] }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                      className="absolute inset-0 flex items-center justify-center"
+                    >
+                      <div className="size-16 rounded-2xl bg-primary/20 backdrop-blur-xl border border-primary/40 flex items-center justify-center shadow-2xl">
+                        <WandSparkles className="size-8 text-primary" />
+                      </div>
+                    </motion.div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-base font-bold text-white tracking-wide">
-                      {latest?.isGenerating ? 'Generating...' : 'Empty Canvas'}
+                  
+                  <motion.div 
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="mt-8 text-center space-y-2"
+                  >
+                    <motion.h3
+                      animate={{ opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="text-lg font-black text-white tracking-[0.2em] uppercase"
+                    >
+                      Imagining...
+                    </motion.h3>
+                    <p className="text-xs text-primary/70 font-medium animate-pulse">
+                      {latest?.message || 'Processing workflow steps'}
                     </p>
-                    <p className="text-xs text-white/60">
-                      {latest?.message || 'Generate an image to view result'}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Metadata / Prompt Overlay */}
-            <div className="bg-linear-to-t from-black/95 via-black/60 to-transparent p-6 relative z-10 transition-all duration-500 transform">
-              {latest ? (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-[10px] text-white/50 font-bold uppercase tracking-wider">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 text-[9px]">Res</span>
-                        <span className="text-white/80 font-mono">
-                          {resolutionLabel(
-                            latest.resolution.width,
-                            latest.resolution.height
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 text-[9px]">Steps</span>
-                        <span className="text-white/80 font-mono">
-                          {latest.steps}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 text-[9px]">CFG</span>
-                        <span className="text-white/80 font-mono">
-                          {latest.cfgScale}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 text-[9px]">Seed</span>
-                        <span className="text-white/80 font-mono">
-                          {latest.seed ?? 'Random'}
-                        </span>
-                      </div>
+                  </motion.div>
+                </motion.div>
+              ) : hasImage ? (
+                <motion.div
+                  key={latest.id} // STABLE KEY: Prevents looping animation on live updates
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6 }}
+                  className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl"
+                >
+                  <motion.img
+                    src={buildImageURL(latest.imagePath!)}
+                    alt="Generated result"
+                    initial={{ scale: 1.1, filter: 'blur(10px)' }}
+                    animate={{ scale: 1, filter: 'blur(0px)' }}
+                    className="h-full w-full object-contain bg-black/35 transition-all"
+                  />
+                  {/* Subtle vignette/glow over the image */}
+                  <div className="absolute inset-0 pointer-events-none bg-radial-vignette opacity-50 rounded-2xl" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 flex flex-col items-center justify-center p-8 z-10 rounded-2xl"
+                >
+                  <div className="text-center space-y-4 opacity-30 transform transition-all duration-500">
+                    <div className="size-20 mx-auto rounded-3xl bg-linear-to-br from-white/10 to-transparent flex items-center justify-center ring-1 ring-white/20">
+                      <ImageIcon className="size-10 text-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-base font-bold text-white tracking-wide">
+                        Empty Canvas
+                      </p>
+                      <p className="text-xs text-white/60">
+                        Generate an image to view result
+                      </p>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-white/30 italic text-xs font-semibold">
-                  <span className="size-1 rounded-full bg-white/20 animate-pulse" />
-                  Ready for generation
-                </div>
+                </motion.div>
               )}
+            </AnimatePresence>
+
+            {/* Metadata / Prompt Overlay - Always visible but contents change */}
+            <div className="mt-auto bg-linear-to-t from-black/95 via-black/60 to-transparent p-6 relative z-30 transition-all duration-500 transform rounded-b-2xl">
+              <AnimatePresence mode="wait">
+                {latest ? (
+                  <motion.div
+                    key="metadata"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="space-y-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-[10px] text-white/50 font-bold uppercase tracking-wider w-full">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white/30 text-[9px]">Res</span>
+                          <span className="text-white/80 font-mono">
+                            {resolutionLabel(
+                              latest.resolution.width,
+                              latest.resolution.height
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white/30 text-[9px]">Steps</span>
+                          <span className="text-white/80 font-mono">
+                            {latest.steps}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white/30 text-[9px]">CFG</span>
+                          <span className="text-white/80 font-mono">
+                            {latest.cfgScale}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white/30 text-[9px]">Seed</span>
+                          <span className="text-white/80 font-mono">
+                            {latest.seed ?? 'Random'}
+                          </span>
+                        </div>
+                        
+                        {/* Time Elapsed / Generation Time */}
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className="text-white/30 text-[9px]">Time</span>
+                          <span className="text-white/80 font-mono text-primary">
+                            {duration}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="ready"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center gap-2 text-white/30 italic text-xs font-semibold"
+                  >
+                    <span className="size-1 rounded-full bg-white/20 animate-pulse" />
+                    Ready for generation
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </section>

@@ -637,7 +637,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                       outputDir: payload.outputDir,
                       seed: payload.seed || item.seed,
                       status: 'completed',
-                      isGenerating: false
+                      isGenerating: false,
+                      completedAtISO: new Date().toISOString()
                     }
                   : item
               )

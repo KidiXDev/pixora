@@ -103,6 +103,7 @@ export interface GeneratedPreviewItem {
   steps: number;
   cfgScale: number;
   seed: string;
+  completedAtISO?: string;
 }
 
 export interface ComfyUISamplerResponse {
