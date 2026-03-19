@@ -1,9 +1,17 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { GeneratedPreviewItem } from '@/types/image-generation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { GitBranch, Image as ImageIcon, Square, WandSparkles } from 'lucide-react';
+import {
+  GitBranch,
+  Image as ImageIcon,
+  Square,
+  WandSparkles,
+  X
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface GenerationPreviewPanelProps {
   history: ReadonlyArray<GeneratedPreviewItem>;
@@ -49,15 +57,34 @@ export function GenerationPreviewPanel({
 
   // Local state to trigger re-renders for the timer
   const [, setTick] = useState(0);
+  const [isFullPreviewOpen, setIsFullPreviewOpen] = useState(false);
+  const [scale, setScale] = useState(1);
 
   useEffect(() => {
-    if (isGenerating || (latest && !latest.completedAtISO && latest.status === 'running')) {
+    if (isFullPreviewOpen) {
+      setScale(1);
+    }
+  }, [isFullPreviewOpen]);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (!isFullPreviewOpen) return;
+    const delta = -e.deltaY * 0.001;
+    setScale((s) => Math.min(Math.max(s + delta, 0.5), 20));
+  };
+
+  useEffect(() => {
+    if (
+      isGenerating ||
+      (latest && !latest.completedAtISO && latest.status === 'running')
+    ) {
       const interval = setInterval(() => setTick((t) => t + 1), 100);
       return () => clearInterval(interval);
     }
   }, [isGenerating, latest?.status, latest?.completedAtISO]);
 
-  const duration = latest ? formatDuration(latest.createdAtISO, latest.completedAtISO) : '0.0s';
+  const duration = latest
+    ? formatDuration(latest.createdAtISO, latest.completedAtISO)
+    : '0.0s';
 
   return (
     <Card className="h-full bg-card/40 backdrop-blur-xl border-border/50 shadow-2xl overflow-hidden group flex flex-col">
@@ -106,7 +133,6 @@ export function GenerationPreviewPanel({
         <section className="flex-1 w-full rounded-2xl border border-border/50 overflow-hidden bg-background/20 relative group/preview shadow-inner">
           {/* Result Gradient Placeholder / Image Display Area */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(14,165,233,0.4),transparent_40%),radial-gradient(circle_at_85%_20%,rgba(234,179,8,0.35),transparent_45%),radial-gradient(circle_at_45%_80%,rgba(16,185,129,0.3),transparent_50%),linear-gradient(160deg,rgba(2,6,23,1),rgba(30,41,59,0.95))] flex flex-col">
-            
             <AnimatePresence mode="wait">
               {showLoading ? (
                 <motion.div
@@ -114,18 +140,26 @@ export function GenerationPreviewPanel({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
                   className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 bg-black/40 backdrop-blur-md rounded-2xl"
                 >
                   <div className="relative">
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: 'linear'
+                      }}
                       className="size-32 rounded-full border-t-2 border-r-2 border-primary shadow-[0_0_20px_rgba(var(--primary),0.3)]"
                     />
                     <motion.div
                       animate={{ scale: [1, 1.1, 1], rotate: [-10, 10, -10] }}
-                      transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                      transition={{
+                        duration: 4,
+                        repeat: Infinity,
+                        ease: 'easeInOut'
+                      }}
                       className="absolute inset-0 flex items-center justify-center"
                     >
                       <div className="size-16 rounded-2xl bg-primary/20 backdrop-blur-xl border border-primary/40 flex items-center justify-center shadow-2xl">
@@ -133,8 +167,8 @@ export function GenerationPreviewPanel({
                       </div>
                     </motion.div>
                   </div>
-                  
-                  <motion.div 
+
+                  <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     className="mt-8 text-center space-y-2"
@@ -158,14 +192,21 @@ export function GenerationPreviewPanel({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.6 }}
-                  className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl"
+                  className={cn(
+                    'absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl group/img cursor-pointer'
+                  )}
+                  onClick={() => {
+                    if (latest.status === 'completed') {
+                      setIsFullPreviewOpen(true);
+                    }
+                  }}
                 >
                   <motion.img
                     src={buildImageURL(latest.imagePath!)}
                     alt="Generated result"
                     initial={{ scale: 1.1, filter: 'blur(10px)' }}
                     animate={{ scale: 1, filter: 'blur(0px)' }}
-                    className="h-full w-full object-contain bg-black/35 transition-all"
+                    className="h-full w-full object-contain bg-black/35 transition-all duration-500"
                   />
                   {/* Subtle vignette/glow over the image */}
                   <div className="absolute inset-0 pointer-events-none bg-radial-vignette opacity-50 rounded-2xl" />
@@ -218,7 +259,9 @@ export function GenerationPreviewPanel({
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px]">Steps</span>
+                          <span className="text-white/30 text-[9px]">
+                            Steps
+                          </span>
                           <span className="text-white/80 font-mono">
                             {latest.steps}
                           </span>
@@ -235,11 +278,11 @@ export function GenerationPreviewPanel({
                             {latest.seed ?? 'Random'}
                           </span>
                         </div>
-                        
+
                         {/* Time Elapsed / Generation Time */}
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className="text-white/30 text-[9px]">Time</span>
-                          <span className="text-white/80 font-mono text-primary">
+                          <span className="font-mono text-primary">
                             {duration}
                           </span>
                         </div>
@@ -262,6 +305,89 @@ export function GenerationPreviewPanel({
           </div>
         </section>
       </CardContent>
+
+      {/* Full Screen Preview Overlay (Portaled) */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {isFullPreviewOpen && latest?.imagePath && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onWheel={handleWheel}
+                className="fixed inset-0 z-100 bg-black/95 backdrop-blur-2xl flex items-center justify-center cursor-default"
+                onClick={() => setIsFullPreviewOpen(false)}
+              >
+                <div className="absolute inset-0 z-0 overflow-hidden flex items-center justify-center p-12">
+                  <motion.div
+                    drag={scale > 1}
+                    dragMomentum={false}
+                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    animate={{ scale, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                    transition={{
+                      type: 'spring',
+                      damping: 25,
+                      stiffness: 300,
+                      scale: { duration: 0.2 }
+                    }}
+                    className={cn(
+                      'relative flex items-center justify-center',
+                      scale > 1 ? 'cursor-move' : 'cursor-default'
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={buildImageURL(latest.imagePath)}
+                      alt="Full screen preview"
+                      className="max-w-[85vw] max-h-[85vh] object-contain shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl ring-1 ring-white/10 select-none"
+                      draggable={false}
+                    />
+
+                    {/* Floating Action Hint */}
+                    {scale === 1 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="absolute -bottom-10 flex items-center gap-2 text-[9px] text-white/30 uppercase tracking-widest font-bold"
+                      >
+                        <span>Scroll to Zoom</span>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-8 right-8 text-white/50 hover:text-white hover:bg-white/10 z-50 rounded-full border border-white/10 size-12 shadow-2xl"
+                  onClick={() => setIsFullPreviewOpen(false)}
+                >
+                  <X className="size-6" />
+                </Button>
+
+                {/* Quick Info Overlay */}
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center justify-center gap-6 text-[10px] text-white/40 font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md py-3 px-8 rounded-full border border-white/5 z-50 shadow-2xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/20">Resolution:</span>
+                    <span className="text-white/70">
+                      {resolutionLabel(
+                        latest.resolution.width,
+                        latest.resolution.height
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/20">Seed:</span>
+                    <span className="text-white/70">{latest.seed}</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </Card>
   );
 }
