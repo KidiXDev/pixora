@@ -1233,14 +1233,24 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	}
 	graph[checkpointNodeID] = checkpointNode
 
+	decodeNodeID, err := findNodeByTitle(graph, "VAE Decode", "VAEDecode")
+	if err != nil {
+		return err
+	}
+	decodeNode := graph[decodeNodeID]
+
 	if strings.TrimSpace(req.VAE) != "" && !strings.EqualFold(strings.TrimSpace(req.VAE), "auto") {
 		vaeNodeID, err := findNodeByTitle(graph, "Load VAE", "VAELoader")
 		if err == nil {
 			vaeNode := graph[vaeNodeID]
 			vaeNode.Inputs["vae_name"] = strings.TrimSpace(req.VAE)
 			graph[vaeNodeID] = vaeNode
+			decodeNode.Inputs["vae"] = buildWorkflowLink(vaeNodeID, 0)
 		}
+	} else {
+		decodeNode.Inputs["vae"] = buildWorkflowLink(checkpointNodeID, 2)
 	}
+	graph[decodeNodeID] = decodeNode
 
 	saveNodeID, err := findNodeByTitle(graph, "Pixora Save Image", "PixoraSaveImage")
 	if err != nil {
@@ -1252,6 +1262,10 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	graph[saveNodeID] = saveNode
 
 	return nil
+}
+
+func buildWorkflowLink(nodeID string, outputIndex int) []any {
+	return []any{nodeID, outputIndex}
 }
 
 func findNodeByTitle(graph map[string]comfyWorkflowNode, title string, classType string) (string, error) {
