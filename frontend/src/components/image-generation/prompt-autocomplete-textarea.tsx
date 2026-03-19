@@ -16,6 +16,8 @@ interface PromptAutocompleteTextareaProps {
   onChange: (nextValue: string) => void;
 }
 
+
+
 interface CaretPosition {
   left: number;
   top: number;
@@ -90,6 +92,9 @@ export function PromptAutocompleteTextarea({
   >([]);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [isMounted, setIsMounted] = React.useState(false);
+  const [typingTick, setTypingTick] = React.useState(0);
+
+  const lastTickRef = React.useRef(typingTick);
 
   const tokenRange = React.useMemo(
     () => getTokenRange(value, cursorIndex),
@@ -127,8 +132,20 @@ export function PromptAutocompleteTextarea({
   }, []);
 
   React.useEffect(() => {
-    if (!isFocused) {
+    const textarea = textareaRef.current;
+    const hasSelection =
+      textarea && textarea.selectionStart !== textarea.selectionEnd;
+
+    if (!isFocused || hasSelection) {
       setSuggestions([]);
+      lastTickRef.current = typingTick;
+      return;
+    }
+
+    const hasJustTyped = typingTick !== lastTickRef.current;
+    lastTickRef.current = typingTick;
+
+    if (!hasJustTyped && suggestions.length === 0) {
       return;
     }
 
@@ -173,7 +190,7 @@ export function PromptAutocompleteTextarea({
         debounceRef.current = null;
       }
     };
-  }, [isFocused, tokenRange.value]);
+  }, [isFocused, tokenRange.value, typingTick, suggestions.length]);
 
   React.useEffect(() => {
     recalcCaretPosition();
@@ -220,6 +237,7 @@ export function PromptAutocompleteTextarea({
         value={value}
         onFocus={(event) => {
           setIsFocused(true);
+          setSuggestions([]);
           const nextCursor = event.currentTarget.selectionStart ?? value.length;
           setCursorIndex(nextCursor);
           recalcCaretPosition();
@@ -228,12 +246,14 @@ export function PromptAutocompleteTextarea({
           setIsFocused(false);
           onBlur();
         }}
-        onClick={(event) => {
-          setCursorIndex(event.currentTarget.selectionStart ?? 0);
-          recalcCaretPosition();
-        }}
-        onKeyUp={(event) => {
-          setCursorIndex(event.currentTarget.selectionStart ?? 0);
+        onSelect={(event) => {
+          const { selectionStart, selectionEnd } = event.currentTarget;
+          const nextCursor = selectionStart ?? 0;
+          setCursorIndex(nextCursor);
+
+          if ((selectionEnd ?? 0) !== nextCursor) {
+            setSuggestions([]);
+          }
           recalcCaretPosition();
         }}
         onScroll={recalcCaretPosition}
@@ -275,6 +295,7 @@ export function PromptAutocompleteTextarea({
         onChange={(event) => {
           const nextValue = event.target.value;
           onChange(nextValue);
+          setTypingTick((current) => current + 1);
           const nextCursor =
             event.currentTarget.selectionStart ?? nextValue.length;
           setCursorIndex(nextCursor);

@@ -11,6 +11,7 @@ export {
     GenerationPanelImg2Img,
     GenerationPanelResolution,
     GenerationPanelTxt2Img,
+    PromptFormatConfig,
     ScanMode,
     TabConfig,
     WindowBounds,

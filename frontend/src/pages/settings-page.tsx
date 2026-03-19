@@ -35,6 +35,7 @@ import {
 import { useEffect, useState } from 'react';
 import {
   AutocompleteConfig,
+  PromptFormatConfig,
   ScanMode
 } from '../../bindings/pixora/internal/config/models';
 import { GetAutocompleteSources } from '../../bindings/pixora/internal/services/generationservice';
@@ -49,6 +50,12 @@ const defaultAutocompleteConfig = new AutocompleteConfig({
   whitespace: false,
   escapeParens: false,
   suggestionCap: 12
+});
+
+const defaultPromptFormatConfig = new PromptFormatConfig({
+  collapseMultiline: true,
+  collapseWhitespace: true,
+  commaSpacingMode: 'single'
 });
 
 export default function SettingsPage() {
@@ -67,6 +74,7 @@ export default function SettingsPage() {
     clearIndexAndReindex,
     setDevMode,
     setAutocompleteConfig,
+    setPromptFormatConfig,
     setPluginEnabled,
     trustPlugin,
     installPlugin,
@@ -82,6 +90,7 @@ export default function SettingsPage() {
   const [autocompleteSourceError, setAutocompleteSourceError] =
     useState<string>('');
   const [isAutocompleteSaving, setIsAutocompleteSaving] = useState(false);
+  const [isPromptFormatSaving, setIsPromptFormatSaving] = useState(false);
   const confirm = useConfirmation();
 
   useEffect(() => {
@@ -110,6 +119,7 @@ export default function SettingsPage() {
   }, [loadConfig, loadPlugins, loadPluginLogs]);
 
   const autocompleteConfig = config?.autocomplete ?? defaultAutocompleteConfig;
+  const promptFormatConfig = config?.promptFormat ?? defaultPromptFormatConfig;
 
   const applyAutocompletePatch = async (
     patch: Partial<AutocompleteConfig>
@@ -129,6 +139,27 @@ export default function SettingsPage() {
       console.error('Failed to save autocomplete config', error);
     } finally {
       setIsAutocompleteSaving(false);
+    }
+  };
+
+  const applyPromptFormatPatch = async (
+    patch: Partial<PromptFormatConfig>
+  ): Promise<void> => {
+    if (!config) {
+      return;
+    }
+
+    setIsPromptFormatSaving(true);
+    try {
+      const nextConfig = new PromptFormatConfig({
+        ...promptFormatConfig,
+        ...patch
+      });
+      await setPromptFormatConfig(nextConfig);
+    } catch (error) {
+      console.error('Failed to save prompt format config', error);
+    } finally {
+      setIsPromptFormatSaving(false);
     }
   };
 
@@ -881,6 +912,86 @@ export default function SettingsPage() {
                             })
                           }
                         />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
+                    <div className="flex flex-col gap-1">
+                      <h3 className="font-semibold">Prompt Formatting</h3>
+                      <p className="text-sm text-muted-foreground max-w-2xl">
+                        Configure how the Format button cleans up positive prompts.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Collapse Multiline
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Replace line breaks with spaces.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={promptFormatConfig.collapseMultiline}
+                          onCheckedChange={(checked) =>
+                            void applyPromptFormatPatch({
+                              collapseMultiline: checked
+                            })
+                          }
+                          disabled={isPromptFormatSaving}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Collapse Whitespace
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Reduce repeated spaces and tabs.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={promptFormatConfig.collapseWhitespace}
+                          onCheckedChange={(checked) =>
+                            void applyPromptFormatPatch({
+                              collapseWhitespace: checked
+                            })
+                          }
+                          disabled={isPromptFormatSaving}
+                        />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Comma Spacing
+                        </p>
+                        <Select
+                          value={promptFormatConfig.commaSpacingMode}
+                          onValueChange={(value) =>
+                            void applyPromptFormatPatch({
+                              commaSpacingMode: value
+                            })
+                          }
+                          disabled={isPromptFormatSaving}
+                        >
+                          <SelectTrigger className="w-full md:max-w-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="single">
+                                Single space after comma
+                              </SelectItem>
+                              <SelectItem value="none">
+                                No space after comma
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </section>

@@ -65,6 +65,12 @@ type AutocompleteConfig struct {
 	SuggestionCap int    `json:"suggestionCap"`
 }
 
+type PromptFormatConfig struct {
+	CollapseMultiline  bool   `json:"collapseMultiline"`
+	CollapseWhitespace bool   `json:"collapseWhitespace"`
+	CommaSpacingMode   string `json:"commaSpacingMode"`
+}
+
 type GenerationPanelResolution struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
@@ -125,6 +131,7 @@ type AppConfig struct {
 	DevMode      bool                  `json:"devMode"`
 	ComfyUI      ComfyUIBackendConfig  `json:"comfyUI"`
 	Autocomplete AutocompleteConfig    `json:"autocomplete"`
+	PromptFormat PromptFormatConfig    `json:"promptFormat"`
 	Generation   GenerationPanelConfig `json:"generation"`
 }
 
@@ -225,6 +232,15 @@ func (m *Manager) SetComfyUIConfig(cfg ComfyUIBackendConfig) error {
 func (m *Manager) SetAutocompleteConfig(cfg AutocompleteConfig) error {
 	m.mu.Lock()
 	m.config.Autocomplete = cfg
+	m.ensureDefaultsLocked()
+	m.mu.Unlock()
+
+	return m.Save()
+}
+
+func (m *Manager) SetPromptFormatConfig(cfg PromptFormatConfig) error {
+	m.mu.Lock()
+	m.config.PromptFormat = cfg
 	m.ensureDefaultsLocked()
 	m.mu.Unlock()
 
@@ -423,5 +439,11 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.Autocomplete.SuggestionCap <= 0 || m.config.Autocomplete.SuggestionCap > 50 {
 		m.config.Autocomplete.SuggestionCap = 12
+	}
+
+	switch m.config.PromptFormat.CommaSpacingMode {
+	case "none", "single":
+	default:
+		m.config.PromptFormat.CommaSpacingMode = "single"
 	}
 }

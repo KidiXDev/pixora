@@ -103,6 +103,10 @@ export function SetParserPluginEnabled(pluginID: string, enabled: boolean): $Can
     return $Call.ByID(1778698493, pluginID, enabled);
 }
 
+export function SetPromptFormatConfig(cfg: config$0.PromptFormatConfig): $CancellablePromise<void> {
+    return $Call.ByID(58105463, cfg);
+}
+
 /**
  * SetTabs updates the tabs configuration.
  */

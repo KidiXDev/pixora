@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/resizable';
 import { Call } from '@wailsio/runtime';
 import { useImageGenerationStore } from '@/stores/image-generation-store';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const workflowPreviewMethodNames = [
@@ -107,7 +107,7 @@ export default function ImageGenerationPage() {
     lastModelCatalogErrorRef.current = nextError;
   }, [modelCatalogError]);
 
-  const handleGenerate = () => {
+  const handleGenerate = useCallback(() => {
     if (mode !== 'txt2img') {
       toast.error('Only txt2img is available right now.');
       return;
@@ -130,23 +130,44 @@ export default function ImageGenerationPage() {
     }
 
     void generateText2Image();
-  };
+  }, [mode, comfyStatus, generateText2Image]);
 
-  const buildWorkflowRequest = () => ({
-    requestId: '',
-    mode,
-    prompt: txt2img.prompt,
-    negativePrompt: txt2img.negativePrompt,
-    seed: txt2img.seed,
-    steps: txt2img.steps,
-    cfgScale: txt2img.cfgScale,
-    width: txt2img.resolution.width,
-    height: txt2img.resolution.height,
-    model: txt2img.model,
-    vae: txt2img.vae,
-    sampler: txt2img.sampler,
-    scheduler: txt2img.scheduler
-  });
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === 'Enter'
+      ) {
+        handleGenerate();
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleGenerate]);
+
+
+  const buildWorkflowRequest = useCallback(
+    () => ({
+      requestId: '',
+      mode,
+      prompt: txt2img.prompt,
+      negativePrompt: txt2img.negativePrompt,
+      seed: txt2img.seed,
+      steps: txt2img.steps,
+      cfgScale: txt2img.cfgScale,
+      width: txt2img.resolution.width,
+      height: txt2img.resolution.height,
+      model: txt2img.model,
+      vae: txt2img.vae,
+      sampler: txt2img.sampler,
+      scheduler: txt2img.scheduler
+    }),
+    [mode, txt2img]
+  );
+
 
   const callGenerationService = async (
     methodNames: readonly string[],
@@ -293,6 +314,8 @@ export default function ImageGenerationPage() {
               onTxt2ImgChange={updateTxt2Img}
               onImg2ImgChange={updateImg2Img}
             />
+
+
           </ResizablePanel>
 
           <ResizableHandle

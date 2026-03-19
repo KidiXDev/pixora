@@ -12,6 +12,7 @@ export class AppConfig {
     "devMode": boolean;
     "comfyUI": ComfyUIBackendConfig;
     "autocomplete": AutocompleteConfig;
+    "promptFormat": PromptFormatConfig;
     "generation": GenerationPanelConfig;
 
     /** Creates a new AppConfig instance. */
@@ -34,6 +35,9 @@ export class AppConfig {
         if (!("autocomplete" in $$source)) {
             this["autocomplete"] = (new AutocompleteConfig());
         }
+        if (!("promptFormat" in $$source)) {
+            this["promptFormat"] = (new PromptFormatConfig());
+        }
         if (!("generation" in $$source)) {
             this["generation"] = (new GenerationPanelConfig());
         }
@@ -51,6 +55,7 @@ export class AppConfig {
         const $$createField4_0 = $$createType5;
         const $$createField5_0 = $$createType6;
         const $$createField6_0 = $$createType7;
+        const $$createField7_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField0_0($$parsedSource["folders"]);
@@ -67,8 +72,11 @@ export class AppConfig {
         if ("autocomplete" in $$parsedSource) {
             $$parsedSource["autocomplete"] = $$createField5_0($$parsedSource["autocomplete"]);
         }
+        if ("promptFormat" in $$parsedSource) {
+            $$parsedSource["promptFormat"] = $$createField6_0($$parsedSource["promptFormat"]);
+        }
         if ("generation" in $$parsedSource) {
-            $$parsedSource["generation"] = $$createField6_0($$parsedSource["generation"]);
+            $$parsedSource["generation"] = $$createField7_0($$parsedSource["generation"]);
         }
         return new AppConfig($$parsedSource as Partial<AppConfig>);
     }
@@ -237,9 +245,9 @@ export class GenerationPanelConfig {
      * Creates a new GenerationPanelConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelConfig {
-        const $$createField2_0 = $$createType8;
-        const $$createField3_0 = $$createType9;
-        const $$createField4_0 = $$createType11;
+        const $$createField2_0 = $$createType9;
+        const $$createField3_0 = $$createType10;
+        const $$createField4_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("txt2img" in $$parsedSource) {
             $$parsedSource["txt2img"] = $$createField2_0($$parsedSource["txt2img"]);
@@ -302,7 +310,7 @@ export class GenerationPanelHistoryItem {
      * Creates a new GenerationPanelHistoryItem instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelHistoryItem {
-        const $$createField5_0 = $$createType12;
+        const $$createField5_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
@@ -371,7 +379,7 @@ export class GenerationPanelImg2Img {
      * Creates a new GenerationPanelImg2Img instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelImg2Img {
-        const $$createField5_0 = $$createType12;
+        const $$createField5_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
@@ -457,12 +465,41 @@ export class GenerationPanelTxt2Img {
      * Creates a new GenerationPanelTxt2Img instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelTxt2Img {
-        const $$createField5_0 = $$createType12;
+        const $$createField5_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
+    }
+}
+
+export class PromptFormatConfig {
+    "collapseMultiline": boolean;
+    "collapseWhitespace": boolean;
+    "commaSpacingMode": string;
+
+    /** Creates a new PromptFormatConfig instance. */
+    constructor($$source: Partial<PromptFormatConfig> = {}) {
+        if (!("collapseMultiline" in $$source)) {
+            this["collapseMultiline"] = false;
+        }
+        if (!("collapseWhitespace" in $$source)) {
+            this["collapseWhitespace"] = false;
+        }
+        if (!("commaSpacingMode" in $$source)) {
+            this["commaSpacingMode"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PromptFormatConfig instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PromptFormatConfig {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PromptFormatConfig($$parsedSource as Partial<PromptFormatConfig>);
     }
 }
 
@@ -578,8 +615,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType13;
-        const $$createField3_0 = $$createType13;
+        const $$createField1_0 = $$createType14;
+        const $$createField3_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -599,10 +636,11 @@ const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = WindowConfig.createFrom;
 const $$createType5 = ComfyUIBackendConfig.createFrom;
 const $$createType6 = AutocompleteConfig.createFrom;
-const $$createType7 = GenerationPanelConfig.createFrom;
-const $$createType8 = GenerationPanelTxt2Img.createFrom;
-const $$createType9 = GenerationPanelImg2Img.createFrom;
-const $$createType10 = GenerationPanelHistoryItem.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = GenerationPanelResolution.createFrom;
-const $$createType13 = WindowBounds.createFrom;
+const $$createType7 = PromptFormatConfig.createFrom;
+const $$createType8 = GenerationPanelConfig.createFrom;
+const $$createType9 = GenerationPanelTxt2Img.createFrom;
+const $$createType10 = GenerationPanelImg2Img.createFrom;
+const $$createType11 = GenerationPanelHistoryItem.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = GenerationPanelResolution.createFrom;
+const $$createType14 = WindowBounds.createFrom;

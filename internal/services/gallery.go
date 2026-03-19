@@ -269,6 +269,10 @@ func (s *GalleryService) SetAutocompleteConfig(cfg config.AutocompleteConfig) er
 	return s.config.SetAutocompleteConfig(cfg)
 }
 
+func (s *GalleryService) SetPromptFormatConfig(cfg config.PromptFormatConfig) error {
+	return s.config.SetPromptFormatConfig(cfg)
+}
+
 // SetWindow sets the main window for the service.
 func (s *GalleryService) SetWindow(window *application.WebviewWindow) {
 	s.window = window

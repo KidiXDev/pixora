@@ -558,7 +558,8 @@ export function GenerationWorkflowDialog({
 
           <TabsContent
             value="comfyui"
-            className="m-0 min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+            forceMount
+            className="m-0 min-h-0 flex-1 data-[state=inactive]:hidden data-[state=active]:flex data-[state=active]:flex-col"
           >
             <div className="flex flex-1 min-h-0 flex-col">
               <div className="border-b border-border/50 px-6 py-3">

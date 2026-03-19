@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   AppConfig,
   AutocompleteConfig,
+  PromptFormatConfig,
   ScanMode
 } from '../../bindings/pixora/internal/config/models';
 import {
@@ -17,6 +18,7 @@ import {
   SetAutocompleteConfig,
   SetDevMode,
   SetParserPluginEnabled,
+  SetPromptFormatConfig,
   TrustParserPlugin,
   UpdateFolderAlias
 } from '../../bindings/pixora/internal/services/galleryservice';
@@ -59,6 +61,7 @@ interface ConfigState {
   updateFolderAlias: (path: string, alias: string) => Promise<void>;
   setDevMode: (enabled: boolean) => Promise<void>;
   setAutocompleteConfig: (config: AutocompleteConfig) => Promise<void>;
+  setPromptFormatConfig: (config: PromptFormatConfig) => Promise<void>;
   clearIndexAndReindex: () => Promise<void>;
   loadPluginLogs: (pluginID?: string, limit?: number) => Promise<void>;
   clearPluginLogs: () => Promise<void>;
@@ -169,6 +172,17 @@ export const useConfigStore = create<ConfigState>((set) => ({
       set({ config });
     } catch (e) {
       console.error('Failed to set autocomplete config', e);
+      throw e;
+    }
+  },
+
+  setPromptFormatConfig: async (promptFormatConfig) => {
+    try {
+      await SetPromptFormatConfig(promptFormatConfig);
+      const config = await GetConfig();
+      set({ config });
+    } catch (e) {
+      console.error('Failed to set prompt format config', e);
       throw e;
     }
   },

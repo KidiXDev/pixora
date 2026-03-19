@@ -1,4 +1,5 @@
 import { PromptAutocompleteTextarea } from '@/components/image-generation/prompt-autocomplete-textarea';
+import { Button } from '@/components/ui/button';
 import {
   Field,
   FieldContent,
@@ -7,6 +8,7 @@ import {
   FieldLabel
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -17,9 +19,14 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  DEFAULT_PROMPT_FORMAT_OPTIONS,
+  formatPromptText,
+  type PromptFormatOptions
+} from '@/lib/prompt-format';
 import { filterNumeric, parseNumeric } from '@/lib/utils';
 import { img2imgSchema, txt2imgSchema } from '@/schema/generation-schema';
+import { useConfigStore } from '@/stores/config-store';
 import {
   GenerationModelCatalog,
   ImageGenerationMode,
@@ -27,6 +34,7 @@ import {
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { useForm, type FormValidateOrFn } from '@tanstack/react-form';
+import { BrushCleaningIcon } from 'lucide-react';
 import * as React from 'react';
 import { z } from 'zod';
 
@@ -83,6 +91,23 @@ export function GenerationParametersPanel({
   onTxt2ImgChange,
   onImg2ImgChange
 }: GenerationParametersPanelProps) {
+  const promptFormatConfig = useConfigStore(
+    (state) => state.config?.promptFormat
+  );
+  const promptFormatOptions = React.useMemo<PromptFormatOptions>(
+    () => ({
+      collapseMultiline:
+        promptFormatConfig?.collapseMultiline ??
+        DEFAULT_PROMPT_FORMAT_OPTIONS.collapseMultiline,
+      collapseWhitespace:
+        promptFormatConfig?.collapseWhitespace ??
+        DEFAULT_PROMPT_FORMAT_OPTIONS.collapseWhitespace,
+      commaSpacingMode:
+        promptFormatConfig?.commaSpacingMode === 'none' ? 'none' : 'single'
+    }),
+    [promptFormatConfig]
+  );
+
   const samplerOptions = React.useMemo(
     () => modelCatalog.samplers,
     [modelCatalog.samplers]
@@ -117,6 +142,42 @@ export function GenerationParametersPanel({
       }) as FormValidateOrFn<FormValues>
     }
   });
+
+  const handleFormatPrompts = () => {
+    if (mode === 'txt2img') {
+      const prompt = form.getFieldValue('txt2img.prompt');
+      const negativePrompt = form.getFieldValue('txt2img.negativePrompt');
+
+      if (prompt) {
+        form.setFieldValue(
+          'txt2img.prompt',
+          formatPromptText(prompt, promptFormatOptions)
+        );
+      }
+      if (negativePrompt) {
+        form.setFieldValue(
+          'txt2img.negativePrompt',
+          formatPromptText(negativePrompt, promptFormatOptions)
+        );
+      }
+    } else {
+      const prompt = form.getFieldValue('img2img.prompt');
+      const negativePrompt = form.getFieldValue('img2img.negativePrompt');
+
+      if (prompt) {
+        form.setFieldValue(
+          'img2img.prompt',
+          formatPromptText(prompt, promptFormatOptions)
+        );
+      }
+      if (negativePrompt) {
+        form.setFieldValue(
+          'img2img.negativePrompt',
+          formatPromptText(negativePrompt, promptFormatOptions)
+        );
+      }
+    }
+  };
 
   const renderNumericParameterFields = ({
     prefix,
@@ -655,13 +716,26 @@ export function GenerationParametersPanel({
           {mode === 'txt2img' ? (
             <FieldGroup className="space-y-8">
               <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-                    Prompting
-                  </p>
-                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-                    Describe the desired style, composition, and lighting.
-                  </p>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+                      Prompting
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                      Describe the desired style, composition, and lighting.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5 gap-1.5 transition-colors"
+                    onClick={handleFormatPrompts}
+                    title="Format Prompts"
+                  >
+                    <BrushCleaningIcon className="size-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Format</span>
+                  </Button>
                 </div>
 
                 <form.Field
@@ -743,13 +817,26 @@ export function GenerationParametersPanel({
           ) : (
             <FieldGroup className="space-y-8">
               <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-                    Source & Prompting
-                  </p>
-                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-                    Use an existing image and guide the transformation.
-                  </p>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+                      Source & Prompting
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                      Use an existing image and guide the transformation.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5 gap-1.5 transition-colors"
+                    onClick={handleFormatPrompts}
+                    title="Format Prompts"
+                  >
+                    <BrushCleaningIcon className="size-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Format</span>
+                  </Button>
                 </div>
 
                 <form.Field
