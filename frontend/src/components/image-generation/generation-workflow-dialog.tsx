@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
@@ -29,6 +29,11 @@ interface GenerationWorkflowDialogProps {
   workflowJSON: string;
   isLoading: boolean;
   onRefresh: () => void;
+  comfyEmbedURL: string;
+  stagedComfyWorkflowPath: string;
+  isComfyEmbedLoading: boolean;
+  onReloadComfyEmbed: () => void;
+  onLoadComfyWorkflow: () => void;
 }
 
 interface WorkflowPreviewPayload {
@@ -243,8 +248,15 @@ export function GenerationWorkflowDialog({
   onOpenChange,
   workflowJSON,
   isLoading,
-  onRefresh
+  onRefresh,
+  comfyEmbedURL,
+  stagedComfyWorkflowPath,
+  isComfyEmbedLoading,
+  onReloadComfyEmbed,
+  onLoadComfyWorkflow
 }: GenerationWorkflowDialogProps) {
+  const [activeTab, setActiveTab] = React.useState('graph');
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const payload = React.useMemo(() => {
     if (workflowJSON.trim() === '') {
       return null;
@@ -275,85 +287,116 @@ export function GenerationWorkflowDialog({
     }
   };
 
+  React.useEffect(() => {
+    if (open) {
+      setActiveTab('graph');
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (activeTab === 'comfyui' && comfyEmbedURL === '' && !isComfyEmbedLoading) {
+      onLoadComfyWorkflow();
+    }
+  }, [activeTab, comfyEmbedURL, isComfyEmbedLoading, onLoadComfyWorkflow]);
+
+  React.useEffect(() => {
+    if (
+      stagedComfyWorkflowPath &&
+      iframeRef.current?.contentWindow &&
+      activeTab === 'comfyui'
+    ) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: 'pixora:load-workflow',
+          workflowPath: stagedComfyWorkflowPath
+        },
+        '*'
+      );
+    }
+  }, [stagedComfyWorkflowPath, activeTab]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="min-w-[min(96vw,1200px)] max-w-[1200px] h-[86vh] gap-0 p-0 overflow-hidden"
+        className="flex flex-col min-w-[min(96vw,1200px)] max-w-[1200px] h-[86vh] gap-0 p-0 overflow-hidden"
       >
-        <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4 pr-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-                <Workflow className="size-4" />
-                Resolved ComfyUI Workflow
-              </DialogTitle>
-              <DialogDescription>
-                Visualizes the exact txt2img graph generated from the current
-                page settings.
-              </DialogDescription>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">
-                  {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}
-                </Badge>
-                {payload?.mode ? (
-                  <Badge variant="outline">{payload.mode}</Badge>
-                ) : null}
-                {payload?.resolvedSeed ? (
-                  <Badge variant="outline">Seed {payload.resolvedSeed}</Badge>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopy}
-                  disabled={workflowJSON.trim() === ''}
-                  className="gap-2"
-                >
-                  <Copy className="size-4" />
-                  Copy JSON
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onRefresh}
-                  disabled={isLoading}
-                  className="gap-2"
-                >
-                  {isLoading ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-4" />
-                  )}
-                  Refresh
-                </Button>
-              </div>
-              <DialogClose asChild>
-                <Button variant="ghost" size="icon-sm" className="shrink-0">
-                  <X className="size-4" />
-                  <span className="sr-only">Close</span>
-                </Button>
-              </DialogClose>
-            </div>
-          </div>
-        </DialogHeader>
-
         <Tabs
-          defaultValue="graph"
+          value={activeTab}
+          onValueChange={setActiveTab}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <div className="border-b border-border/50 px-6 py-3">
-            <TabsList>
-              <TabsTrigger value="graph">Graph</TabsTrigger>
-              <TabsTrigger value="json">JSON</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <TabsContent value="graph" className="min-h-0 flex-1 m-0">
-            <ScrollArea className="h-full">
+          <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4 pr-4">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Workflow className="size-4" />
+                    Resolved ComfyUI Workflow
+                  </DialogTitle>
+                  <DialogDescription>
+                    Visualizes the exact txt2img graph generated from the current
+                    page settings.
+                  </DialogDescription>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">
+                      {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}
+                    </Badge>
+                    {payload?.mode ? (
+                      <Badge variant="outline">{payload.mode}</Badge>
+                    ) : null}
+                    {payload?.resolvedSeed ? (
+                      <Badge variant="outline">Seed {payload.resolvedSeed}</Badge>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopy}
+                      disabled={workflowJSON.trim() === ''}
+                      className="gap-2"
+                    >
+                      <Copy className="size-4" />
+                      Copy JSON
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onRefresh}
+                      disabled={isLoading}
+                      className="gap-2"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                      Refresh
+                    </Button>
+                  </div>
+                  <DialogClose asChild>
+                    <Button variant="ghost" size="icon-sm" className="shrink-0">
+                      <X className="size-4" />
+                      <span className="sr-only">Close</span>
+                    </Button>
+                  </DialogClose>
+                </div>
+              </div>
+              <TabsList>
+                <TabsTrigger value="graph">Graph</TabsTrigger>
+                <TabsTrigger value="json">JSON</TabsTrigger>
+                <TabsTrigger value="comfyui">ComfyUI</TabsTrigger>
+              </TabsList>
+            </div>
+          </DialogHeader>
+          <TabsContent
+            value="graph"
+            className="m-0 min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <ScrollArea className="flex-1 min-h-0">
               {isLoading ? (
                 <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -491,22 +534,96 @@ export function GenerationWorkflowDialog({
                   </div>
                 </div>
               )}
+              <ScrollBar orientation="horizontal" />
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="json" className="min-h-0 flex-1 m-0">
-            <ScrollArea className="h-full">
+          <TabsContent
+            value="json"
+            className="m-0 min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <ScrollArea className="flex-1 min-h-0">
               <div className="px-6 py-6">
                 <div className="mb-3 text-xs text-muted-foreground">
                   {payload?.outputDir
                     ? `Output directory: ${payload.outputDir}`
                     : ''}
                 </div>
-                <pre className="overflow-x-auto rounded-2xl border border-border/60 bg-zinc-950 p-4 text-xs leading-6 text-zinc-100">
+                <pre className="whitespace-pre-wrap wrap-break-word rounded-2xl border border-border/60 bg-zinc-950 p-4 text-xs leading-6 text-zinc-100">
                   <code>{workflowJSON || 'Workflow preview unavailable.'}</code>
                 </pre>
               </div>
             </ScrollArea>
+          </TabsContent>
+
+          <TabsContent
+            value="comfyui"
+            className="m-0 min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <div className="flex flex-1 min-h-0 flex-col">
+              <div className="border-b border-border/50 px-6 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold">Embedded ComfyUI</p>
+                    <p className="text-xs text-muted-foreground">
+                      Loads the staged Pixora workflow directly into the ComfyUI
+                      canvas.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={onLoadComfyWorkflow}
+                      disabled={isComfyEmbedLoading}
+                      className="gap-2"
+                    >
+                      {isComfyEmbedLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Workflow className="size-4" />
+                      )}
+                      Load Workflow
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onReloadComfyEmbed}
+                      disabled={isComfyEmbedLoading}
+                      className="gap-2"
+                    >
+                      {isComfyEmbedLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                      Reload in ComfyUI
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {comfyEmbedURL ? (
+                <div className="min-h-0 flex-1 bg-background">
+                  <iframe
+                    ref={iframeRef}
+                    src={comfyEmbedURL}
+                    title="Embedded ComfyUI"
+                    className="block h-full w-full border-0 bg-background"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-8">
+                  <div className="max-w-md text-center">
+                    <p className="text-sm font-medium">
+                      ComfyUI embed is ready when you load it.
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Pixora will stage the current resolved workflow and open
+                      ComfyUI with that workflow injected into the canvas.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

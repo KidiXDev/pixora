@@ -423,6 +423,39 @@ func (s *GenerationService) PreviewText2ImageWorkflow(req GenerationRequest) (st
 	return string(payload), nil
 }
 
+func (s *GenerationService) PrepareEmbeddedText2ImageWorkflow(req GenerationRequest) (string, error) {
+	preview, runtimeRoot, err := s.buildText2ImageWorkflowPreviewWithRuntimeRoot(req)
+	if err != nil {
+		return "", err
+	}
+
+	relativePath := fmt.Sprintf("pixora-txt2img-%d-api.json", time.Now().UnixNano())
+	absolutePath := filepath.Join(
+		runtimeRoot,
+		"backend",
+		"comfy",
+		"ComfyUI",
+		"user",
+		"default",
+		relativePath,
+	)
+
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0755); err != nil {
+		return "", fmt.Errorf("create embedded workflow directory: %w", err)
+	}
+
+	payload, err := json.MarshalIndent(preview.Prompt, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal embedded workflow: %w", err)
+	}
+
+	if err := os.WriteFile(absolutePath, payload, 0644); err != nil {
+		return "", fmt.Errorf("write embedded workflow: %w", err)
+	}
+
+	return relativePath, nil
+}
+
 func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string) (*GenerationResult, error) {
 	if s.config == nil {
 		return nil, fmt.Errorf("missing config manager")
@@ -538,8 +571,13 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 }
 
 func (s *GenerationService) buildText2ImageWorkflowPreview(req GenerationRequest) (*WorkflowPreview, error) {
+	preview, _, err := s.buildText2ImageWorkflowPreviewWithRuntimeRoot(req)
+	return preview, err
+}
+
+func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req GenerationRequest) (*WorkflowPreview, string, error) {
 	if s.config == nil {
-		return nil, fmt.Errorf("missing config manager")
+		return nil, "", fmt.Errorf("missing config manager")
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))
@@ -547,29 +585,29 @@ func (s *GenerationService) buildText2ImageWorkflowPreview(req GenerationRequest
 		mode = "txt2img"
 	}
 	if mode != "txt2img" {
-		return nil, fmt.Errorf("only txt2img workflow preview is supported for now")
+		return nil, "", fmt.Errorf("only txt2img workflow preview is supported for now")
 	}
 
 	cfg := s.config.GetComfyUIConfig()
 	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
 	if err != nil {
-		return nil, fmt.Errorf("resolve runtime root: %w", err)
+		return nil, "", fmt.Errorf("resolve runtime root: %w", err)
 	}
 
 	workflowPath := filepath.Join(runtimeRoot, "backend", "workflow", "PixoraTxt2Img.json")
 	workflow, err := loadWorkflowTemplate(workflowPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	outputDir, err := resolveGenerationOutputDirPath(cfg, mode)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	resolvedSeed := resolveGenerationSeed(req.Seed)
 	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeed, outputDir); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	return &WorkflowPreview{
@@ -577,7 +615,7 @@ func (s *GenerationService) buildText2ImageWorkflowPreview(req GenerationRequest
 		Prompt:       workflow,
 		OutputDir:    outputDir,
 		ResolvedSeed: resolvedSeed,
-	}, nil
+	}, runtimeRoot, nil
 }
 
 type AutocompleteQuery struct {

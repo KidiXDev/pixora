@@ -5,6 +5,8 @@ __all__ = [
     "NODE_DISPLAY_NAME_MAPPINGS",
 ]
 
+WEB_DIRECTORY = "./web"
+
 __author__ = """KidiXDev"""
 __email__ = "kidixdev@logiclab.id"
 __version__ = "0.0.1"

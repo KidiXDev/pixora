@@ -53,6 +53,10 @@ export function ListGenerationQueue(): $CancellablePromise<$models.GenerationQue
     });
 }
 
+export function PrepareEmbeddedText2ImageWorkflow(req: $models.GenerationRequest): $CancellablePromise<string> {
+    return $Call.ByID(3574899370, req);
+}
+
 export function PreviewText2ImageWorkflow(req: $models.GenerationRequest): $CancellablePromise<string> {
     return $Call.ByID(3480587775, req);
 }

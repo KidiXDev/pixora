@@ -19,12 +19,20 @@ const workflowPreviewMethodNames = [
   'services.GenerationService.PreviewText2ImageWorkflow'
 ] as const;
 
+const workflowEmbedMethodNames = [
+  'pixora/internal/services.GenerationService.PrepareEmbeddedText2ImageWorkflow',
+  'services.GenerationService.PrepareEmbeddedText2ImageWorkflow'
+] as const;
+
 export default function ImageGenerationPage() {
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
   const [isWorkflowLoading, setIsWorkflowLoading] = useState(false);
+  const [isComfyEmbedLoading, setIsComfyEmbedLoading] = useState(false);
   const [workflowJSON, setWorkflowJSON] = useState('');
+  const [comfyEmbedURL, setComfyEmbedURL] = useState('');
+  const [stagedComfyWorkflowPath, setStagedComfyWorkflowPath] = useState('');
   const lastComfyErrorRef = useRef('');
   const lastModelCatalogErrorRef = useRef('');
   const {
@@ -124,6 +132,46 @@ export default function ImageGenerationPage() {
     void generateText2Image();
   };
 
+  const buildWorkflowRequest = () => ({
+    requestId: '',
+    mode,
+    prompt: txt2img.prompt,
+    negativePrompt: txt2img.negativePrompt,
+    seed: txt2img.seed,
+    steps: txt2img.steps,
+    cfgScale: txt2img.cfgScale,
+    width: txt2img.resolution.width,
+    height: txt2img.resolution.height,
+    model: txt2img.model,
+    vae: txt2img.vae,
+    sampler: txt2img.sampler,
+    scheduler: txt2img.scheduler
+  });
+
+  const callGenerationService = async (
+    methodNames: readonly string[],
+    request: ReturnType<typeof buildWorkflowRequest>
+  ) => {
+    let result: unknown;
+    let lastError: unknown = null;
+
+    for (const methodName of methodNames) {
+      try {
+        result = await Call.ByName(methodName, request);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError !== null) {
+      throw lastError;
+    }
+
+    return result;
+  };
+
   const loadWorkflowPreview = async () => {
     if (mode !== 'txt2img') {
       toast.error('Workflow preview is only available for txt2img right now.');
@@ -132,38 +180,10 @@ export default function ImageGenerationPage() {
 
     setIsWorkflowLoading(true);
     try {
-      const request = {
-        requestId: '',
-        mode,
-        prompt: txt2img.prompt,
-        negativePrompt: txt2img.negativePrompt,
-        seed: txt2img.seed,
-        steps: txt2img.steps,
-        cfgScale: txt2img.cfgScale,
-        width: txt2img.resolution.width,
-        height: txt2img.resolution.height,
-        model: txt2img.model,
-        vae: txt2img.vae,
-        sampler: txt2img.sampler,
-        scheduler: txt2img.scheduler
-      };
-
-      let payload: unknown;
-      let lastError: unknown = null;
-
-      for (const methodName of workflowPreviewMethodNames) {
-        try {
-          payload = await Call.ByName(methodName, request);
-          lastError = null;
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      if (lastError !== null) {
-        throw lastError;
-      }
+      const payload = await callGenerationService(
+        workflowPreviewMethodNames,
+        buildWorkflowRequest()
+      );
 
       setWorkflowJSON(typeof payload === 'string' ? payload : '');
       setIsWorkflowOpen(true);
@@ -175,6 +195,72 @@ export default function ImageGenerationPage() {
       });
     } finally {
       setIsWorkflowLoading(false);
+    }
+  };
+
+  const prepareComfyEmbed = async () => {
+    if (mode !== 'txt2img') {
+      toast.error('Embedded ComfyUI is only available for txt2img right now.');
+      return;
+    }
+
+    if (!comfyStatus.running) {
+      toast.error('ComfyUI is not running.', {
+        description: 'Start the backend before opening the embedded interface.'
+      });
+      return;
+    }
+
+    setIsComfyEmbedLoading(true);
+    try {
+      const payload = await callGenerationService(
+        workflowEmbedMethodNames,
+        buildWorkflowRequest()
+      );
+      const stagedPath = typeof payload === 'string' ? payload.trim() : '';
+      if (stagedPath === '') {
+        throw new Error('Embedded workflow path was empty.');
+      }
+
+      const embedURL = new URL(comfyUI.apiUrl);
+      embedURL.searchParams.set('pixoraWorkflow', stagedPath);
+
+      setStagedComfyWorkflowPath(stagedPath);
+      if (comfyEmbedURL === '') {
+        setComfyEmbedURL(embedURL.toString());
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to stage workflow for ComfyUI.';
+      toast.error('Embedded ComfyUI failed', {
+        description: message
+      });
+    } finally {
+      setIsComfyEmbedLoading(false);
+    }
+  };
+
+  const reloadComfyEmbed = async () => {
+    if (comfyEmbedURL === '' || stagedComfyWorkflowPath === '') {
+      await prepareComfyEmbed();
+      return;
+    }
+
+    try {
+      const embedURL = new URL(comfyUI.apiUrl);
+      embedURL.searchParams.set('pixoraWorkflow', stagedComfyWorkflowPath);
+      embedURL.searchParams.set('pixoraNonce', Date.now().toString());
+      setComfyEmbedURL(embedURL.toString());
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to reload embedded ComfyUI.';
+      toast.error('Embedded ComfyUI failed', {
+        description: message
+      });
     }
   };
 
@@ -264,8 +350,17 @@ export default function ImageGenerationPage() {
         onOpenChange={setIsWorkflowOpen}
         workflowJSON={workflowJSON}
         isLoading={isWorkflowLoading}
+        comfyEmbedURL={comfyEmbedURL}
+        stagedComfyWorkflowPath={stagedComfyWorkflowPath}
+        isComfyEmbedLoading={isComfyEmbedLoading}
         onRefresh={() => {
           void loadWorkflowPreview();
+        }}
+        onReloadComfyEmbed={() => {
+          void reloadComfyEmbed();
+        }}
+        onLoadComfyWorkflow={() => {
+          void prepareComfyEmbed();
         }}
       />
     </div>
