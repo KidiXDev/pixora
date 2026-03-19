@@ -140,7 +140,7 @@ export function GenerationPreviewPanel({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                   className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 bg-black/40 backdrop-blur-md rounded-2xl"
                 >
                   <div className="relative">
@@ -169,8 +169,8 @@ export function GenerationPreviewPanel({
                   </div>
 
                   <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     className="mt-8 text-center space-y-2"
                   >
                     <motion.h3
@@ -191,7 +191,7 @@ export function GenerationPreviewPanel({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.6 }}
+                  transition={{ duration: 0.3 }}
                   className={cn(
                     'absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl group/img cursor-pointer'
                   )}
@@ -204,9 +204,9 @@ export function GenerationPreviewPanel({
                   <motion.img
                     src={buildImageURL(latest.imagePath!)}
                     alt="Generated result"
-                    initial={{ scale: 1.1, filter: 'blur(10px)' }}
-                    animate={{ scale: 1, filter: 'blur(0px)' }}
-                    className="h-full w-full object-contain bg-black/35 transition-all duration-500"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="h-full w-full object-contain bg-black/35 transition-all duration-300"
                   />
                   {/* Subtle vignette/glow over the image */}
                   <div className="absolute inset-0 pointer-events-none bg-radial-vignette opacity-50 rounded-2xl" />
@@ -237,7 +237,7 @@ export function GenerationPreviewPanel({
             </AnimatePresence>
 
             {/* Metadata / Prompt Overlay - Always visible but contents change */}
-            <div className="mt-auto bg-linear-to-t from-black/95 via-black/60 to-transparent p-6 relative z-30 transition-all duration-500 transform rounded-b-2xl">
+            <div className="mt-auto bg-linear-to-t from-black/95 via-black/60 to-transparent p-6 relative z-30 transition-all duration-300 transform rounded-b-2xl">
               <AnimatePresence mode="wait">
                 {latest ? (
                   <motion.div
@@ -323,15 +323,15 @@ export function GenerationPreviewPanel({
                   <motion.div
                     drag={scale > 1}
                     dragMomentum={false}
-                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                    animate={{ scale, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                    transition={{
-                      type: 'spring',
-                      damping: 25,
-                      stiffness: 300,
-                      scale: { duration: 0.2 }
-                    }}
+                  initial={{ opacity: 0 }}
+                  animate={{ scale, opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{
+                    type: 'spring',
+                    damping: 30,
+                    stiffness: 450,
+                    scale: { duration: 0.15 }
+                  }}
                     className={cn(
                       'relative flex items-center justify-center',
                       scale > 1 ? 'cursor-move' : 'cursor-default'
