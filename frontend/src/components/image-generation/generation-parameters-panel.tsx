@@ -1,8 +1,4 @@
-'use client';
-
 import { PromptAutocompleteTextarea } from '@/components/image-generation/prompt-autocomplete-textarea';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Field,
   FieldContent,
@@ -21,6 +17,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { filterNumeric, parseNumeric } from '@/lib/utils';
 import { img2imgSchema, txt2imgSchema } from '@/schema/generation-schema';
 import {
@@ -30,7 +27,6 @@ import {
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { useForm, type FormValidateOrFn } from '@tanstack/react-form';
-import { Square, WandSparkles } from 'lucide-react';
 import * as React from 'react';
 import { z } from 'zod';
 
@@ -70,8 +66,6 @@ interface GenerationParametersPanelProps {
   isGenerating: boolean;
   onTxt2ImgChange: (patch: Partial<Txt2ImgParameters>) => void;
   onImg2ImgChange: (patch: Partial<Img2ImgParameters>) => void;
-  onGenerate: () => void;
-  onInterrupt: () => void;
 }
 
 interface RenderNumericParameterFieldsOptions {
@@ -87,9 +81,7 @@ export function GenerationParametersPanel({
   img2img,
   isGenerating,
   onTxt2ImgChange,
-  onImg2ImgChange,
-  onGenerate,
-  onInterrupt
+  onImg2ImgChange
 }: GenerationParametersPanelProps) {
   const samplerOptions = React.useMemo(
     () => modelCatalog.samplers,
@@ -643,247 +635,232 @@ export function GenerationParametersPanel({
   }, [form.store, onTxt2ImgChange, onImg2ImgChange]);
 
   return (
-    <Card className="border-0 shadow-none bg-card m-1">
-      <CardHeader className="space-y-1 pb-4 border-b border-border/20">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-bold tracking-tight">
-            Generation
-          </CardTitle>
+    <div className="flex flex-col h-full bg-background/30 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-border/10 bg-muted/20 backdrop-blur-md">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-primary/80">
+          Generation Parameters
+        </h2>
+        <div className="flex items-center gap-2">
+          {isGenerating && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary animate-pulse">
+              <span className="size-1.5 rounded-full bg-primary" />
+              GENERATING
+            </div>
+          )}
         </div>
-      </CardHeader>
-      <CardContent>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (isGenerating) {
-              onInterrupt();
-              return;
-            }
-            onGenerate();
-          }}
-        >
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0 mr-1">
+        <form className="space-y-8 px-6 py-6 pb-12">
           {mode === 'txt2img' ? (
-            <FieldGroup className="space-y-2">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Prompting</p>
-                <p className="text-xs text-muted-foreground">
-                  Describe the desired style, composition, and lighting.
-                </p>
+            <FieldGroup className="space-y-8">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+                    Prompting
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                    Describe the desired style, composition, and lighting.
+                  </p>
+                </div>
+
+                <form.Field
+                  name="txt2img.prompt"
+                  children={(field) => {
+                    const isInvalid =
+                      field.state.meta.isTouched &&
+                      !!field.state.meta.errors.length;
+                    return (
+                      <Field data-invalid={isInvalid} className="space-y-2">
+                        <FieldContent>
+                          <PromptAutocompleteTextarea
+                            id={field.name}
+                            name={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={field.handleChange}
+                            placeholder="Describe the image you want to generate"
+                            ariaInvalid={isInvalid}
+                            className="min-h-32 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
+                          />
+                          {isInvalid && (
+                            <FieldError errors={field.state.meta.errors} />
+                          )}
+                        </FieldContent>
+                      </Field>
+                    );
+                  }}
+                />
+
+                <form.Field
+                  name="txt2img.negativePrompt"
+                  children={(field) => {
+                    const isInvalid =
+                      field.state.meta.isTouched &&
+                      !!field.state.meta.errors.length;
+                    return (
+                      <Field data-invalid={isInvalid} className="space-y-2">
+                        <FieldLabel
+                          htmlFor={field.name}
+                          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                        >
+                          Negative Prompt
+                        </FieldLabel>
+                        <FieldContent>
+                          <PromptAutocompleteTextarea
+                            id={field.name}
+                            name={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={field.handleChange}
+                            placeholder="What to avoid"
+                            ariaInvalid={isInvalid}
+                            className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
+                          />
+                          {isInvalid && (
+                            <FieldError errors={field.state.meta.errors} />
+                          )}
+                        </FieldContent>
+                      </Field>
+                    );
+                  }}
+                />
               </div>
 
-              <form.Field
-                name="txt2img.prompt"
-                children={(field) => {
-                  const isInvalid =
-                    field.state.meta.isTouched &&
-                    !!field.state.meta.errors.length;
-                  return (
-                    <Field data-invalid={isInvalid}>
-                      <FieldLabel
-                        htmlFor={field.name}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Prompt
-                      </FieldLabel>
-                      <FieldContent>
-                        <PromptAutocompleteTextarea
-                          id={field.name}
-                          name={field.name}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          placeholder="Describe the image you want to generate"
-                          ariaInvalid={isInvalid}
-                          className="min-h-26"
-                        />
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
-                      </FieldContent>
-                    </Field>
-                  );
-                }}
-              />
+              <div className="space-y-4 pt-2">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+                    Sampling & Canvas
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                    Tune quality, guidance, and output resolution.
+                  </p>
+                </div>
 
-              <form.Field
-                name="txt2img.negativePrompt"
-                children={(field) => {
-                  const isInvalid =
-                    field.state.meta.isTouched &&
-                    !!field.state.meta.errors.length;
-                  return (
-                    <Field data-invalid={isInvalid}>
-                      <FieldLabel
-                        htmlFor={field.name}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Negative Prompt
-                      </FieldLabel>
-                      <FieldContent>
-                        <PromptAutocompleteTextarea
-                          id={field.name}
-                          name={field.name}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          placeholder="What to avoid"
-                          ariaInvalid={isInvalid}
-                          className="min-h-18"
-                        />
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
-                      </FieldContent>
-                    </Field>
-                  );
-                }}
-              />
-
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Sampling & Canvas</p>
-                <p className="text-xs text-muted-foreground">
-                  Tune quality, guidance, and output resolution.
-                </p>
+                {renderNumericParameterFields({ prefix: 'txt2img' })}
               </div>
-
-              {renderNumericParameterFields({ prefix: 'txt2img' })}
             </FieldGroup>
           ) : (
-            <FieldGroup className="space-y-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Source & Prompting</p>
-                <p className="text-xs text-muted-foreground">
-                  Use an existing image and guide the transformation.
-                </p>
+            <FieldGroup className="space-y-8">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+                    Source & Prompting
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                    Use an existing image and guide the transformation.
+                  </p>
+                </div>
+
+                <form.Field
+                  name="img2img.sourceImagePath"
+                  children={(field) => {
+                    const isInvalid =
+                      field.state.meta.isTouched &&
+                      !!field.state.meta.errors.length;
+                    return (
+                      <Field data-invalid={isInvalid} className="space-y-2">
+                        <FieldLabel
+                          htmlFor={field.name}
+                          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                        >
+                          Source Image Path
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id={field.name}
+                            name={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                            placeholder="D:/images/source.png"
+                            aria-invalid={isInvalid}
+                            className="bg-muted/5 border-border/40"
+                          />
+                          {isInvalid && (
+                            <FieldError errors={field.state.meta.errors} />
+                          )}
+                        </FieldContent>
+                      </Field>
+                    );
+                  }}
+                />
+
+                <form.Field
+                  name="img2img.prompt"
+                  children={(field) => {
+                    const isInvalid =
+                      field.state.meta.isTouched &&
+                      !!field.state.meta.errors.length;
+                    return (
+                      <Field data-invalid={isInvalid} className="space-y-2">
+                        <FieldLabel
+                          htmlFor={field.name}
+                          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                        >
+                          Prompt
+                        </FieldLabel>
+                        <FieldContent>
+                          <PromptAutocompleteTextarea
+                            id={field.name}
+                            name={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={field.handleChange}
+                            placeholder="Describe how the source image should be transformed"
+                            ariaInvalid={isInvalid}
+                            className="min-h-28 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
+                          />
+                          {isInvalid && (
+                            <FieldError errors={field.state.meta.errors} />
+                          )}
+                        </FieldContent>
+                      </Field>
+                    );
+                  }}
+                />
+
+                <form.Field
+                  name="img2img.negativePrompt"
+                  children={(field) => {
+                    const isInvalid = !!field.state.meta.errors.length;
+                    return (
+                      <Field data-invalid={isInvalid} className="space-y-2">
+                        <FieldLabel
+                          htmlFor={field.name}
+                          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                        >
+                          Negative Prompt
+                        </FieldLabel>
+                        <FieldContent>
+                          <PromptAutocompleteTextarea
+                            id={field.name}
+                            name={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={field.handleChange}
+                            placeholder="Artifacts or styles to avoid"
+                            ariaInvalid={isInvalid}
+                            className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
+                          />
+                          {isInvalid && (
+                            <FieldError errors={field.state.meta.errors} />
+                          )}
+                        </FieldContent>
+                      </Field>
+                    );
+                  }}
+                />
+
+                {renderNumericParameterFields({
+                  prefix: 'img2img',
+                  showDenoise: true
+                })}
               </div>
-
-              <form.Field
-                name="img2img.sourceImagePath"
-                children={(field) => {
-                  const isInvalid =
-                    field.state.meta.isTouched &&
-                    !!field.state.meta.errors.length;
-                  return (
-                    <Field data-invalid={isInvalid}>
-                      <FieldLabel
-                        htmlFor={field.name}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Source Image Path
-                      </FieldLabel>
-                      <FieldContent>
-                        <Input
-                          id={field.name}
-                          name={field.name}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                          placeholder="D:/images/source.png"
-                          aria-invalid={isInvalid}
-                        />
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
-                      </FieldContent>
-                    </Field>
-                  );
-                }}
-              />
-
-              <form.Field
-                name="img2img.prompt"
-                children={(field) => {
-                  const isInvalid =
-                    field.state.meta.isTouched &&
-                    !!field.state.meta.errors.length;
-                  return (
-                    <Field data-invalid={isInvalid}>
-                      <FieldLabel
-                        htmlFor={field.name}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Prompt
-                      </FieldLabel>
-                      <FieldContent>
-                        <PromptAutocompleteTextarea
-                          id={field.name}
-                          name={field.name}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          placeholder="Describe how the source image should be transformed"
-                          ariaInvalid={isInvalid}
-                          className="min-h-22"
-                        />
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
-                      </FieldContent>
-                    </Field>
-                  );
-                }}
-              />
-
-              <form.Field
-                name="img2img.negativePrompt"
-                children={(field) => {
-                  const isInvalid = !!field.state.meta.errors.length;
-                  return (
-                    <Field data-invalid={isInvalid}>
-                      <FieldLabel
-                        htmlFor={field.name}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Negative Prompt
-                      </FieldLabel>
-                      <FieldContent>
-                        <PromptAutocompleteTextarea
-                          id={field.name}
-                          name={field.name}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          placeholder="Artifacts or styles to avoid"
-                          ariaInvalid={isInvalid}
-                          className="min-h-16"
-                        />
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
-                      </FieldContent>
-                    </Field>
-                  );
-                }}
-              />
-
-              {renderNumericParameterFields({
-                prefix: 'img2img',
-                showDenoise: true
-              })}
             </FieldGroup>
           )}
-
-          <div className="pt-6">
-            <Button
-              type="submit"
-              className="w-full gap-2 h-11 text-sm font-semibold shadow-lg shadow-primary/25 bg-linear-to-r from-primary to-primary/90 hover:opacity-90 transition-all duration-300 rounded-xl"
-            >
-              {isGenerating ? (
-                <>
-                  <Square className="size-4" />
-                  Interrupt
-                </>
-              ) : (
-                <>
-                  <WandSparkles className="size-4" />
-                  Generate
-                </>
-              )}
-            </Button>
-          </div>
         </form>
-      </CardContent>
-    </Card>
+      </ScrollArea>
+    </div>
   );
 }
