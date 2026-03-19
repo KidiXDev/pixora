@@ -53,6 +53,10 @@ export function ListGenerationQueue(): $CancellablePromise<$models.GenerationQue
     });
 }
 
+export function PreviewText2ImageWorkflow(req: $models.GenerationRequest): $CancellablePromise<string> {
+    return $Call.ByID(3480587775, req);
+}
+
 export function QueueText2Image(req: $models.GenerationRequest): $CancellablePromise<$models.QueueGenerationResponse | null> {
     return $Call.ByID(3423844541, req).then(($result: any) => {
         return $$createType11($result);

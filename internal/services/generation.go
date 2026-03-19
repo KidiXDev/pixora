@@ -146,6 +146,13 @@ type GenerationResult struct {
 	CompletedAt string `json:"completedAt"`
 }
 
+type WorkflowPreview struct {
+	Mode         string                       `json:"mode"`
+	Prompt       map[string]comfyWorkflowNode `json:"prompt"`
+	OutputDir    string                       `json:"outputDir"`
+	ResolvedSeed string                       `json:"resolvedSeed"`
+}
+
 type comfyWorkflowNode struct {
 	Inputs    map[string]any `json:"inputs"`
 	ClassType string         `json:"class_type"`
@@ -402,6 +409,20 @@ func (s *GenerationService) GenerateText2Image(req GenerationRequest) (*Generati
 	return s.generateText2ImageInternal(context.Background(), req, "")
 }
 
+func (s *GenerationService) PreviewText2ImageWorkflow(req GenerationRequest) (string, error) {
+	preview, err := s.buildText2ImageWorkflowPreview(req)
+	if err != nil {
+		return "", err
+	}
+
+	payload, err := json.MarshalIndent(preview, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal workflow preview: %w", err)
+	}
+
+	return string(payload), nil
+}
+
 func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string) (*GenerationResult, error) {
 	if s.config == nil {
 		return nil, fmt.Errorf("missing config manager")
@@ -420,28 +441,15 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 		return nil, fmt.Errorf("prompt is required")
 	}
 
+	preview, err := s.buildText2ImageWorkflowPreview(req)
+	if err != nil {
+		return nil, err
+	}
+	workflow := preview.Prompt
+	outputDir := preview.OutputDir
+	resolvedSeed := preview.ResolvedSeed
+
 	cfg := s.config.GetComfyUIConfig()
-	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
-	if err != nil {
-		return nil, fmt.Errorf("resolve runtime root: %w", err)
-	}
-
-	workflowPath := filepath.Join(runtimeRoot, "backend", "workflow", "PixoraTxt2Img.json")
-	workflow, err := loadWorkflowTemplate(workflowPath)
-	if err != nil {
-		return nil, err
-	}
-
-	outputDir, err := resolveGenerationOutputDir(cfg, mode)
-	if err != nil {
-		return nil, err
-	}
-
-	resolvedSeed := resolveGenerationSeed(req.Seed)
-	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeed, outputDir); err != nil {
-		return nil, err
-	}
-
 	baseURL := buildComfyBaseURL(cfg)
 	clientID := fmt.Sprintf("pixora-%d", time.Now().UnixNano())
 	promptID, err := postComfyPrompt(baseURL, workflow, clientID)
@@ -527,6 +535,49 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	s.emitGenerationResult(*result)
 
 	return result, nil
+}
+
+func (s *GenerationService) buildText2ImageWorkflowPreview(req GenerationRequest) (*WorkflowPreview, error) {
+	if s.config == nil {
+		return nil, fmt.Errorf("missing config manager")
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "txt2img"
+	}
+	if mode != "txt2img" {
+		return nil, fmt.Errorf("only txt2img workflow preview is supported for now")
+	}
+
+	cfg := s.config.GetComfyUIConfig()
+	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve runtime root: %w", err)
+	}
+
+	workflowPath := filepath.Join(runtimeRoot, "backend", "workflow", "PixoraTxt2Img.json")
+	workflow, err := loadWorkflowTemplate(workflowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	outputDir, err := resolveGenerationOutputDirPath(cfg, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedSeed := resolveGenerationSeed(req.Seed)
+	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeed, outputDir); err != nil {
+		return nil, err
+	}
+
+	return &WorkflowPreview{
+		Mode:         mode,
+		Prompt:       workflow,
+		OutputDir:    outputDir,
+		ResolvedSeed: resolvedSeed,
+	}, nil
 }
 
 type AutocompleteQuery struct {
@@ -1446,6 +1497,19 @@ func extractImagePathFromHistory(entry comfyHistoryEntry, outputDir string) stri
 }
 
 func resolveGenerationOutputDir(cfg config.ComfyUIBackendConfig, mode string) (string, error) {
+	resolved, err := resolveGenerationOutputDirPath(cfg, mode)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(resolved, 0755); err != nil {
+		return "", fmt.Errorf("create output directory: %w", err)
+	}
+
+	return resolved, nil
+}
+
+func resolveGenerationOutputDirPath(cfg config.ComfyUIBackendConfig, mode string) (string, error) {
 	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve runtime root: %w", err)
@@ -1465,12 +1529,7 @@ func resolveGenerationOutputDir(cfg config.ComfyUIBackendConfig, mode string) (s
 		subDir = "img2img"
 	}
 
-	resolved := filepath.Join(baseOutput, subDir)
-	if err := os.MkdirAll(resolved, 0755); err != nil {
-		return "", fmt.Errorf("create output directory: %w", err)
-	}
-
-	return resolved, nil
+	return filepath.Join(baseOutput, subDir), nil
 }
 
 func resolveGenerationSeed(raw string) string {

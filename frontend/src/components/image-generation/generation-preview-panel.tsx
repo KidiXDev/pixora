@@ -1,13 +1,15 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GeneratedPreviewItem } from '@/types/image-generation';
-import { Image as ImageIcon, Square, WandSparkles } from 'lucide-react';
+import { GitBranch, Image as ImageIcon, Square, WandSparkles } from 'lucide-react';
 
 interface GenerationPreviewPanelProps {
   history: ReadonlyArray<GeneratedPreviewItem>;
   isGenerating: boolean;
+  isWorkflowLoading?: boolean;
   onGenerate: () => void;
   onInterrupt: () => void;
+  onOpenWorkflow: () => void;
 }
 
 function resolutionLabel(width: number, height: number): string {
@@ -26,8 +28,10 @@ function buildImageURL(imagePath: string): string {
 export function GenerationPreviewPanel({
   history,
   isGenerating,
+  isWorkflowLoading = false,
   onGenerate,
-  onInterrupt
+  onInterrupt,
+  onOpenWorkflow
 }: GenerationPreviewPanelProps) {
   const latest = history[0] ?? null;
 
@@ -40,6 +44,15 @@ export function GenerationPreviewPanel({
             Preview Output
           </CardTitle>
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={onOpenWorkflow}
+              disabled={isWorkflowLoading}
+              className="gap-2 h-10 px-4 text-xs font-semibold"
+            >
+              <GitBranch className="size-3.5" />
+              {isWorkflowLoading ? 'Loading...' : 'View Workflow'}
+            </Button>
             <Button
               onClick={() => {
                 if (isGenerating) {

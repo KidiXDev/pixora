@@ -17,3 +17,7 @@ backend/workflow/
 
 # venv
 backend/node/pixorabridge/venv/
+
+.gocache/
+
+.env

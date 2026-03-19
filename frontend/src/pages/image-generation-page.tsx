@@ -3,18 +3,28 @@ import { ComfyUILogsDialog } from '@/components/image-generation/comfyui-logs-di
 import { GenerationParametersPanel } from '@/components/image-generation/generation-parameters-panel';
 import { GenerationPreviewPanel } from '@/components/image-generation/generation-preview-panel';
 import { GenerationSideNav } from '@/components/image-generation/generation-side-nav';
+import { GenerationWorkflowDialog } from '@/components/image-generation/generation-workflow-dialog';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup
 } from '@/components/ui/resizable';
+import { Call } from '@wailsio/runtime';
 import { useImageGenerationStore } from '@/stores/image-generation-store';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+const workflowPreviewMethodNames = [
+  'pixora/internal/services.GenerationService.PreviewText2ImageWorkflow',
+  'services.GenerationService.PreviewText2ImageWorkflow'
+] as const;
+
 export default function ImageGenerationPage() {
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
+  const [isWorkflowLoading, setIsWorkflowLoading] = useState(false);
+  const [workflowJSON, setWorkflowJSON] = useState('');
   const lastComfyErrorRef = useRef('');
   const lastModelCatalogErrorRef = useRef('');
   const {
@@ -114,6 +124,60 @@ export default function ImageGenerationPage() {
     void generateText2Image();
   };
 
+  const loadWorkflowPreview = async () => {
+    if (mode !== 'txt2img') {
+      toast.error('Workflow preview is only available for txt2img right now.');
+      return;
+    }
+
+    setIsWorkflowLoading(true);
+    try {
+      const request = {
+        requestId: '',
+        mode,
+        prompt: txt2img.prompt,
+        negativePrompt: txt2img.negativePrompt,
+        seed: txt2img.seed,
+        steps: txt2img.steps,
+        cfgScale: txt2img.cfgScale,
+        width: txt2img.resolution.width,
+        height: txt2img.resolution.height,
+        model: txt2img.model,
+        vae: txt2img.vae,
+        sampler: txt2img.sampler,
+        scheduler: txt2img.scheduler
+      };
+
+      let payload: unknown;
+      let lastError: unknown = null;
+
+      for (const methodName of workflowPreviewMethodNames) {
+        try {
+          payload = await Call.ByName(methodName, request);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (lastError !== null) {
+        throw lastError;
+      }
+
+      setWorkflowJSON(typeof payload === 'string' ? payload : '');
+      setIsWorkflowOpen(true);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to build workflow.';
+      toast.error('Workflow preview failed', {
+        description: message
+      });
+    } finally {
+      setIsWorkflowLoading(false);
+    }
+  };
+
   return (
     <div className="flex h-full overflow-hidden bg-[radial-gradient(ellipse_at_top_right,var(--tw-gradient-stops))] from-primary/5 via-background to-background">
       <GenerationSideNav
@@ -155,9 +219,13 @@ export default function ImageGenerationPage() {
               <GenerationPreviewPanel
                 history={history}
                 isGenerating={isGenerating}
+                isWorkflowLoading={isWorkflowLoading}
                 onGenerate={handleGenerate}
                 onInterrupt={() => {
                   void interruptGeneration();
+                }}
+                onOpenWorkflow={() => {
+                  void loadWorkflowPreview();
                 }}
               />
             </div>
@@ -189,6 +257,16 @@ export default function ImageGenerationPage() {
         isLoading={isComfyLogsLoading}
         onRefresh={() => loadComfyLogs(500)}
         onClear={clearComfyLogs}
+      />
+
+      <GenerationWorkflowDialog
+        open={isWorkflowOpen}
+        onOpenChange={setIsWorkflowOpen}
+        workflowJSON={workflowJSON}
+        isLoading={isWorkflowLoading}
+        onRefresh={() => {
+          void loadWorkflowPreview();
+        }}
       />
     </div>
   );
