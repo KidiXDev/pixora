@@ -13,6 +13,7 @@ import { Call } from '@wailsio/runtime';
 import { useImageGenerationStore } from '@/stores/image-generation-store';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 
 const workflowPreviewMethodNames = [
   'pixora/internal/services.GenerationService.PreviewText2ImageWorkflow',
@@ -40,12 +41,10 @@ export default function ImageGenerationPage() {
     comfyUI,
     comfyStatus,
     modelCatalog,
-    comfyLogs,
     comfyError,
     modelCatalogError,
     isModelCatalogLoading,
     isComfyActionPending,
-    isComfyLogsLoading,
     isComfyConfigSaving,
     isGenerating,
     txt2img,
@@ -56,15 +55,53 @@ export default function ImageGenerationPage() {
     startComfyUI,
     stopComfyUI,
     restartComfyUI,
-    loadComfyLogs,
-    clearComfyLogs,
     setMode,
     updateComfyUIConfig,
     updateTxt2Img,
     updateImg2Img,
     generateText2Image,
     interruptGeneration
-  } = useImageGenerationStore();
+  } = useImageGenerationStore(
+    useShallow((state) => ({
+      mode: state.mode,
+      comfyUI: state.comfyUI,
+      comfyStatus: state.comfyStatus,
+      modelCatalog: state.modelCatalog,
+      comfyError: state.comfyError,
+      modelCatalogError: state.modelCatalogError,
+      isModelCatalogLoading: state.isModelCatalogLoading,
+      isComfyActionPending: state.isComfyActionPending,
+      isComfyConfigSaving: state.isComfyConfigSaving,
+      isGenerating: state.isGenerating,
+      txt2img: state.txt2img,
+      img2img: state.img2img,
+      history: state.history,
+      initializeComfyLifecycle: state.initializeComfyLifecycle,
+      saveComfyUIConfig: state.saveComfyUIConfig,
+      startComfyUI: state.startComfyUI,
+      stopComfyUI: state.stopComfyUI,
+      restartComfyUI: state.restartComfyUI,
+      setMode: state.setMode,
+      updateComfyUIConfig: state.updateComfyUIConfig,
+      updateTxt2Img: state.updateTxt2Img,
+      updateImg2Img: state.updateImg2Img,
+      generateText2Image: state.generateText2Image,
+      interruptGeneration: state.interruptGeneration
+    }))
+  );
+  const {
+    comfyLogs,
+    isComfyLogsLoading,
+    loadComfyLogs,
+    clearComfyLogs
+  } = useImageGenerationStore(
+    useShallow((state) => ({
+      comfyLogs: state.comfyLogs,
+      isComfyLogsLoading: state.isComfyLogsLoading,
+      loadComfyLogs: state.loadComfyLogs,
+      clearComfyLogs: state.clearComfyLogs
+    }))
+  );
 
   useEffect(() => {
     void initializeComfyLifecycle();

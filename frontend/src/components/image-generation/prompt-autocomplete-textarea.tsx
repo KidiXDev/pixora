@@ -66,7 +66,7 @@ const CATEGORY_LABELS: Record<number, string> = {
   5: 'meta'
 };
 
-export function PromptAutocompleteTextarea({
+function PromptAutocompleteTextareaBase({
   id,
   name,
   value,
@@ -79,6 +79,7 @@ export function PromptAutocompleteTextarea({
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const debounceRef = React.useRef<number | null>(null);
+  const caretFrameRef = React.useRef<number | null>(null);
   const requestIdRef = React.useRef(0);
 
   const [isFocused, setIsFocused] = React.useState(false);
@@ -92,9 +93,6 @@ export function PromptAutocompleteTextarea({
   >([]);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [isMounted, setIsMounted] = React.useState(false);
-  const [typingTick, setTypingTick] = React.useState(0);
-
-  const lastTickRef = React.useRef(typingTick);
 
   const tokenRange = React.useMemo(
     () => getTokenRange(value, cursorIndex),
@@ -131,6 +129,17 @@ export function PromptAutocompleteTextarea({
     });
   }, []);
 
+  const scheduleCaretRecalc = React.useCallback(() => {
+    if (caretFrameRef.current !== null) {
+      window.cancelAnimationFrame(caretFrameRef.current);
+    }
+
+    caretFrameRef.current = window.requestAnimationFrame(() => {
+      caretFrameRef.current = null;
+      recalcCaretPosition();
+    });
+  }, [recalcCaretPosition]);
+
   React.useEffect(() => {
     const textarea = textareaRef.current;
     const hasSelection =
@@ -138,14 +147,6 @@ export function PromptAutocompleteTextarea({
 
     if (!isFocused || hasSelection) {
       setSuggestions([]);
-      lastTickRef.current = typingTick;
-      return;
-    }
-
-    const hasJustTyped = typingTick !== lastTickRef.current;
-    lastTickRef.current = typingTick;
-
-    if (!hasJustTyped && suggestions.length === 0) {
       return;
     }
 
@@ -190,17 +191,22 @@ export function PromptAutocompleteTextarea({
         debounceRef.current = null;
       }
     };
-  }, [isFocused, tokenRange.value, typingTick, suggestions.length]);
+  }, [isFocused, tokenRange.value]);
 
   React.useEffect(() => {
-    recalcCaretPosition();
-  }, [cursorIndex, value, recalcCaretPosition, suggestions.length]);
+    scheduleCaretRecalc();
+  }, [cursorIndex, value, suggestions.length, scheduleCaretRecalc]);
 
   React.useEffect(() => {
-    const handleWindowResize = () => recalcCaretPosition();
+    const handleWindowResize = () => scheduleCaretRecalc();
     window.addEventListener('resize', handleWindowResize);
-    return () => window.removeEventListener('resize', handleWindowResize);
-  }, [recalcCaretPosition]);
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+      if (caretFrameRef.current !== null) {
+        window.cancelAnimationFrame(caretFrameRef.current);
+      }
+    };
+  }, [scheduleCaretRecalc]);
 
   const applySuggestion = React.useCallback(
     (suggestion: PromptAutocompleteSuggestion) => {
@@ -222,10 +228,10 @@ export function PromptAutocompleteTextarea({
         textarea.focus();
         textarea.setSelectionRange(nextCursor, nextCursor);
         setCursorIndex(nextCursor);
-        recalcCaretPosition();
+        scheduleCaretRecalc();
       });
     },
-    [onChange, recalcCaretPosition, tokenRange.end, tokenRange.start, value]
+    [onChange, scheduleCaretRecalc, tokenRange.end, tokenRange.start, value]
   );
 
   return (
@@ -240,7 +246,7 @@ export function PromptAutocompleteTextarea({
           setSuggestions([]);
           const nextCursor = event.currentTarget.selectionStart ?? value.length;
           setCursorIndex(nextCursor);
-          recalcCaretPosition();
+          scheduleCaretRecalc();
         }}
         onBlur={() => {
           setIsFocused(false);
@@ -254,9 +260,9 @@ export function PromptAutocompleteTextarea({
           if ((selectionEnd ?? 0) !== nextCursor) {
             setSuggestions([]);
           }
-          recalcCaretPosition();
+          scheduleCaretRecalc();
         }}
-        onScroll={recalcCaretPosition}
+        onScroll={scheduleCaretRecalc}
         onKeyDown={(event) => {
           if (!isOpen) {
             return;
@@ -295,11 +301,10 @@ export function PromptAutocompleteTextarea({
         onChange={(event) => {
           const nextValue = event.target.value;
           onChange(nextValue);
-          setTypingTick((current) => current + 1);
           const nextCursor =
             event.currentTarget.selectionStart ?? nextValue.length;
           setCursorIndex(nextCursor);
-          recalcCaretPosition();
+          scheduleCaretRecalc();
         }}
         placeholder={placeholder}
         aria-invalid={ariaInvalid}
@@ -369,6 +374,8 @@ export function PromptAutocompleteTextarea({
   );
 }
 
+export const PromptAutocompleteTextarea = React.memo(PromptAutocompleteTextareaBase);
+
 function getTokenRange(value: string, cursorIndex: number): TokenRange {
   const safeCursor = Math.min(Math.max(cursorIndex, 0), value.length);
 
@@ -402,15 +409,18 @@ function getCaretPosition(
   caretIndex: number
 ): CaretPosition | null {
   const computed = window.getComputedStyle(textarea);
-  const mirror = document.createElement('div');
+  const { mirror, marker } = getMirrorElements();
 
   for (const property of MIRROR_STYLES) {
     mirror.style[property] =
       computed[property as keyof CSSStyleDeclaration] ?? '';
   }
 
-  mirror.style.position = 'absolute';
+  mirror.style.position = 'fixed';
   mirror.style.visibility = 'hidden';
+  mirror.style.left = '-99999px';
+  mirror.style.top = '0';
+  mirror.style.pointerEvents = 'none';
   mirror.style.whiteSpace = 'pre-wrap';
   mirror.style.wordBreak = 'break-word';
   mirror.style.overflow = 'hidden';
@@ -421,22 +431,36 @@ function getCaretPosition(
   const after = text.slice(caretIndex) || ' ';
 
   mirror.textContent = before;
-
-  const marker = document.createElement('span');
   marker.textContent = after[0] ?? ' ';
   mirror.appendChild(marker);
-
-  document.body.appendChild(mirror);
 
   const markerRectLeft = marker.offsetLeft;
   const markerRectTop = marker.offsetTop;
   const lineHeight = Number.parseFloat(computed.lineHeight || '16') || 16;
   const textareaRect = textarea.getBoundingClientRect();
 
-  document.body.removeChild(mirror);
-
   return {
     left: textareaRect.left + markerRectLeft - textarea.scrollLeft,
     top: textareaRect.top + markerRectTop - textarea.scrollTop + lineHeight
+  };
+}
+
+let sharedMirror: HTMLDivElement | null = null;
+let sharedMarker: HTMLSpanElement | null = null;
+
+function getMirrorElements(): {
+  mirror: HTMLDivElement;
+  marker: HTMLSpanElement;
+} {
+  if (!sharedMirror || !sharedMarker) {
+    sharedMirror = document.createElement('div');
+    sharedMarker = document.createElement('span');
+    sharedMirror.appendChild(sharedMarker);
+    document.body.appendChild(sharedMirror);
+  }
+
+  return {
+    mirror: sharedMirror,
+    marker: sharedMarker
   };
 }

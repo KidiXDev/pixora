@@ -418,6 +418,36 @@ function normalizeDimension(value: number): number {
   return clamp(Math.round(value), 0, 4096);
 }
 
+function isSameResolution(
+  a: { width: number; height: number },
+  b: { width: number; height: number }
+): boolean {
+  return a.width === b.width && a.height === b.height;
+}
+
+function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
+  return (
+    a.prompt === b.prompt &&
+    a.negativePrompt === b.negativePrompt &&
+    a.seed === b.seed &&
+    a.steps === b.steps &&
+    a.cfgScale === b.cfgScale &&
+    isSameResolution(a.resolution, b.resolution) &&
+    a.model === b.model &&
+    a.vae === b.vae &&
+    a.sampler === b.sampler &&
+    a.scheduler === b.scheduler
+  );
+}
+
+function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
+  return (
+    isSameTxt2Img(a, b) &&
+    a.sourceImagePath === b.sourceImagePath &&
+    a.denoiseStrength === b.denoiseStrength
+  );
+}
+
 function buildPreviewItem(
   state: PersistedImageGenerationState
 ): GeneratedPreviewItem {
@@ -809,47 +839,57 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     },
 
     updateTxt2Img: (patch) => {
-      set((state) => ({
-        txt2img: {
-          ...state.txt2img,
-          ...patch,
-          resolution: {
-            width: normalizeDimension(
-              patch.resolution?.width ?? state.txt2img.resolution.width
-            ),
-            height: normalizeDimension(
-              patch.resolution?.height ?? state.txt2img.resolution.height
-            )
-          },
-          steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 0, 200),
-          cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30)
-        }
-      }));
+      const state = get();
+      const nextValue: Txt2ImgParameters = {
+        ...state.txt2img,
+        ...patch,
+        resolution: {
+          width: normalizeDimension(
+            patch.resolution?.width ?? state.txt2img.resolution.width
+          ),
+          height: normalizeDimension(
+            patch.resolution?.height ?? state.txt2img.resolution.height
+          )
+        },
+        steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 0, 200),
+        cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30)
+      };
+
+      if (isSameTxt2Img(state.txt2img, nextValue)) {
+        return;
+      }
+
+      set({ txt2img: nextValue });
       queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
     updateImg2Img: (patch) => {
-      set((state) => ({
-        img2img: {
-          ...state.img2img,
-          ...patch,
-          resolution: {
-            width: normalizeDimension(
-              patch.resolution?.width ?? state.img2img.resolution.width
-            ),
-            height: normalizeDimension(
-              patch.resolution?.height ?? state.img2img.resolution.height
-            )
-          },
-          steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 0, 200),
-          cfgScale: clamp(patch.cfgScale ?? state.img2img.cfgScale, 0, 30),
-          denoiseStrength: clamp(
-            patch.denoiseStrength ?? state.img2img.denoiseStrength,
-            0,
-            1
+      const state = get();
+      const nextValue: Img2ImgParameters = {
+        ...state.img2img,
+        ...patch,
+        resolution: {
+          width: normalizeDimension(
+            patch.resolution?.width ?? state.img2img.resolution.width
+          ),
+          height: normalizeDimension(
+            patch.resolution?.height ?? state.img2img.resolution.height
           )
-        }
-      }));
+        },
+        steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 0, 200),
+        cfgScale: clamp(patch.cfgScale ?? state.img2img.cfgScale, 0, 30),
+        denoiseStrength: clamp(
+          patch.denoiseStrength ?? state.img2img.denoiseStrength,
+          0,
+          1
+        )
+      };
+
+      if (isSameImg2Img(state.img2img, nextValue)) {
+        return;
+      }
+
+      set({ img2img: nextValue });
       queuePersistGenerationPanelState(toPersistedState(get()));
     },
 

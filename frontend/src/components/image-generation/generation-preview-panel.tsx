@@ -10,7 +10,7 @@ import {
   WandSparkles,
   X
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 interface GenerationPreviewPanelProps {
@@ -43,7 +43,7 @@ function formatDuration(start: string, end?: string): string {
   return diff.toFixed(1) + 's';
 }
 
-export function GenerationPreviewPanel({
+function GenerationPreviewPanelBase({
   history,
   isGenerating,
   isWorkflowLoading = false,
@@ -54,9 +54,6 @@ export function GenerationPreviewPanel({
   const latest = history[0] ?? null;
   const hasImage = !!latest?.imagePath;
   const showLoading = isGenerating && !hasImage;
-
-  // Local state to trigger re-renders for the timer
-  const [, setTick] = useState(0);
   const [isFullPreviewOpen, setIsFullPreviewOpen] = useState(false);
   const [scale, setScale] = useState(1);
 
@@ -71,20 +68,11 @@ export function GenerationPreviewPanel({
     const delta = -e.deltaY * 0.001;
     setScale((s) => Math.min(Math.max(s + delta, 0.5), 20));
   };
-
-  useEffect(() => {
-    if (
-      isGenerating ||
-      (latest && !latest.completedAtISO && latest.status === 'running')
-    ) {
-      const interval = setInterval(() => setTick((t) => t + 1), 100);
-      return () => clearInterval(interval);
-    }
-  }, [isGenerating, latest?.status, latest?.completedAtISO]);
-
-  const duration = latest
-    ? formatDuration(latest.createdAtISO, latest.completedAtISO)
-    : '0.0s';
+  const latestImageURL = useMemo(
+    () => (latest?.imagePath ? buildImageURL(latest.imagePath) : ''),
+    [latest?.imagePath]
+  );
+  const canOpenFullscreen = latest?.status === 'completed';
 
   return (
     <Card className="h-full bg-card/40 backdrop-blur-xl border-border/50 shadow-2xl overflow-hidden group flex flex-col">
@@ -196,13 +184,13 @@ export function GenerationPreviewPanel({
                     'absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl group/img cursor-pointer'
                   )}
                   onClick={() => {
-                    if (latest.status === 'completed') {
+                    if (canOpenFullscreen) {
                       setIsFullPreviewOpen(true);
                     }
                   }}
                 >
                   <motion.img
-                    src={buildImageURL(latest.imagePath!)}
+                    src={latestImageURL}
                     alt="Generated result"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -283,7 +271,15 @@ export function GenerationPreviewPanel({
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className="text-white/30 text-[9px]">Time</span>
                           <span className="font-mono text-primary">
-                            {duration}
+                            <ElapsedTime
+                              start={latest.createdAtISO}
+                              end={latest.completedAtISO}
+                              isLive={
+                                isGenerating ||
+                                (!latest.completedAtISO &&
+                                  latest.status === 'running')
+                              }
+                            />
                           </span>
                         </div>
                       </div>
@@ -339,7 +335,7 @@ export function GenerationPreviewPanel({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <img
-                      src={buildImageURL(latest.imagePath)}
+                      src={latestImageURL}
                       alt="Full screen preview"
                       className="max-w-[85vw] max-h-[85vh] object-contain shadow-[0_0_100px_rgba(0,0,0,0.8)] rounded-xl ring-1 ring-white/10 select-none"
                       draggable={false}
@@ -391,3 +387,31 @@ export function GenerationPreviewPanel({
     </Card>
   );
 }
+
+const ElapsedTime = React.memo(function ElapsedTime({
+  start,
+  end,
+  isLive
+}: {
+  start: string;
+  end?: string;
+  isLive: boolean;
+}) {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!isLive) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setTick((value) => value + 1);
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [isLive]);
+
+  return <>{formatDuration(start, end)}</>;
+});
+
+export const GenerationPreviewPanel = React.memo(GenerationPreviewPanelBase);

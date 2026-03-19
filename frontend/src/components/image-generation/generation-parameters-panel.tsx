@@ -81,7 +81,7 @@ interface RenderNumericParameterFieldsOptions {
   showDenoise?: boolean;
 }
 
-export function GenerationParametersPanel({
+function GenerationParametersPanelBase({
   mode,
   modelCatalog,
   modelCatalogLoading,
@@ -951,3 +951,5 @@ export function GenerationParametersPanel({
     </div>
   );
 }
+
+export const GenerationParametersPanel = React.memo(GenerationParametersPanelBase);
