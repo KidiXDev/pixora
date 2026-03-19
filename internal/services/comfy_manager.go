@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"pixora/internal/config"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -170,6 +171,11 @@ func (m *ComfyUIManager) Start() error {
 
 	if err := m.configMgr.SetComfyUIConfig(normalized); err != nil {
 		m.failStart(fmt.Errorf("persist runtime config: %w", err))
+		return err
+	}
+
+	if err := m.syncBundledCustomNodes(normalized.RootDir); err != nil {
+		m.failStart(fmt.Errorf("sync bundled custom nodes: %w", err))
 		return err
 	}
 
@@ -647,6 +653,192 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 	}, "\n") + "\n"
 
 	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func (m *ComfyUIManager) syncBundledCustomNodes(rootDir string) error {
+	sourceDir := filepath.Join(rootDir, "backend", "node", "pixorabridge")
+	destDir := filepath.Join(rootDir, "backend", "comfy", "ComfyUI", "custom_nodes", "pixorabridge")
+
+	if _, err := os.Stat(sourceDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			m.appendLog("warn", "system", fmt.Sprintf("bundled custom node source not found: %s", sourceDir))
+			return nil
+		}
+		return fmt.Errorf("stat source custom node directory: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
+		return fmt.Errorf("create custom_nodes directory: %w", err)
+	}
+
+	if runtime.GOOS == "windows" && isDevRuntime(rootDir) {
+		if err := ensureJunctionLink(sourceDir, destDir); err != nil {
+			return fmt.Errorf("create pixorabridge junction: %w", err)
+		}
+		m.appendLog("info", "system", fmt.Sprintf("synced bundled custom node using junction: %s -> %s", sourceDir, destDir))
+		return nil
+	}
+
+	if err := os.RemoveAll(destDir); err != nil {
+		return fmt.Errorf("remove existing custom node target: %w", err)
+	}
+
+	if err := copyDirectoryRecursive(sourceDir, destDir); err != nil {
+		return fmt.Errorf("copy pixorabridge custom node: %w", err)
+	}
+
+	m.appendLog("info", "system", fmt.Sprintf("synced bundled custom node: %s -> %s", sourceDir, destDir))
+	return nil
+}
+
+func isDevRuntime(rootDir string) bool {
+	if strings.TrimSpace(rootDir) == "" {
+		return false
+	}
+
+	if _, err := os.Stat(filepath.Join(rootDir, "go.mod")); err == nil {
+		return true
+	}
+
+	return false
+}
+
+func ensureJunctionLink(sourceDir string, targetDir string) error {
+	sourceAbs, err := filepath.Abs(sourceDir)
+	if err != nil {
+		return fmt.Errorf("resolve source path: %w", err)
+	}
+	targetAbs, err := filepath.Abs(targetDir)
+	if err != nil {
+		return fmt.Errorf("resolve target path: %w", err)
+	}
+
+	if info, statErr := os.Lstat(targetAbs); statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			resolved, resolveErr := filepath.EvalSymlinks(targetAbs)
+			if resolveErr == nil {
+				resolvedAbs, absErr := filepath.Abs(resolved)
+				if absErr == nil && samePath(resolvedAbs, sourceAbs) {
+					return nil
+				}
+			}
+
+			// A junction already exists at target; keep it and skip per dev-mode behavior.
+			return nil
+		}
+
+		if err := os.RemoveAll(targetAbs); err != nil {
+			return fmt.Errorf("remove existing non-junction target: %w", err)
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("stat target path: %w", statErr)
+	}
+
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", targetAbs, sourceAbs)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mklink /J failed: %w, output: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+
+func samePath(left string, right string) bool {
+	leftClean := filepath.Clean(strings.TrimSpace(left))
+	rightClean := filepath.Clean(strings.TrimSpace(right))
+
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(leftClean, rightClean)
+	}
+
+	return leftClean == rightClean
+}
+
+func copyDirectoryRecursive(sourceDir string, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("create target directory %s: %w", targetDir, err)
+	}
+
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		return fmt.Errorf("read source directory %s: %w", sourceDir, err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if shouldSkipCustomNodeEntry(name, entry.IsDir()) {
+			continue
+		}
+
+		sourcePath := filepath.Join(sourceDir, name)
+		targetPath := filepath.Join(targetDir, name)
+
+		if entry.IsDir() {
+			if err := copyDirectoryRecursive(sourcePath, targetPath); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := copyFile(sourcePath, targetPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func shouldSkipCustomNodeEntry(name string, isDir bool) bool {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if normalized == "" {
+		return true
+	}
+
+	if isDir {
+		switch normalized {
+		case ".git", ".github", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", "__pycache__", ".idea", ".vscode":
+			return true
+		}
+	}
+
+	if strings.HasSuffix(normalized, ".pyc") || strings.HasSuffix(normalized, ".pyo") {
+		return true
+	}
+
+	return false
+}
+
+func copyFile(sourcePath string, targetPath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open source file %s: %w", sourcePath, err)
+	}
+	defer source.Close()
+
+	info, err := source.Stat()
+	if err != nil {
+		return fmt.Errorf("stat source file %s: %w", sourcePath, err)
+	}
+
+	target, err := os.Create(targetPath)
+	if err != nil {
+		return fmt.Errorf("create target file %s: %w", targetPath, err)
+	}
+
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		return fmt.Errorf("copy file %s to %s: %w", sourcePath, targetPath, err)
+	}
+
+	if err := target.Close(); err != nil {
+		return fmt.Errorf("close target file %s: %w", targetPath, err)
+	}
+
+	if err := os.Chmod(targetPath, info.Mode()); err != nil {
+		return fmt.Errorf("set mode for target file %s: %w", targetPath, err)
+	}
+
+	return nil
 }
 
 func ensureFlag(args []string, flag string) []string {
