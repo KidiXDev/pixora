@@ -1,9 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GeneratedPreviewItem } from '@/types/image-generation';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -13,6 +8,11 @@ interface GenerationPreviewPanelProps {
 
 function resolutionLabel(width: number, height: number): string {
   return `${width}x${height}`;
+}
+
+function buildImageURL(imagePath: string): string {
+  const encoded = encodeURIComponent(imagePath);
+  return `/image/?path=${encoded}`;
 }
 
 export function GenerationPreviewPanel({
@@ -31,19 +31,30 @@ export function GenerationPreviewPanel({
         </div>
       </CardHeader>
       <CardContent className="p-6 relative flex-1 flex flex-col min-h-0">
-        <section className="flex-1 w-full rounded-2xl border border-border/50 overflow-hidden bg-background/20 relative group/preview shadow-inner min-h-[400px]">
+        <section className="flex-1 w-full rounded-2xl border border-border/50 overflow-hidden bg-background/20 relative group/preview shadow-inner min-h-100">
           {/* Result Gradient Placeholder / Image Display Area */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(14,165,233,0.4),transparent_40%),radial-gradient(circle_at_85%_20%,rgba(234,179,8,0.35),transparent_45%),radial-gradient(circle_at_45%_80%,rgba(16,185,129,0.3),transparent_50%),linear-gradient(160deg,rgba(2,6,23,1),rgba(30,41,59,0.95))] flex flex-col">
-            
+            {latest?.imagePath ? (
+              <img
+                src={buildImageURL(latest.imagePath)}
+                alt="Generated result"
+                className="absolute inset-0 h-full w-full object-contain bg-black/35"
+              />
+            ) : null}
+
             <div className="flex-1 flex items-center justify-center p-8">
-              {!latest && (
-                <div className="text-center space-y-4 opacity-30 transform transition-all duration-500 group-hover/preview:scale-105">
+              {!latest?.imagePath && (
+                <div className="text-center space-y-4 opacity-30 transform transition-all duration-500">
                   <div className="size-20 mx-auto rounded-3xl bg-linear-to-br from-white/10 to-transparent flex items-center justify-center ring-1 ring-white/20">
                     <ImageIcon className="size-10 text-white" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-base font-bold text-white tracking-wide">Empty Canvas</p>
-                    <p className="text-xs text-white/60">Generate an image to view result</p>
+                    <p className="text-base font-bold text-white tracking-wide">
+                      {latest?.isGenerating ? 'Generating...' : 'Empty Canvas'}
+                    </p>
+                    <p className="text-xs text-white/60">
+                      {latest?.message || 'Generate an image to view result'}
+                    </p>
                   </div>
                 </div>
               )}
@@ -53,40 +64,35 @@ export function GenerationPreviewPanel({
             <div className="bg-linear-to-t from-black/95 via-black/60 to-transparent p-8 relative z-10 transition-all duration-500 transform">
               {latest ? (
                 <div className="space-y-6">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-primary/80">
-                      Latest Generation
-                    </p>
-                    <p className="text-base md:text-lg font-medium text-white leading-relaxed line-clamp-3 selection:bg-primary/30">
-                      {latest.prompt}
-                    </p>
-                  </div>
-                  
                   <div className="flex flex-wrap items-center gap-4 pt-2">
-                    <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                      <div className="size-1.5 rounded-full bg-primary" />
-                      <span className="text-white/90 text-[11px] font-bold">
-                        {latest.backend}
-                      </span>
-                    </div>
-
-                    <div className="h-4 w-px bg-white/10" />
-
                     <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-[11px] text-white/50 font-medium">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">Res</span>
-                        <span className="font-mono">{resolutionLabel(latest.resolution.width, latest.resolution.height)}</span>
+                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">
+                          Res
+                        </span>
+                        <span className="font-mono">
+                          {resolutionLabel(
+                            latest.resolution.width,
+                            latest.resolution.height
+                          )}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">Steps</span>
+                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">
+                          Steps
+                        </span>
                         <span className="font-mono">{latest.steps}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">CFG</span>
+                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">
+                          CFG
+                        </span>
                         <span className="font-mono">{latest.cfgScale}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">Seed</span>
+                        <span className="text-white/30 uppercase text-[9px] font-bold tracking-tighter">
+                          Seed
+                        </span>
                         <span className="font-mono">{latest.seed}</span>
                       </div>
                     </div>

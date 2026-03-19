@@ -120,6 +120,7 @@ export class ComfyUIStatus {
     "port": number;
     "startedAt": string;
     "lastError": string;
+    "managedExternally": boolean;
 
     /** Creates a new ComfyUIStatus instance. */
     constructor($$source: Partial<ComfyUIStatus> = {}) {
@@ -143,6 +144,9 @@ export class ComfyUIStatus {
         }
         if (!("lastError" in $$source)) {
             this["lastError"] = "";
+        }
+        if (!("managedExternally" in $$source)) {
+            this["managedExternally"] = false;
         }
 
         Object.assign(this, $$source);
@@ -336,6 +340,173 @@ export class GenerationModelCatalog {
     }
 }
 
+export class GenerationQueueJob {
+    "jobId": string;
+    "mode": string;
+    "prompt": string;
+    "state": string;
+    "queuedAt": string;
+    "startedAt": string;
+    "finishedAt": string;
+    "error": string;
+    "promptId": string;
+
+    /** Creates a new GenerationQueueJob instance. */
+    constructor($$source: Partial<GenerationQueueJob> = {}) {
+        if (!("jobId" in $$source)) {
+            this["jobId"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("prompt" in $$source)) {
+            this["prompt"] = "";
+        }
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("queuedAt" in $$source)) {
+            this["queuedAt"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            this["startedAt"] = "";
+        }
+        if (!("finishedAt" in $$source)) {
+            this["finishedAt"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("promptId" in $$source)) {
+            this["promptId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationQueueJob instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationQueueJob {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationQueueJob($$parsedSource as Partial<GenerationQueueJob>);
+    }
+}
+
+export class GenerationRequest {
+    "requestId": string;
+    "mode": string;
+    "prompt": string;
+    "negativePrompt": string;
+    "seed": string;
+    "steps": number;
+    "cfgScale": number;
+    "width": number;
+    "height": number;
+    "model": string;
+    "vae": string;
+    "sampler": string;
+    "scheduler": string;
+
+    /** Creates a new GenerationRequest instance. */
+    constructor($$source: Partial<GenerationRequest> = {}) {
+        if (!("requestId" in $$source)) {
+            this["requestId"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("prompt" in $$source)) {
+            this["prompt"] = "";
+        }
+        if (!("negativePrompt" in $$source)) {
+            this["negativePrompt"] = "";
+        }
+        if (!("seed" in $$source)) {
+            this["seed"] = "";
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("cfgScale" in $$source)) {
+            this["cfgScale"] = 0;
+        }
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("vae" in $$source)) {
+            this["vae"] = "";
+        }
+        if (!("sampler" in $$source)) {
+            this["sampler"] = "";
+        }
+        if (!("scheduler" in $$source)) {
+            this["scheduler"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
+    }
+}
+
+export class GenerationResult {
+    "promptId": string;
+    "mode": string;
+    "imagePath": string;
+    "outputDir": string;
+    "seed": string;
+    "startedAt": string;
+    "completedAt": string;
+
+    /** Creates a new GenerationResult instance. */
+    constructor($$source: Partial<GenerationResult> = {}) {
+        if (!("promptId" in $$source)) {
+            this["promptId"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("imagePath" in $$source)) {
+            this["imagePath"] = "";
+        }
+        if (!("outputDir" in $$source)) {
+            this["outputDir"] = "";
+        }
+        if (!("seed" in $$source)) {
+            this["seed"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            this["startedAt"] = "";
+        }
+        if (!("completedAt" in $$source)) {
+            this["completedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationResult($$parsedSource as Partial<GenerationResult>);
+    }
+}
+
 export class PaginatedImages {
     "images": db$0.ImageRecord[];
     "totalCount": number;
@@ -468,6 +639,35 @@ export class ParserPluginLogEntry {
     static createFrom($$source: any = {}): ParserPluginLogEntry {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ParserPluginLogEntry($$parsedSource as Partial<ParserPluginLogEntry>);
+    }
+}
+
+export class QueueGenerationResponse {
+    "jobId": string;
+    "position": number;
+    "state": string;
+
+    /** Creates a new QueueGenerationResponse instance. */
+    constructor($$source: Partial<QueueGenerationResponse> = {}) {
+        if (!("jobId" in $$source)) {
+            this["jobId"] = "";
+        }
+        if (!("position" in $$source)) {
+            this["position"] = 0;
+        }
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new QueueGenerationResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): QueueGenerationResponse {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new QueueGenerationResponse($$parsedSource as Partial<QueueGenerationResponse>);
     }
 }
 

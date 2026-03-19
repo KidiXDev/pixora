@@ -30,7 +30,7 @@ import {
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { useForm, type FormValidateOrFn } from '@tanstack/react-form';
-import { WandSparkles } from 'lucide-react';
+import { Square, WandSparkles } from 'lucide-react';
 import * as React from 'react';
 import { z } from 'zod';
 
@@ -67,9 +67,11 @@ interface GenerationParametersPanelProps {
   modelCatalogLoading: boolean;
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
+  isGenerating: boolean;
   onTxt2ImgChange: (patch: Partial<Txt2ImgParameters>) => void;
   onImg2ImgChange: (patch: Partial<Img2ImgParameters>) => void;
   onGenerate: () => void;
+  onInterrupt: () => void;
 }
 
 interface RenderNumericParameterFieldsOptions {
@@ -83,9 +85,11 @@ export function GenerationParametersPanel({
   modelCatalogLoading,
   txt2img,
   img2img,
+  isGenerating,
   onTxt2ImgChange,
   onImg2ImgChange,
-  onGenerate
+  onGenerate,
+  onInterrupt
 }: GenerationParametersPanelProps) {
   const samplerOptions = React.useMemo(
     () => modelCatalog.samplers,
@@ -652,6 +656,10 @@ export function GenerationParametersPanel({
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (isGenerating) {
+              onInterrupt();
+              return;
+            }
             onGenerate();
           }}
         >
@@ -861,8 +869,17 @@ export function GenerationParametersPanel({
               type="submit"
               className="w-full gap-2 h-11 text-sm font-semibold shadow-lg shadow-primary/25 bg-linear-to-r from-primary to-primary/90 hover:opacity-90 transition-all duration-300 rounded-xl"
             >
-              <WandSparkles className="size-4" />
-              Generate
+              {isGenerating ? (
+                <>
+                  <Square className="size-4" />
+                  Interrupt
+                </>
+              ) : (
+                <>
+                  <WandSparkles className="size-4" />
+                  Generate
+                </>
+              )}
             </Button>
           </div>
         </form>

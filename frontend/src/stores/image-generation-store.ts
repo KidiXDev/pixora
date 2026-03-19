@@ -4,6 +4,8 @@ import {
   ComfyUIStatus,
   GeneratedPreviewItem,
   GenerationModelCatalog,
+  GenerationResultEvent,
+  GenerationStatusEvent,
   ImageGenerationBackend,
   ImageGenerationMode,
   Img2ImgParameters,
@@ -26,8 +28,10 @@ import {
   Stop
 } from '../../bindings/pixora/internal/services/comfyuimanager';
 import {
+  CancelGenerationJob,
   GetGenerationPanelConfig,
   GetModelCatalog,
+  QueueText2Image,
   SetGenerationPanelConfig
 } from '../../bindings/pixora/internal/services/generationservice';
 
@@ -50,6 +54,10 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   isModelCatalogLoading: boolean;
   isComfyLogsLoading: boolean;
   isComfyConfigSaving: boolean;
+  isGenerating: boolean;
+  generationProgress: number;
+  generationMessage: string;
+  activeGenerationJobId: string;
 
   initializeComfyLifecycle: () => Promise<void>;
   loadModelCatalog: () => Promise<void>;
@@ -64,7 +72,8 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   updateComfyUIConfig: (patch: Partial<ComfyUIConfig>) => void;
   updateTxt2Img: (patch: Partial<Txt2ImgParameters>) => void;
   updateImg2Img: (patch: Partial<Img2ImgParameters>) => void;
-  generatePreviewPlaceholder: () => void;
+  generateText2Image: () => Promise<void>;
+  interruptGeneration: () => Promise<void>;
   clearHistory: () => void;
 }
 
@@ -454,6 +463,10 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     isModelCatalogLoading: false,
     isComfyLogsLoading: false,
     isComfyConfigSaving: false,
+    isGenerating: false,
+    generationProgress: 0,
+    generationMessage: '',
+    activeGenerationJobId: '',
 
     loadModelCatalog: async () => {
       set({ isModelCatalogLoading: true, modelCatalogError: '' });
@@ -536,7 +549,109 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           }
         );
 
-        comfyEventUnsubscribers = [unsubscribeStatus, unsubscribeLog];
+        const unsubscribeGenerationStatus = Events.On(
+          'generation:status',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<GenerationStatusEvent>(event.data);
+            if (!payload) {
+              return;
+            }
+
+            set((state) => ({
+              isGenerating:
+                payload.state === 'queued' || payload.state === 'running',
+              generationProgress: payload.progress,
+              generationMessage: payload.message || '',
+              activeGenerationJobId:
+                payload.state === 'queued' || payload.state === 'running'
+                  ? payload.promptId || state.activeGenerationJobId
+                  : state.activeGenerationJobId === payload.promptId
+                    ? ''
+                    : state.activeGenerationJobId,
+              history: state.history.map((item) => {
+                if (item.promptId !== payload.promptId) {
+                  return item;
+                }
+
+                return {
+                  ...item,
+                  status: payload.state,
+                  isGenerating:
+                    payload.state === 'queued' || payload.state === 'running',
+                  imagePath: payload.previewPath || item.imagePath,
+                  message:
+                    payload.error?.trim() !== ''
+                      ? payload.error
+                      : payload.message || item.message
+                };
+              })
+            }));
+          }
+        );
+
+        const unsubscribeGenerationPreview = Events.On(
+          'generation:preview',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<{
+              promptId: string;
+              imagePath: string;
+            }>(event.data);
+            if (!payload || !payload.promptId || !payload.imagePath) {
+              return;
+            }
+
+            set((state) => ({
+              history: state.history.map((item) =>
+                item.promptId === payload.promptId
+                  ? {
+                      ...item,
+                      imagePath: payload.imagePath
+                    }
+                  : item
+              )
+            }));
+          }
+        );
+
+        const unsubscribeGenerationResult = Events.On(
+          'generation:result',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<GenerationResultEvent>(event.data);
+            if (!payload || !payload.promptId) {
+              return;
+            }
+
+            set((state) => ({
+              isGenerating: false,
+              generationProgress: 1,
+              generationMessage: 'Generation completed',
+              activeGenerationJobId:
+                state.activeGenerationJobId === payload.promptId
+                  ? ''
+                  : state.activeGenerationJobId,
+              history: state.history.map((item) =>
+                item.promptId === payload.promptId
+                  ? {
+                      ...item,
+                      imagePath: payload.imagePath || item.imagePath,
+                      outputDir: payload.outputDir,
+                      seed: payload.seed || item.seed,
+                      status: 'completed',
+                      isGenerating: false
+                    }
+                  : item
+              )
+            }));
+          }
+        );
+
+        comfyEventUnsubscribers = [
+          unsubscribeStatus,
+          unsubscribeLog,
+          unsubscribeGenerationStatus,
+          unsubscribeGenerationPreview,
+          unsubscribeGenerationResult
+        ];
         comfyEventsBound = true;
       }
 
@@ -737,13 +852,129 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       queuePersistGenerationPanelState(toPersistedState(get()));
     },
 
-    generatePreviewPlaceholder: () => {
-      const persisted = toPersistedState(get());
+    generateText2Image: async () => {
+      const state = get();
+      if (state.mode !== 'txt2img') {
+        set({ comfyError: 'Only txt2img generation is supported for now.' });
+        return;
+      }
+
+      if (!state.comfyStatus.running) {
+        set({ comfyError: 'ComfyUI is not running. Start backend first.' });
+        return;
+      }
+
+      const persisted = toPersistedState(state);
       const item = buildPreviewItem(persisted);
-      set((state) => ({
-        history: [item, ...state.history].slice(0, 24)
+      const pendingPromptID = `pending-${Date.now().toString(36)}`;
+      const pendingItem: GeneratedPreviewItem = {
+        ...item,
+        promptId: pendingPromptID,
+        status: 'queued',
+        isGenerating: true,
+        message: 'Queueing generation...'
+      };
+
+      set((current) => ({
+        isGenerating: true,
+        generationProgress: 0,
+        generationMessage: 'Queueing generation...',
+        activeGenerationJobId: pendingPromptID,
+        history: [pendingItem, ...current.history].slice(0, 24)
       }));
       queuePersistGenerationPanelState(toPersistedState(get()));
+
+      try {
+        const queued = await QueueText2Image({
+          requestId: pendingPromptID,
+          mode: state.mode,
+          prompt: state.txt2img.prompt,
+          negativePrompt: state.txt2img.negativePrompt,
+          seed: state.txt2img.seed,
+          steps: state.txt2img.steps,
+          cfgScale: state.txt2img.cfgScale,
+          width: state.txt2img.resolution.width,
+          height: state.txt2img.resolution.height,
+          model: state.txt2img.model,
+          vae: state.txt2img.vae,
+          sampler: state.txt2img.sampler,
+          scheduler: state.txt2img.scheduler
+        });
+
+        const resolvedPromptID = queued?.jobId || pendingPromptID;
+
+        set((current) => ({
+          isGenerating: true,
+          generationProgress: 0,
+          generationMessage: 'Queued generation...',
+          activeGenerationJobId: resolvedPromptID,
+          history: current.history.map((historyItem) => {
+            if (historyItem.promptId !== pendingPromptID) {
+              return historyItem;
+            }
+
+            return {
+              ...historyItem,
+              promptId: resolvedPromptID,
+              status: 'queued',
+              isGenerating: true,
+              message: 'Queued generation...'
+            };
+          })
+        }));
+        queuePersistGenerationPanelState(toPersistedState(get()));
+      } catch (error) {
+        const message = toErrorMessage(error);
+        set((current) => ({
+          isGenerating: false,
+          generationProgress: 0,
+          generationMessage: '',
+          activeGenerationJobId: '',
+          comfyError: message,
+          history: current.history.map((historyItem) => {
+            if (historyItem.promptId !== pendingPromptID) {
+              return historyItem;
+            }
+
+            return {
+              ...historyItem,
+              status: 'error',
+              isGenerating: false,
+              message
+            };
+          })
+        }));
+      }
+    },
+
+    interruptGeneration: async () => {
+      const state = get();
+      const jobID = state.activeGenerationJobId.trim();
+      if (jobID === '') {
+        return;
+      }
+
+      try {
+        await CancelGenerationJob(jobID);
+        set((current) => ({
+          isGenerating: false,
+          generationProgress: 0,
+          generationMessage: 'Generation interrupted',
+          activeGenerationJobId: '',
+          history: current.history.map((item) =>
+            item.promptId === jobID
+              ? {
+                  ...item,
+                  status: 'canceled',
+                  isGenerating: false,
+                  message: 'Generation interrupted'
+                }
+              : item
+          )
+        }));
+      } catch (error) {
+        set({ comfyError: toErrorMessage(error) });
+      }
     },
 
     clearHistory: () => {

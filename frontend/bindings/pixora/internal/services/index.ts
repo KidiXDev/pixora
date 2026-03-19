@@ -18,7 +18,11 @@ export {
     FolderBrowseResponse,
     FolderEntry,
     GenerationModelCatalog,
+    GenerationQueueJob,
+    GenerationRequest,
+    GenerationResult,
     PaginatedImages,
     ParserPluginInfo,
-    ParserPluginLogEntry
+    ParserPluginLogEntry,
+    QueueGenerationResponse
 } from "./models.js";

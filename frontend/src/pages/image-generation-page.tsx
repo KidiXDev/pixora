@@ -20,6 +20,7 @@ export default function ImageGenerationPage() {
     isComfyActionPending,
     isComfyLogsLoading,
     isComfyConfigSaving,
+    isGenerating,
     txt2img,
     img2img,
     history,
@@ -34,7 +35,8 @@ export default function ImageGenerationPage() {
     updateComfyUIConfig,
     updateTxt2Img,
     updateImg2Img,
-    generatePreviewPlaceholder
+    generateText2Image,
+    interruptGeneration
   } = useImageGenerationStore();
 
   useEffect(() => {
@@ -66,9 +68,15 @@ export default function ImageGenerationPage() {
               modelCatalogLoading={isModelCatalogLoading}
               txt2img={txt2img}
               img2img={img2img}
+              isGenerating={isGenerating}
               onTxt2ImgChange={updateTxt2Img}
               onImg2ImgChange={updateImg2Img}
-              onGenerate={generatePreviewPlaceholder}
+              onGenerate={() => {
+                void generateText2Image();
+              }}
+              onInterrupt={() => {
+                void interruptGeneration();
+              }}
             />
           </aside>
 

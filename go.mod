@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.74
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.35.0

@@ -92,6 +92,12 @@ export interface GeneratedPreviewItem {
   backend: ImageGenerationBackend;
   mode: ImageGenerationMode;
   prompt: string;
+  imagePath?: string;
+  outputDir?: string;
+  promptId?: string;
+  isGenerating?: boolean;
+  status?: 'queued' | 'running' | 'completed' | 'canceled' | 'error';
+  message?: string;
   createdAtISO: string;
   resolution: GenerationResolution;
   steps: number;
@@ -102,4 +108,24 @@ export interface GeneratedPreviewItem {
 export interface ComfyUISamplerResponse {
   samplers: string[];
   schedulers: string[];
+}
+
+export interface GenerationStatusEvent {
+  promptId: string;
+  state: 'queued' | 'running' | 'completed' | 'canceled' | 'error';
+  progress: number;
+  message: string;
+  previewPath: string;
+  error: string;
+  startedAt: string;
+}
+
+export interface GenerationResultEvent {
+  promptId: string;
+  mode: string;
+  imagePath: string;
+  outputDir: string;
+  seed: string;
+  startedAt: string;
+  completedAt: string;
 }

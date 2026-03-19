@@ -1,9 +1,16 @@
 package services
 
 import (
+	"bytes"
+	"context"
 	"encoding/csv"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"pixora/internal/config"
@@ -12,6 +19,21 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+const (
+	generationEventStatus  = "generation:status"
+	generationEventResult  = "generation:result"
+	generationEventPreview = "generation:preview"
+
+	generationQueueStateQueued    = "queued"
+	generationQueueStateRunning   = "running"
+	generationQueueStateCompleted = "completed"
+	generationQueueStateCanceled  = "canceled"
+	generationQueueStateError     = "error"
 )
 
 var checkpointLikeExtensions = map[string]struct{}{
@@ -58,13 +80,115 @@ type GenerationService struct {
 	config *config.Manager
 	mu     sync.Mutex
 	cache  map[string]completionDataset
+
+	queueMu       sync.Mutex
+	queue         []*GenerationQueueJob
+	jobs          map[string]*GenerationQueueJob
+	queueWakeupCh chan struct{}
+}
+
+type GenerationQueueJob struct {
+	JobID      string `json:"jobId"`
+	Mode       string `json:"mode"`
+	Prompt     string `json:"prompt"`
+	State      string `json:"state"`
+	QueuedAt   string `json:"queuedAt"`
+	StartedAt  string `json:"startedAt"`
+	FinishedAt string `json:"finishedAt"`
+	Error      string `json:"error"`
+	PromptID   string `json:"promptId"`
+
+	req      GenerationRequest
+	cancel   context.CancelFunc
+	canceled bool
+}
+
+type QueueGenerationResponse struct {
+	JobID    string `json:"jobId"`
+	Position int    `json:"position"`
+	State    string `json:"state"`
+}
+
+type GenerationRequest struct {
+	RequestID      string  `json:"requestId"`
+	Mode           string  `json:"mode"`
+	Prompt         string  `json:"prompt"`
+	NegativePrompt string  `json:"negativePrompt"`
+	Seed           string  `json:"seed"`
+	Steps          int     `json:"steps"`
+	CFGScale       float64 `json:"cfgScale"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	Model          string  `json:"model"`
+	VAE            string  `json:"vae"`
+	Sampler        string  `json:"sampler"`
+	Scheduler      string  `json:"scheduler"`
+}
+
+type GenerationStatus struct {
+	PromptID    string  `json:"promptId"`
+	State       string  `json:"state"`
+	Progress    float64 `json:"progress"`
+	Message     string  `json:"message"`
+	PreviewPath string  `json:"previewPath"`
+	Error       string  `json:"error"`
+	StartedAt   string  `json:"startedAt"`
+}
+
+type GenerationResult struct {
+	PromptID    string `json:"promptId"`
+	Mode        string `json:"mode"`
+	ImagePath   string `json:"imagePath"`
+	OutputDir   string `json:"outputDir"`
+	Seed        string `json:"seed"`
+	StartedAt   string `json:"startedAt"`
+	CompletedAt string `json:"completedAt"`
+}
+
+type comfyWorkflowNode struct {
+	Inputs    map[string]any `json:"inputs"`
+	ClassType string         `json:"class_type"`
+	Meta      map[string]any `json:"_meta,omitempty"`
+}
+
+type comfyPromptRequest struct {
+	Prompt   map[string]comfyWorkflowNode `json:"prompt"`
+	ClientID string                       `json:"client_id,omitempty"`
+}
+
+type comfyPromptResponse struct {
+	PromptID string `json:"prompt_id"`
+}
+
+type comfyHistoryNodeOutput struct {
+	Images []struct {
+		Filename  string `json:"filename"`
+		Subfolder string `json:"subfolder"`
+		Type      string `json:"type"`
+	} `json:"images"`
+}
+
+type comfyHistoryEntry struct {
+	Outputs map[string]comfyHistoryNodeOutput `json:"outputs"`
+}
+
+type comfyWSMessage struct {
+	Type string         `json:"type"`
+	Data map[string]any `json:"data"`
 }
 
 func NewGenerationService(cfg *config.Manager) *GenerationService {
-	return &GenerationService{
-		config: cfg,
-		cache:  make(map[string]completionDataset),
+	service := &GenerationService{
+		config:        cfg,
+		cache:         make(map[string]completionDataset),
+		queue:         make([]*GenerationQueueJob, 0),
+		jobs:          make(map[string]*GenerationQueueJob),
+		queueWakeupCh: make(chan struct{}, 1),
 	}
+
+	go service.processQueue()
+
+	return service
 }
 
 func (s *GenerationService) GetGenerationPanelConfig() (config.GenerationPanelConfig, error) {
@@ -81,6 +205,327 @@ func (s *GenerationService) SetGenerationPanelConfig(cfg config.GenerationPanelC
 	}
 
 	return s.config.SetGenerationPanelConfig(cfg)
+}
+
+func (s *GenerationService) QueueText2Image(req GenerationRequest) (*QueueGenerationResponse, error) {
+	if s.config == nil {
+		return nil, fmt.Errorf("missing config manager")
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "txt2img"
+	}
+	if mode != "txt2img" {
+		return nil, fmt.Errorf("only txt2img queue is supported for now")
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+
+	jobID := strings.TrimSpace(req.RequestID)
+	if jobID == "" {
+		jobID = fmt.Sprintf("job-%d", time.Now().UnixNano())
+	}
+
+	job := &GenerationQueueJob{
+		JobID:    jobID,
+		Mode:     mode,
+		Prompt:   prompt,
+		State:    generationQueueStateQueued,
+		QueuedAt: time.Now().Format(time.RFC3339),
+		req:      req,
+	}
+
+	s.queueMu.Lock()
+	if _, exists := s.jobs[job.JobID]; exists {
+		s.queueMu.Unlock()
+		return nil, fmt.Errorf("generation request id already exists")
+	}
+	s.jobs[job.JobID] = job
+	s.queue = append(s.queue, job)
+	position := len(s.queue)
+	s.queueMu.Unlock()
+
+	s.emitGenerationStatus(GenerationStatus{
+		PromptID:  job.JobID,
+		State:     generationQueueStateQueued,
+		Progress:  0,
+		Message:   "queued generation job",
+		StartedAt: job.QueuedAt,
+	})
+
+	s.notifyQueueWorker()
+
+	return &QueueGenerationResponse{
+		JobID:    job.JobID,
+		Position: position,
+		State:    job.State,
+	}, nil
+}
+
+func (s *GenerationService) ListGenerationQueue() []GenerationQueueJob {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+
+	items := make([]GenerationQueueJob, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		items = append(items, GenerationQueueJob{
+			JobID:      job.JobID,
+			Mode:       job.Mode,
+			Prompt:     job.Prompt,
+			State:      job.State,
+			QueuedAt:   job.QueuedAt,
+			StartedAt:  job.StartedAt,
+			FinishedAt: job.FinishedAt,
+			Error:      job.Error,
+			PromptID:   job.PromptID,
+		})
+	}
+
+	sort.Slice(items, func(i int, j int) bool {
+		return items[i].QueuedAt > items[j].QueuedAt
+	})
+
+	return items
+}
+
+func (s *GenerationService) CancelGenerationJob(jobID string) error {
+	trimmed := strings.TrimSpace(jobID)
+	if trimmed == "" {
+		return fmt.Errorf("job id is required")
+	}
+
+	s.queueMu.Lock()
+	job, exists := s.jobs[trimmed]
+	if !exists {
+		s.queueMu.Unlock()
+		return fmt.Errorf("generation job not found")
+	}
+
+	job.canceled = true
+	if job.cancel != nil {
+		job.cancel()
+	}
+
+	if job.State == generationQueueStateQueued || job.State == generationQueueStateRunning {
+		job.State = generationQueueStateCanceled
+		job.Error = "canceled"
+		job.FinishedAt = time.Now().Format(time.RFC3339)
+	}
+	s.queueMu.Unlock()
+
+	s.emitGenerationStatus(GenerationStatus{
+		PromptID:  trimmed,
+		State:     generationQueueStateCanceled,
+		Progress:  0,
+		Message:   "generation canceled",
+		Error:     "canceled",
+		StartedAt: job.StartedAt,
+	})
+
+	return nil
+}
+
+func (s *GenerationService) notifyQueueWorker() {
+	select {
+	case s.queueWakeupCh <- struct{}{}:
+	default:
+	}
+}
+
+func (s *GenerationService) processQueue() {
+	for {
+		job := s.dequeueNextRunnableJob()
+		if job == nil {
+			<-s.queueWakeupCh
+			continue
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		s.queueMu.Lock()
+		if job.canceled {
+			job.State = generationQueueStateCanceled
+			job.Error = "canceled"
+			job.FinishedAt = time.Now().Format(time.RFC3339)
+			s.queueMu.Unlock()
+			continue
+		}
+		job.cancel = cancel
+		job.State = generationQueueStateRunning
+		job.StartedAt = time.Now().Format(time.RFC3339)
+		s.queueMu.Unlock()
+
+		result, err := s.generateText2ImageInternal(ctx, job.req, job.JobID)
+		cancel()
+
+		s.queueMu.Lock()
+		job.cancel = nil
+		job.FinishedAt = time.Now().Format(time.RFC3339)
+		if job.canceled {
+			job.State = generationQueueStateCanceled
+			job.Error = "canceled"
+		} else if err != nil {
+			job.State = generationQueueStateError
+			job.Error = err.Error()
+		} else {
+			job.State = generationQueueStateCompleted
+			job.PromptID = result.PromptID
+		}
+		s.queueMu.Unlock()
+	}
+}
+
+func (s *GenerationService) dequeueNextRunnableJob() *GenerationQueueJob {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+
+	for len(s.queue) > 0 {
+		job := s.queue[0]
+		s.queue = s.queue[1:]
+		if job == nil {
+			continue
+		}
+		if job.State != generationQueueStateQueued {
+			continue
+		}
+		return job
+	}
+
+	return nil
+}
+
+func (s *GenerationService) GenerateText2Image(req GenerationRequest) (*GenerationResult, error) {
+	return s.generateText2ImageInternal(context.Background(), req, "")
+}
+
+func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string) (*GenerationResult, error) {
+	if s.config == nil {
+		return nil, fmt.Errorf("missing config manager")
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "txt2img"
+	}
+	if mode != "txt2img" {
+		return nil, fmt.Errorf("only txt2img generation is supported for now")
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+
+	cfg := s.config.GetComfyUIConfig()
+	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve runtime root: %w", err)
+	}
+
+	workflowPath := filepath.Join(runtimeRoot, "backend", "workflow", "PixoraTxt2Img.json")
+	workflow, err := loadWorkflowTemplate(workflowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	outputDir, err := resolveGenerationOutputDir(cfg, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedSeed := resolveGenerationSeed(req.Seed)
+	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeed, outputDir); err != nil {
+		return nil, err
+	}
+
+	baseURL := buildComfyBaseURL(cfg)
+	clientID := fmt.Sprintf("pixora-%d", time.Now().UnixNano())
+	promptID, err := postComfyPrompt(baseURL, workflow, clientID)
+	if err != nil {
+		return nil, err
+	}
+
+	emitPromptID := strings.TrimSpace(req.RequestID)
+	if emitPromptID == "" {
+		emitPromptID = promptID
+	}
+	if strings.TrimSpace(overridePromptID) != "" {
+		emitPromptID = strings.TrimSpace(overridePromptID)
+	}
+
+	startTime := time.Now()
+	startedAt := startTime.Format(time.RFC3339)
+	s.emitGenerationStatus(GenerationStatus{
+		PromptID:  emitPromptID,
+		State:     "queued",
+		Progress:  0,
+		Message:   "queued txt2img workflow",
+		StartedAt: startedAt,
+	})
+
+	knownFiles := snapshotImageFiles(outputDir)
+	resultPath, err := monitorGeneration(ctx, baseURL, promptID, clientID, outputDir, knownFiles, func(previewPath string) {
+		s.emitGenerationStatus(GenerationStatus{
+			PromptID:    emitPromptID,
+			State:       "running",
+			Progress:    0.5,
+			Message:     "generation running",
+			PreviewPath: previewPath,
+			StartedAt:   startedAt,
+		})
+		s.emitGenerationPreview(emitPromptID, previewPath)
+	}, func(progress float64, message string) {
+		s.emitGenerationStatus(GenerationStatus{
+			PromptID:  emitPromptID,
+			State:     "running",
+			Progress:  progress,
+			Message:   message,
+			StartedAt: startedAt,
+		})
+	})
+	if err != nil {
+		state := generationQueueStateError
+		errText := err.Error()
+		if errors.Is(err, context.Canceled) {
+			state = generationQueueStateCanceled
+			errText = "canceled"
+		}
+
+		s.emitGenerationStatus(GenerationStatus{
+			PromptID:  emitPromptID,
+			State:     state,
+			Progress:  0,
+			Message:   "generation failed",
+			Error:     errText,
+			StartedAt: startedAt,
+		})
+		return nil, err
+	}
+
+	result := &GenerationResult{
+		PromptID:    emitPromptID,
+		Mode:        mode,
+		ImagePath:   resultPath,
+		OutputDir:   outputDir,
+		Seed:        resolvedSeed,
+		StartedAt:   startedAt,
+		CompletedAt: time.Now().Format(time.RFC3339),
+	}
+
+	s.emitGenerationStatus(GenerationStatus{
+		PromptID:    emitPromptID,
+		State:       "completed",
+		Progress:    1,
+		Message:     "generation completed",
+		PreviewPath: resultPath,
+		StartedAt:   startedAt,
+	})
+	s.emitGenerationResult(*result)
+
+	return result, nil
 }
 
 type AutocompleteQuery struct {
@@ -710,4 +1155,716 @@ func formatInsertTag(tag string, cfg config.AutocompleteConfig) string {
 	}
 
 	return formatted
+}
+
+func loadWorkflowTemplate(path string) (map[string]comfyWorkflowNode, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read workflow template %s: %w", path, err)
+	}
+
+	var graph map[string]comfyWorkflowNode
+	if err := json.Unmarshal(data, &graph); err != nil {
+		return nil, fmt.Errorf("parse workflow template %s: %w", path, err)
+	}
+
+	if len(graph) == 0 {
+		return nil, fmt.Errorf("workflow template is empty")
+	}
+
+	return graph, nil
+}
+
+func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationRequest, seed string, outputDir string) error {
+	positiveNodeID, err := findNodeByTitle(graph, "Positive", "CLIPTextEncode")
+	if err != nil {
+		return err
+	}
+	positiveNode := graph[positiveNodeID]
+	positiveNode.Inputs["text"] = strings.TrimSpace(req.Prompt)
+	graph[positiveNodeID] = positiveNode
+
+	negativeNodeID, err := findNodeByTitle(graph, "Negative", "CLIPTextEncode")
+	if err != nil {
+		return err
+	}
+	negativeNode := graph[negativeNodeID]
+	negativeNode.Inputs["text"] = strings.TrimSpace(req.NegativePrompt)
+	graph[negativeNodeID] = negativeNode
+
+	ksamplerNodeID, err := findNodeByTitle(graph, "KSampler", "KSampler")
+	if err != nil {
+		return err
+	}
+	ksamplerNode := graph[ksamplerNodeID]
+	seedValue, parseErr := strconv.ParseInt(seed, 10, 64)
+	if parseErr != nil {
+		seedValue = time.Now().UnixNano()
+	}
+	ksamplerNode.Inputs["seed"] = seedValue
+	ksamplerNode.Inputs["steps"] = clampInt(req.Steps, 1, 200)
+	ksamplerNode.Inputs["cfg"] = clampFloat(req.CFGScale, 1, 30)
+	if strings.TrimSpace(req.Sampler) != "" {
+		ksamplerNode.Inputs["sampler_name"] = strings.TrimSpace(req.Sampler)
+	}
+	if strings.TrimSpace(req.Scheduler) != "" {
+		ksamplerNode.Inputs["scheduler"] = strings.TrimSpace(req.Scheduler)
+	}
+	graph[ksamplerNodeID] = ksamplerNode
+
+	emptyLatentNodeID, err := findNodeByTitle(graph, "Empty Latent Image", "EmptyLatentImage")
+	if err != nil {
+		return err
+	}
+	emptyLatentNode := graph[emptyLatentNodeID]
+	emptyLatentNode.Inputs["width"] = clampInt(req.Width, 64, 4096)
+	emptyLatentNode.Inputs["height"] = clampInt(req.Height, 64, 4096)
+	emptyLatentNode.Inputs["batch_size"] = 1
+	graph[emptyLatentNodeID] = emptyLatentNode
+
+	checkpointNodeID, err := findNodeByTitle(graph, "Load Checkpoint", "CheckpointLoaderSimple")
+	if err != nil {
+		return err
+	}
+	checkpointNode := graph[checkpointNodeID]
+	if strings.TrimSpace(req.Model) != "" {
+		checkpointNode.Inputs["ckpt_name"] = strings.TrimSpace(req.Model)
+	}
+	graph[checkpointNodeID] = checkpointNode
+
+	if strings.TrimSpace(req.VAE) != "" && !strings.EqualFold(strings.TrimSpace(req.VAE), "auto") {
+		vaeNodeID, err := findNodeByTitle(graph, "Load VAE", "VAELoader")
+		if err == nil {
+			vaeNode := graph[vaeNodeID]
+			vaeNode.Inputs["vae_name"] = strings.TrimSpace(req.VAE)
+			graph[vaeNodeID] = vaeNode
+		}
+	}
+
+	saveNodeID, err := findNodeByTitle(graph, "Pixora Save Image", "PixoraSaveImage")
+	if err != nil {
+		return err
+	}
+	saveNode := graph[saveNodeID]
+	saveNode.Inputs["sub_directory"] = outputDir
+	saveNode.Inputs["filename_prefix"] = "Pixora"
+	graph[saveNodeID] = saveNode
+
+	return nil
+}
+
+func findNodeByTitle(graph map[string]comfyWorkflowNode, title string, classType string) (string, error) {
+	for id := range graph {
+		node := graph[id]
+		if classType != "" && !strings.EqualFold(strings.TrimSpace(node.ClassType), strings.TrimSpace(classType)) {
+			continue
+		}
+
+		nodeTitle := ""
+		if node.Meta != nil {
+			if rawTitle, ok := node.Meta["title"]; ok {
+				if asString, ok := rawTitle.(string); ok {
+					nodeTitle = asString
+				}
+			}
+		}
+
+		if strings.EqualFold(strings.TrimSpace(nodeTitle), strings.TrimSpace(title)) {
+			return id, nil
+		}
+	}
+
+	return "", fmt.Errorf("workflow node not found: title=%s class=%s", title, classType)
+}
+
+func buildComfyBaseURL(cfg config.ComfyUIBackendConfig) string {
+	host := strings.TrimSpace(cfg.Host)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := cfg.Port
+	if port <= 0 || port > 65535 {
+		port = 7180
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
+}
+
+func postComfyPrompt(baseURL string, graph map[string]comfyWorkflowNode, clientID string) (string, error) {
+	payload, err := json.Marshal(comfyPromptRequest{Prompt: graph, ClientID: clientID})
+	if err != nil {
+		return "", fmt.Errorf("serialize comfy prompt: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/prompt", baseURL), bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("create comfy prompt request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request comfy prompt: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return "", fmt.Errorf("comfy prompt failed: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	var parsed comfyPromptResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", fmt.Errorf("decode comfy prompt response: %w", err)
+	}
+
+	if strings.TrimSpace(parsed.PromptID) == "" {
+		return "", fmt.Errorf("comfy prompt response missing prompt_id")
+	}
+
+	return strings.TrimSpace(parsed.PromptID), nil
+}
+
+func monitorGeneration(
+	ctx context.Context,
+	baseURL string,
+	promptID string,
+	clientID string,
+	outputDir string,
+	knownFiles map[string]time.Time,
+	onPreview func(string),
+	onProgress func(float64, string),
+) (string, error) {
+	deadline := time.Now().Add(6 * time.Minute)
+	ticker := time.NewTicker(700 * time.Millisecond)
+	defer ticker.Stop()
+
+	wsDone := make(chan struct{})
+	defer close(wsDone)
+	go streamComfyPreview(ctx, baseURL, clientID, promptID, outputDir, onPreview, onProgress, wsDone)
+
+	lastPreview := ""
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("generation timed out")
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-ticker.C:
+			previewPath := findNewestImage(outputDir, knownFiles)
+			if previewPath != "" && previewPath != lastPreview {
+				lastPreview = previewPath
+				onPreview(previewPath)
+			}
+
+			historyEntry, done, err := getHistoryEntry(baseURL, promptID)
+			if err != nil {
+				continue
+			}
+			if !done {
+				continue
+			}
+
+			resultPath := extractImagePathFromHistory(historyEntry, outputDir)
+			if resultPath == "" {
+				resultPath = findNewestImage(outputDir, map[string]time.Time{})
+			}
+
+			if resultPath == "" {
+				return "", fmt.Errorf("generation completed but no output image found")
+			}
+
+			return resultPath, nil
+		}
+	}
+}
+
+func getHistoryEntry(baseURL string, promptID string) (comfyHistoryEntry, bool, error) {
+	url := fmt.Sprintf("%s/history/%s", baseURL, promptID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return comfyHistoryEntry{}, false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return comfyHistoryEntry{}, false, fmt.Errorf("history status=%d", resp.StatusCode)
+	}
+
+	var payload map[string]comfyHistoryEntry
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return comfyHistoryEntry{}, false, err
+	}
+
+	entry, ok := payload[promptID]
+	if !ok {
+		return comfyHistoryEntry{}, false, nil
+	}
+
+	return entry, true, nil
+}
+
+func extractImagePathFromHistory(entry comfyHistoryEntry, outputDir string) string {
+	for _, output := range entry.Outputs {
+		for _, image := range output.Images {
+			fileName := strings.TrimSpace(image.Filename)
+			if fileName == "" {
+				continue
+			}
+
+			sub := strings.TrimSpace(image.Subfolder)
+			if sub != "" {
+				return filepath.Join(outputDir, sub, fileName)
+			}
+
+			return filepath.Join(outputDir, fileName)
+		}
+	}
+
+	return ""
+}
+
+func resolveGenerationOutputDir(cfg config.ComfyUIBackendConfig, mode string) (string, error) {
+	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve runtime root: %w", err)
+	}
+
+	baseOutput := strings.TrimSpace(cfg.OutputDir)
+	if baseOutput == "" {
+		baseOutput = filepath.Join("data", "output")
+	}
+
+	if !filepath.IsAbs(baseOutput) {
+		baseOutput = filepath.Join(runtimeRoot, baseOutput)
+	}
+
+	subDir := "text2img"
+	if strings.EqualFold(mode, "img2img") {
+		subDir = "img2img"
+	}
+
+	resolved := filepath.Join(baseOutput, subDir)
+	if err := os.MkdirAll(resolved, 0755); err != nil {
+		return "", fmt.Errorf("create output directory: %w", err)
+	}
+
+	return resolved, nil
+}
+
+func resolveGenerationSeed(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
+	if _, err := strconv.ParseInt(trimmed, 10, 64); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
+	return trimmed
+}
+
+func snapshotImageFiles(root string) map[string]time.Time {
+	snapshot := make(map[string]time.Time)
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !isImageFile(path) {
+			return nil
+		}
+		info, statErr := d.Info()
+		if statErr != nil {
+			return nil
+		}
+		snapshot[path] = info.ModTime()
+		return nil
+	})
+	return snapshot
+}
+
+func findNewestImage(root string, known map[string]time.Time) string {
+	newestPath := ""
+	newestTime := time.Time{}
+
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !isImageFile(path) {
+			return nil
+		}
+
+		info, statErr := d.Info()
+		if statErr != nil {
+			return nil
+		}
+
+		if oldTime, exists := known[path]; exists && !info.ModTime().After(oldTime) {
+			return nil
+		}
+
+		if newestTime.IsZero() || info.ModTime().After(newestTime) {
+			newestTime = info.ModTime()
+			newestPath = path
+		}
+		return nil
+	})
+
+	return newestPath
+}
+
+func isImageFile(path string) bool {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(path)))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".webp", ".bmp":
+		return true
+	default:
+		return false
+	}
+}
+
+func streamComfyPreview(
+	ctx context.Context,
+	baseURL string,
+	clientID string,
+	promptID string,
+	outputDir string,
+	onPreview func(string),
+	onProgress func(float64, string),
+	stop <-chan struct{},
+) {
+	wsURL, err := buildComfyWebSocketURL(baseURL, clientID)
+	if err != nil {
+		debugGenerationWS("build ws url failed: prompt=%s err=%v", promptID, err)
+		return
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		debugGenerationWS("ws dial failed: prompt=%s url=%s err=%v", promptID, wsURL, err)
+		return
+	}
+	defer conn.Close()
+	debugGenerationWS("ws connected: prompt=%s url=%s", promptID, wsURL)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+			_ = conn.Close()
+		case <-stop:
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+			_ = conn.Close()
+		}
+	}()
+
+	activePrompt := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+
+		messageType, payload, readErr := conn.ReadMessage()
+		if readErr != nil {
+			debugGenerationWS("ws read ended: prompt=%s err=%v", promptID, readErr)
+			return
+		}
+
+		switch messageType {
+		case websocket.TextMessage:
+			var msg comfyWSMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
+				debugGenerationWS("ws text unmarshal failed: prompt=%s bytes=%d err=%v", promptID, len(payload), err)
+				continue
+			}
+			debugGenerationWS("ws text: prompt=%s type=%s", promptID, msg.Type)
+
+			switch msg.Type {
+			case "execution_start":
+				if getMapString(msg.Data, "prompt_id") == promptID {
+					activePrompt = true
+					onProgress(0.5, "execution started")
+				}
+			case "executing":
+				if getMapString(msg.Data, "prompt_id") == promptID {
+					activePrompt = true
+					onProgress(0.55, "executing workflow")
+					if isExecutionFinished(msg.Data) {
+						activePrompt = false
+					}
+				} else {
+					activePrompt = false
+				}
+			case "execution_error":
+				if getMapString(msg.Data, "prompt_id") == promptID {
+					activePrompt = false
+				}
+			case "executed":
+				if getMapString(msg.Data, "prompt_id") != promptID {
+					continue
+				}
+
+				imagePath := extractImagePathFromWSData(msg.Data, outputDir)
+				if imagePath != "" {
+					onPreview(imagePath)
+					onProgress(0.98, "saving output")
+				}
+			case "progress":
+				if getMapString(msg.Data, "prompt_id") != promptID {
+					continue
+				}
+
+				value := getMapFloat(msg.Data, "value")
+				max := getMapFloat(msg.Data, "max")
+				if max <= 0 {
+					continue
+				}
+
+				progress := 0.55 + ((value / max) * 0.4)
+				onProgress(clampFloat(progress, 0.55, 0.95), fmt.Sprintf("step %.0f/%.0f", value, max))
+			}
+		case websocket.BinaryMessage:
+			if !activePrompt {
+				debugGenerationWS("ws binary ignored (inactive prompt): prompt=%s bytes=%d", promptID, len(payload))
+				continue
+			}
+
+			imageBytes, ext, ok := extractPreviewImagePayload(payload)
+			if !ok {
+				debugGenerationWS("ws binary not preview image: prompt=%s bytes=%d", promptID, len(payload))
+				continue
+			}
+
+			previewDir := filepath.Join(outputDir, ".preview")
+			if err := os.MkdirAll(previewDir, 0755); err != nil {
+				debugGenerationWS("preview mkdir failed: prompt=%s dir=%s err=%v", promptID, previewDir, err)
+				continue
+			}
+
+			previewPath := filepath.Join(previewDir, fmt.Sprintf("%s-%d%s", promptID, time.Now().UnixNano(), ext))
+			if err := os.WriteFile(previewPath, imageBytes, 0644); err != nil {
+				debugGenerationWS("preview write failed: prompt=%s path=%s err=%v", promptID, previewPath, err)
+				continue
+			}
+			debugGenerationWS("preview saved: prompt=%s path=%s", promptID, previewPath)
+
+			onPreview(previewPath)
+		}
+	}
+}
+
+func debugGenerationWS(format string, args ...any) {
+	if !isGenerationWSDebugEnabled() {
+		return
+	}
+	log.Printf("[pixora][generation][ws] "+format, args...)
+}
+
+func isGenerationWSDebugEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("PIXORA_DEBUG_GENERATION_WS")))
+	switch value {
+	case "1", "true", "yes", "on", "debug":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildComfyWebSocketURL(baseURL string, clientID string) (string, error) {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+
+	scheme := "ws"
+	if strings.EqualFold(parsed.Scheme, "https") {
+		scheme = "wss"
+	}
+
+	query := url.Values{}
+	query.Set("clientId", clientID)
+
+	parsed.Scheme = scheme
+	parsed.Path = "/ws"
+	parsed.RawQuery = query.Encode()
+
+	return parsed.String(), nil
+}
+
+func extractPreviewImagePayload(payload []byte) ([]byte, string, bool) {
+	if len(payload) < 4 {
+		return nil, "", false
+	}
+
+	if ext, ok := detectImageExtension(payload); ok {
+		return payload, ext, true
+	}
+
+	if len(payload) > 8 {
+		trimmed := payload[8:]
+		if ext, ok := detectImageExtension(trimmed); ok {
+			return trimmed, ext, true
+		}
+	}
+
+	return nil, "", false
+}
+
+func detectImageExtension(payload []byte) (string, bool) {
+	if len(payload) >= 8 && bytes.Equal(payload[:8], []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+		return ".png", true
+	}
+
+	if len(payload) >= 2 && payload[0] == 0xFF && payload[1] == 0xD8 {
+		return ".jpg", true
+	}
+
+	if len(payload) >= 12 && string(payload[:4]) == "RIFF" && string(payload[8:12]) == "WEBP" {
+		return ".webp", true
+	}
+
+	return "", false
+}
+
+func getMapString(input map[string]any, key string) string {
+	raw, ok := input[key]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func getMapFloat(input map[string]any, key string) float64 {
+	raw, ok := input[key]
+	if !ok {
+		return 0
+	}
+
+	switch value := raw.(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case json.Number:
+		parsed, _ := value.Float64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func isExecutionFinished(input map[string]any) bool {
+	raw, ok := input["node"]
+	if !ok || raw == nil {
+		return true
+	}
+
+	if text, ok := raw.(string); ok {
+		return strings.TrimSpace(text) == ""
+	}
+
+	return false
+}
+
+func extractImagePathFromWSData(data map[string]any, outputDir string) string {
+	output, ok := data["output"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	images, ok := output["images"].([]any)
+	if !ok {
+		return ""
+	}
+
+	for _, raw := range images {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if providedPath := strings.TrimSpace(getMapString(item, "path")); providedPath != "" {
+			if filepath.IsAbs(providedPath) {
+				return providedPath
+			}
+			return filepath.Join(outputDir, providedPath)
+		}
+
+		fileName := strings.TrimSpace(getMapString(item, "filename"))
+		if fileName == "" {
+			continue
+		}
+
+		subfolder := strings.TrimSpace(getMapString(item, "subfolder"))
+		if subfolder == "" {
+			return filepath.Join(outputDir, fileName)
+		}
+
+		return filepath.Join(outputDir, subfolder, fileName)
+	}
+
+	return ""
+}
+
+func clampInt(value int, min int, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func clampFloat(value float64, min float64, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func (s *GenerationService) emitGenerationStatus(status GenerationStatus) {
+	app := application.Get()
+	if app == nil || app.Event == nil {
+		return
+	}
+	app.Event.Emit(generationEventStatus, status)
+}
+
+func (s *GenerationService) emitGenerationResult(result GenerationResult) {
+	app := application.Get()
+	if app == nil || app.Event == nil {
+		return
+	}
+	app.Event.Emit(generationEventResult, result)
+}
+
+func (s *GenerationService) emitGenerationPreview(promptID string, imagePath string) {
+	app := application.Get()
+	if app == nil || app.Event == nil {
+		return
+	}
+	app.Event.Emit(generationEventPreview, map[string]string{
+		"promptId":  promptID,
+		"imagePath": imagePath,
+	})
 }

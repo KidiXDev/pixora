@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,13 +47,14 @@ var comfyModelSubdirs = []string{
 }
 
 type ComfyUIStatus struct {
-	State     string `json:"state"`
-	Running   bool   `json:"running"`
-	PID       int    `json:"pid"`
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	StartedAt string `json:"startedAt"`
-	LastError string `json:"lastError"`
+	State             string `json:"state"`
+	Running           bool   `json:"running"`
+	PID               int    `json:"pid"`
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	StartedAt         string `json:"startedAt"`
+	LastError         string `json:"lastError"`
+	ManagedExternally bool   `json:"managedExternally"`
 }
 
 type ComfyUILogEntry struct {
@@ -72,6 +74,8 @@ type ComfyUIManager struct {
 	cancel    context.CancelFunc
 	startedAt time.Time
 	lastError string
+
+	managedExternally bool
 }
 
 func NewComfyUIManager(cfgMgr *config.Manager) (*ComfyUIManager, error) {
@@ -89,6 +93,13 @@ func NewComfyUIManager(cfgMgr *config.Manager) (*ComfyUIManager, error) {
 
 	if err := cfgMgr.SetComfyUIConfig(normalized); err != nil {
 		return nil, fmt.Errorf("persist comfy runtime config: %w", err)
+	}
+
+	if manager.isComfyReachable(normalized.Host, normalized.Port, 1500*time.Millisecond) {
+		manager.state = comfyStateRunning
+		manager.managedExternally = true
+		manager.startedAt = time.Now()
+		manager.appendLog("info", "system", "detected external ComfyUI instance and attached without launching a new process")
 	}
 
 	return manager, nil
@@ -128,13 +139,14 @@ func (m *ComfyUIManager) GetStatus() ComfyUIStatus {
 	}
 
 	return ComfyUIStatus{
-		State:     m.state,
-		Running:   m.state == comfyStateRunning,
-		PID:       pid,
-		Host:      cfg.Host,
-		Port:      cfg.Port,
-		StartedAt: startedAt,
-		LastError: m.lastError,
+		State:             m.state,
+		Running:           m.state == comfyStateRunning,
+		PID:               pid,
+		Host:              cfg.Host,
+		Port:              cfg.Port,
+		StartedAt:         startedAt,
+		LastError:         m.lastError,
+		ManagedExternally: m.managedExternally,
 	}
 }
 
@@ -159,6 +171,18 @@ func (m *ComfyUIManager) Start() error {
 	if err := m.configMgr.SetComfyUIConfig(normalized); err != nil {
 		m.failStart(fmt.Errorf("persist runtime config: %w", err))
 		return err
+	}
+
+	if m.isComfyReachable(normalized.Host, normalized.Port, 1500*time.Millisecond) {
+		m.mu.Lock()
+		m.state = comfyStateRunning
+		m.managedExternally = true
+		m.startedAt = time.Now()
+		m.lastError = ""
+		m.mu.Unlock()
+		m.appendLog("info", "system", "connected to existing ComfyUI instance; launch skipped")
+		m.emitStatus()
+		return nil
 	}
 
 	args := m.buildLaunchArgs(normalized)
@@ -197,6 +221,7 @@ func (m *ComfyUIManager) Start() error {
 	m.state = comfyStateRunning
 	m.startedAt = time.Now()
 	m.lastError = ""
+	m.managedExternally = false
 	m.mu.Unlock()
 
 	m.appendLog("info", "system", fmt.Sprintf("started ComfyUI pid=%d", cmd.Process.Pid))
@@ -217,6 +242,16 @@ func (m *ComfyUIManager) Stop() error {
 	}
 	if m.state == comfyStateStopping {
 		m.mu.Unlock()
+		return nil
+	}
+
+	if m.managedExternally {
+		m.state = comfyStateStopped
+		m.startedAt = time.Time{}
+		m.lastError = ""
+		m.mu.Unlock()
+		m.appendLog("info", "system", "detached from external ComfyUI instance (process not managed by Pixora)")
+		m.emitStatus()
 		return nil
 	}
 
@@ -326,10 +361,13 @@ func (m *ComfyUIManager) waitForExit(cmd *exec.Cmd) {
 	m.startedAt = time.Time{}
 
 	if err != nil && !errors.Is(err, context.Canceled) {
+		detailed := explainComfyExitError(err)
 		m.state = comfyStateError
-		m.lastError = err.Error()
+		m.lastError = detailed
+		m.managedExternally = false
 	} else {
 		m.state = comfyStateStopped
+		m.managedExternally = false
 		if wasStopping {
 			m.lastError = ""
 		}
@@ -337,8 +375,9 @@ func (m *ComfyUIManager) waitForExit(cmd *exec.Cmd) {
 	m.mu.Unlock()
 
 	if err != nil && !errors.Is(err, context.Canceled) {
+		detailed := explainComfyExitError(err)
 		log.Printf("[pixora][comfyui] process exit error: %v", err)
-		m.appendLog("error", "system", fmt.Sprintf("ComfyUI exited with error: %v", err))
+		m.appendLog("error", "system", detailed)
 	} else {
 		log.Printf("[pixora][comfyui] process stopped")
 		m.appendLog("info", "system", "ComfyUI stopped")
@@ -401,6 +440,45 @@ func (m *ComfyUIManager) emitLog(entry ComfyUILogEntry) {
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit(comfyEventLog, entry)
 	}
+}
+
+func (m *ComfyUIManager) isComfyReachable(host string, port int, timeout time.Duration) bool {
+	if strings.TrimSpace(host) == "" || port <= 0 {
+		return false
+	}
+
+	url := fmt.Sprintf("http://%s:%d/system_stats", host, port)
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 500
+}
+
+func explainComfyExitError(err error) string {
+	base := fmt.Sprintf("ComfyUI exited with error: %v", err)
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return base
+	}
+
+	if strings.Contains(msg, "access violation") || strings.Contains(msg, "0xc0000005") {
+		return base + " (native crash/access violation detected; this is typically GPU driver/CUDA/runtime instability rather than a Pixora workflow error)"
+	}
+
+	if strings.Contains(msg, "out of memory") || strings.Contains(msg, "cuda out of memory") {
+		return base + " (GPU memory exhausted; lower resolution/batch size or use lower VRAM settings)"
+	}
+
+	if strings.Contains(msg, "status 3221225786") {
+		return base + " (Windows native crash detected; often caused by GPU driver/runtime mismatch)"
+	}
+
+	return base
 }
 
 func (m *ComfyUIManager) buildLaunchArgs(cfg config.ComfyUIBackendConfig) []string {

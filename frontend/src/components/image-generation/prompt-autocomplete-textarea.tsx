@@ -81,7 +81,6 @@ export function PromptAutocompleteTextarea({
 
   const [isFocused, setIsFocused] = React.useState(false);
   const [cursorIndex, setCursorIndex] = React.useState(0);
-  const [isLoading, setIsLoading] = React.useState(false);
   const [position, setPosition] = React.useState<CaretPosition>({
     left: 8,
     top: 8
@@ -130,13 +129,11 @@ export function PromptAutocompleteTextarea({
   React.useEffect(() => {
     if (!isFocused) {
       setSuggestions([]);
-      setIsLoading(false);
       return;
     }
 
     if (tokenRange.value.trim() === '') {
       setSuggestions([]);
-      setIsLoading(false);
       return;
     }
 
@@ -147,7 +144,6 @@ export function PromptAutocompleteTextarea({
     debounceRef.current = window.setTimeout(() => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      setIsLoading(true);
 
       void GetAutocompleteSuggestions({
         input: tokenRange.value,
@@ -168,11 +164,6 @@ export function PromptAutocompleteTextarea({
             return;
           }
           setSuggestions([]);
-        })
-        .finally(() => {
-          if (requestId === requestIdRef.current) {
-            setIsLoading(false);
-          }
         });
     }, 90);
 

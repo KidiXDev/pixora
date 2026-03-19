@@ -13,27 +13,49 @@ import * as config$0 from "../config/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function CancelGenerationJob(jobID: string): $CancellablePromise<void> {
+    return $Call.ByID(1583287133, jobID);
+}
+
+export function GenerateText2Image(req: $models.GenerationRequest): $CancellablePromise<$models.GenerationResult | null> {
+    return $Call.ByID(3669136485, req).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetAutocompleteSources(): $CancellablePromise<string[]> {
     return $Call.ByID(2803367964).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
 export function GetAutocompleteSuggestions(query: $models.AutocompleteQuery): $CancellablePromise<$models.AutocompleteSuggestion[]> {
     return $Call.ByID(1012996511, query).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
 export function GetGenerationPanelConfig(): $CancellablePromise<config$0.GenerationPanelConfig> {
     return $Call.ByID(2932798932).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function GetModelCatalog(): $CancellablePromise<$models.GenerationModelCatalog | null> {
     return $Call.ByID(483824322).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
+    });
+}
+
+export function ListGenerationQueue(): $CancellablePromise<$models.GenerationQueueJob[]> {
+    return $Call.ByID(757957571).then(($result: any) => {
+        return $$createType9($result);
+    });
+}
+
+export function QueueText2Image(req: $models.GenerationRequest): $CancellablePromise<$models.QueueGenerationResponse | null> {
+    return $Call.ByID(3423844541, req).then(($result: any) => {
+        return $$createType11($result);
     });
 }
 
@@ -42,9 +64,15 @@ export function SetGenerationPanelConfig(cfg: config$0.GenerationPanelConfig): $
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = $models.AutocompleteSuggestion.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = config$0.GenerationPanelConfig.createFrom;
-const $$createType4 = $models.GenerationModelCatalog.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
+const $$createType0 = $models.GenerationResult.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = $models.AutocompleteSuggestion.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = config$0.GenerationPanelConfig.createFrom;
+const $$createType6 = $models.GenerationModelCatalog.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $models.GenerationQueueJob.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $models.QueueGenerationResponse.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);

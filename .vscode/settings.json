@@ -1,0 +1,7 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "wails3": true,
+    "gofmt": true,
+    "go": true
+  }
+}
