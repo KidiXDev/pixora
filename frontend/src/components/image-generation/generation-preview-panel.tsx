@@ -26,13 +26,17 @@ function resolutionLabel(width: number, height: number): string {
   return `${width}x${height}`;
 }
 
-function buildImageURL(imagePath: string): string {
+function buildImageURL(imagePath: string, cacheKey?: string): string {
   if (imagePath.startsWith('data:image/')) {
     return imagePath;
   }
 
   const encoded = encodeURIComponent(imagePath);
-  return `/image/?path=${encoded}`;
+  if (!cacheKey || cacheKey.trim() === '') {
+    return `/image/?path=${encoded}`;
+  }
+
+  return `/image/?path=${encoded}&v=${encodeURIComponent(cacheKey)}`;
 }
 
 function formatDuration(start: string, end?: string): string {
@@ -69,8 +73,29 @@ function GenerationPreviewPanelBase({
     setScale((s) => Math.min(Math.max(s + delta, 0.5), 20));
   };
   const latestImageURL = useMemo(
-    () => (latest?.imagePath ? buildImageURL(latest.imagePath) : ''),
-    [latest?.imagePath]
+    () => {
+      if (!latest?.imagePath) {
+        return '';
+      }
+
+      const cacheKey = [
+        latest.status || '',
+        latest.message || '',
+        latest.completedAtISO || '',
+        latest.createdAtISO || '',
+        latest.promptId || ''
+      ].join('|');
+
+      return buildImageURL(latest.imagePath, cacheKey);
+    },
+    [
+      latest?.imagePath,
+      latest?.status,
+      latest?.message,
+      latest?.completedAtISO,
+      latest?.createdAtISO,
+      latest?.promptId
+    ]
   );
   const canOpenFullscreen = latest?.status === 'completed';
 

@@ -60,6 +60,49 @@ export interface ComfyUIStatus {
   managedExternally?: boolean;
 }
 
+export type ComfyUISetupState =
+  | 'checking'
+  | 'missing'
+  | 'ready'
+  | 'installing'
+  | 'error';
+
+export type ComfyUISetupStepState =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'error';
+
+export interface ComfyUISetupStep {
+  id: string;
+  label: string;
+  status: ComfyUISetupStepState;
+  message: string;
+}
+
+export interface ComfyUISetupStatus {
+  state: ComfyUISetupState;
+  workspaceRoot: string;
+  installDir: string;
+  statusMessage: string;
+  currentStepId: string;
+  currentStepMessage: string;
+  eventSeq: number;
+  downloadProgress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  downloadSpeed: number;
+  lastError: string;
+  errorKind: string;
+  permissionProblem: boolean;
+  permissionMessage: string;
+  isInstalled: boolean;
+  isReady: boolean;
+  requiresOnboarding: boolean;
+  nvidiaOnly: boolean;
+  steps: ComfyUISetupStep[];
+}
+
 export interface ComfyUILogEntry {
   timestamp: string;
   level: string;

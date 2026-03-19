@@ -112,6 +112,140 @@ export class ComfyUILogEntry {
     }
 }
 
+export class ComfyUISetupStatus {
+    "state": string;
+    "workspaceRoot": string;
+    "installDir": string;
+    "statusMessage": string;
+    "currentStepId": string;
+    "currentStepMessage": string;
+    "eventSeq": number;
+    "downloadProgress": number;
+    "downloadedBytes": number;
+    "totalBytes": number;
+    "downloadSpeed": number;
+    "lastError": string;
+    "errorKind": string;
+    "permissionProblem": boolean;
+    "permissionMessage": string;
+    "isInstalled": boolean;
+    "isReady": boolean;
+    "requiresOnboarding": boolean;
+    "nvidiaOnly": boolean;
+    "steps": ComfyUISetupStep[];
+
+    /** Creates a new ComfyUISetupStatus instance. */
+    constructor($$source: Partial<ComfyUISetupStatus> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("workspaceRoot" in $$source)) {
+            this["workspaceRoot"] = "";
+        }
+        if (!("installDir" in $$source)) {
+            this["installDir"] = "";
+        }
+        if (!("statusMessage" in $$source)) {
+            this["statusMessage"] = "";
+        }
+        if (!("currentStepId" in $$source)) {
+            this["currentStepId"] = "";
+        }
+        if (!("currentStepMessage" in $$source)) {
+            this["currentStepMessage"] = "";
+        }
+        if (!("eventSeq" in $$source)) {
+            this["eventSeq"] = 0;
+        }
+        if (!("downloadProgress" in $$source)) {
+            this["downloadProgress"] = 0;
+        }
+        if (!("downloadedBytes" in $$source)) {
+            this["downloadedBytes"] = 0;
+        }
+        if (!("totalBytes" in $$source)) {
+            this["totalBytes"] = 0;
+        }
+        if (!("downloadSpeed" in $$source)) {
+            this["downloadSpeed"] = 0;
+        }
+        if (!("lastError" in $$source)) {
+            this["lastError"] = "";
+        }
+        if (!("errorKind" in $$source)) {
+            this["errorKind"] = "";
+        }
+        if (!("permissionProblem" in $$source)) {
+            this["permissionProblem"] = false;
+        }
+        if (!("permissionMessage" in $$source)) {
+            this["permissionMessage"] = "";
+        }
+        if (!("isInstalled" in $$source)) {
+            this["isInstalled"] = false;
+        }
+        if (!("isReady" in $$source)) {
+            this["isReady"] = false;
+        }
+        if (!("requiresOnboarding" in $$source)) {
+            this["requiresOnboarding"] = false;
+        }
+        if (!("nvidiaOnly" in $$source)) {
+            this["nvidiaOnly"] = false;
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ComfyUISetupStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ComfyUISetupStatus {
+        const $$createField19_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("steps" in $$parsedSource) {
+            $$parsedSource["steps"] = $$createField19_0($$parsedSource["steps"]);
+        }
+        return new ComfyUISetupStatus($$parsedSource as Partial<ComfyUISetupStatus>);
+    }
+}
+
+export class ComfyUISetupStep {
+    "id": string;
+    "label": string;
+    "status": string;
+    "message": string;
+
+    /** Creates a new ComfyUISetupStep instance. */
+    constructor($$source: Partial<ComfyUISetupStep> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ComfyUISetupStep instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ComfyUISetupStep {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ComfyUISetupStep($$parsedSource as Partial<ComfyUISetupStep>);
+    }
+}
+
 export class ComfyUIStatus {
     "state": string;
     "running": boolean;
@@ -209,8 +343,8 @@ export class FolderBrowseResponse {
      * Creates a new FolderBrowseResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): FolderBrowseResponse {
-        const $$createField3_0 = $$createType1;
-        const $$createField4_0 = $$createType3;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("folders" in $$parsedSource) {
             $$parsedSource["folders"] = $$createField3_0($$parsedSource["folders"]);
@@ -299,16 +433,16 @@ export class GenerationModelCatalog {
      * Creates a new GenerationModelCatalog instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationModelCatalog {
-        const $$createField0_0 = $$createType4;
-        const $$createField1_0 = $$createType4;
-        const $$createField2_0 = $$createType4;
-        const $$createField3_0 = $$createType4;
-        const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType4;
-        const $$createField6_0 = $$createType4;
-        const $$createField7_0 = $$createType4;
-        const $$createField8_0 = $$createType4;
-        const $$createField9_0 = $$createType4;
+        const $$createField0_0 = $$createType6;
+        const $$createField1_0 = $$createType6;
+        const $$createField2_0 = $$createType6;
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType6;
+        const $$createField5_0 = $$createType6;
+        const $$createField6_0 = $$createType6;
+        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType6;
+        const $$createField9_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("samplers" in $$parsedSource) {
             $$parsedSource["samplers"] = $$createField0_0($$parsedSource["samplers"]);
@@ -539,7 +673,7 @@ export class PaginatedImages {
      * Creates a new PaginatedImages instance from a string or object.
      */
     static createFrom($$source: any = {}): PaginatedImages {
-        const $$createField0_0 = $$createType3;
+        const $$createField0_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("images" in $$parsedSource) {
             $$parsedSource["images"] = $$createField0_0($$parsedSource["images"]);
@@ -676,8 +810,10 @@ export class QueueGenerationResponse {
 }
 
 // Private type creation functions
-const $$createType0 = FolderEntry.createFrom;
+const $$createType0 = ComfyUISetupStep.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = db$0.ImageRecord.createFrom;
+const $$createType2 = FolderEntry.createFrom;
 const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $Create.Array($Create.Any);
+const $$createType4 = db$0.ImageRecord.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);

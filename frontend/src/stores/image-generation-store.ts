@@ -1,6 +1,8 @@
 import {
   ComfyUIConfig,
   ComfyUILogEntry,
+  ComfyUISetupStatus,
+  ComfyUISetupStep,
   ComfyUIStatus,
   GeneratedPreviewItem,
   GenerationModelCatalog,
@@ -20,7 +22,9 @@ import {
 import {
   ClearLogs,
   GetComfyUIConfig,
+  GetSetupStatus,
   GetStatus,
+  InstallComfyUI,
   ListLogs,
   Restart,
   SetComfyUIConfig,
@@ -46,11 +50,14 @@ interface PersistedImageGenerationState {
 
 interface ImageGenerationState extends PersistedImageGenerationState {
   comfyStatus: ComfyUIStatus;
+  comfySetup: ComfyUISetupStatus;
   modelCatalog: GenerationModelCatalog;
   comfyLogs: ComfyUILogEntry[];
   comfyError: string;
   modelCatalogError: string;
   isComfyActionPending: boolean;
+  isComfySetupLoading: boolean;
+  isComfySetupInstalling: boolean;
   isModelCatalogLoading: boolean;
   isComfyLogsLoading: boolean;
   isComfyConfigSaving: boolean;
@@ -60,6 +67,8 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   activeGenerationJobId: string;
 
   initializeComfyLifecycle: () => Promise<void>;
+  refreshComfySetup: () => Promise<void>;
+  installComfyUI: () => Promise<void>;
   loadModelCatalog: () => Promise<void>;
   saveComfyUIConfig: () => Promise<void>;
   startComfyUI: () => Promise<void>;
@@ -158,6 +167,61 @@ function sanitizePersistedState(
       ? candidate.mode
       : defaultState.mode;
 
+  const nextTxt2Img: Txt2ImgParameters = {
+    ...defaultState.txt2img,
+    ...(candidate.txt2img ?? {}),
+    resolution: {
+      ...defaultState.txt2img.resolution,
+      ...(candidate.txt2img?.resolution ?? {})
+    },
+    vae: candidate.txt2img?.vae || defaultState.txt2img.vae,
+    scheduler: candidate.txt2img?.scheduler || defaultState.txt2img.scheduler
+  };
+  const nextImg2Img: Img2ImgParameters = {
+    ...defaultState.img2img,
+    ...(candidate.img2img ?? {}),
+    resolution: {
+      ...defaultState.img2img.resolution,
+      ...(candidate.img2img?.resolution ?? {})
+    },
+    vae: candidate.img2img?.vae || defaultState.img2img.vae,
+    scheduler: candidate.img2img?.scheduler || defaultState.img2img.scheduler
+  };
+
+  const normalizedTxt2Img: Txt2ImgParameters = {
+    ...nextTxt2Img,
+    resolution: {
+      width: normalizeDimension(nextTxt2Img.resolution.width),
+      height: normalizeDimension(nextTxt2Img.resolution.height)
+    },
+    steps:
+      Number.isFinite(nextTxt2Img.steps) && nextTxt2Img.steps > 0
+        ? clamp(Math.round(nextTxt2Img.steps), 1, 200)
+        : defaultState.txt2img.steps,
+    cfgScale:
+      Number.isFinite(nextTxt2Img.cfgScale) && nextTxt2Img.cfgScale > 0
+        ? clamp(nextTxt2Img.cfgScale, 0.1, 30)
+        : defaultState.txt2img.cfgScale
+  };
+  const normalizedImg2Img: Img2ImgParameters = {
+    ...nextImg2Img,
+    resolution: {
+      width: normalizeDimension(nextImg2Img.resolution.width),
+      height: normalizeDimension(nextImg2Img.resolution.height)
+    },
+    steps:
+      Number.isFinite(nextImg2Img.steps) && nextImg2Img.steps > 0
+        ? clamp(Math.round(nextImg2Img.steps), 1, 200)
+        : defaultState.img2img.steps,
+    cfgScale:
+      Number.isFinite(nextImg2Img.cfgScale) && nextImg2Img.cfgScale > 0
+        ? clamp(nextImg2Img.cfgScale, 0.1, 30)
+        : defaultState.img2img.cfgScale,
+    denoiseStrength: Number.isFinite(nextImg2Img.denoiseStrength)
+      ? clamp(nextImg2Img.denoiseStrength, 0, 1)
+      : defaultState.img2img.denoiseStrength
+  };
+
   return {
     ...defaultState,
     activeBackend: 'comfyui',
@@ -166,26 +230,8 @@ function sanitizePersistedState(
       ...defaultState.comfyUI,
       ...(candidate.comfyUI ?? {})
     },
-    txt2img: {
-      ...defaultState.txt2img,
-      ...(candidate.txt2img ?? {}),
-      resolution: {
-        ...defaultState.txt2img.resolution,
-        ...(candidate.txt2img?.resolution ?? {})
-      },
-      vae: candidate.txt2img?.vae || defaultState.txt2img.vae,
-      scheduler: candidate.txt2img?.scheduler || defaultState.txt2img.scheduler
-    },
-    img2img: {
-      ...defaultState.img2img,
-      ...(candidate.img2img ?? {}),
-      resolution: {
-        ...defaultState.img2img.resolution,
-        ...(candidate.img2img?.resolution ?? {})
-      },
-      vae: candidate.img2img?.vae || defaultState.img2img.vae,
-      scheduler: candidate.img2img?.scheduler || defaultState.img2img.scheduler
-    },
+    txt2img: normalizedTxt2Img,
+    img2img: normalizedImg2Img,
     history: Array.isArray(candidate.history)
       ? candidate.history.slice(0, 24).filter((item) => Boolean(item?.id))
       : []
@@ -260,6 +306,7 @@ function mapStatus(input: {
   return {
     state:
       input.state === 'idle' ||
+      input.state === 'stopped' ||
       input.state === 'starting' ||
       input.state === 'running' ||
       input.state === 'stopping' ||
@@ -277,6 +324,32 @@ function mapStatus(input: {
   };
 }
 
+function normalizeStatusForSetup(
+  status: ComfyUIStatus,
+  setup: ComfyUISetupStatus
+): ComfyUIStatus {
+  if (!setup.isReady || status.running) {
+    return status;
+  }
+
+  const combined = `${status.statusMessage || ''} ${status.lastError || ''}`
+    .trim()
+    .toLowerCase();
+  const hasStaleSetupMessage =
+    combined.includes('setup is not ready') ||
+    combined.includes('not installed');
+
+  if (!hasStaleSetupMessage) {
+    return status;
+  }
+
+  return {
+    ...status,
+    lastError: '',
+    statusMessage: 'ComfyUI is stopped'
+  };
+}
+
 function mapLog(input: {
   timestamp: string;
   level: string;
@@ -288,6 +361,135 @@ function mapLog(input: {
     level: (input.level || 'info').toLowerCase(),
     stream: (input.stream || 'stdout').toLowerCase(),
     message: input.message || ''
+  };
+}
+
+const defaultComfySetupSteps: ComfyUISetupStep[] = [
+  { id: 'check_environment', label: 'Check Environment', status: 'pending', message: '' },
+  { id: 'detect_comfy', label: 'Detect ComfyUI', status: 'pending', message: '' },
+  { id: 'download_archive', label: 'Download Archive', status: 'pending', message: '' },
+  { id: 'extract_archive', label: 'Extract Archive', status: 'pending', message: '' },
+  { id: 'finalize_install_dir', label: 'Finalize Installation Folder', status: 'pending', message: '' },
+  { id: 'prepare_model_paths', label: 'Prepare Model Paths', status: 'pending', message: '' },
+  { id: 'copy_custom_nodes', label: 'Copy Custom Nodes', status: 'pending', message: '' },
+  { id: 'complete', label: 'Installation Complete', status: 'pending', message: '' }
+];
+
+const defaultComfySetupStatus: ComfyUISetupStatus = {
+  state: 'checking',
+  workspaceRoot: '',
+  installDir: '',
+  statusMessage: 'Checking ComfyUI environment...',
+  currentStepId: '',
+  currentStepMessage: '',
+  eventSeq: 0,
+  downloadProgress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
+  downloadSpeed: 0,
+  lastError: '',
+  errorKind: '',
+  permissionProblem: false,
+  permissionMessage: '',
+  isInstalled: false,
+  isReady: false,
+  requiresOnboarding: true,
+  nvidiaOnly: true,
+  steps: defaultComfySetupSteps
+};
+
+function mapSetupStep(input: {
+  id?: string;
+  label?: string;
+  status?: string;
+  message?: string;
+}): ComfyUISetupStep {
+  const status =
+    input.status === 'running' ||
+    input.status === 'completed' ||
+    input.status === 'error'
+      ? input.status
+      : 'pending';
+
+  return {
+    id: input.id?.trim() || '',
+    label: input.label?.trim() || '',
+    status,
+    message: input.message?.trim() || ''
+  };
+}
+
+function mapSetupStatus(input: {
+  state?: string;
+  workspaceRoot?: string;
+  installDir?: string;
+  statusMessage?: string;
+  currentStepId?: string;
+  currentStepMessage?: string;
+  eventSeq?: number;
+  downloadProgress?: number;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  downloadSpeed?: number;
+  lastError?: string;
+  errorKind?: string;
+  permissionProblem?: boolean;
+  permissionMessage?: string;
+  isInstalled?: boolean;
+  isReady?: boolean;
+  requiresOnboarding?: boolean;
+  nvidiaOnly?: boolean;
+  steps?: Array<{
+    id?: string;
+    label?: string;
+    status?: string;
+    message?: string;
+  }>;
+}): ComfyUISetupStatus {
+  const state =
+    input.state === 'missing' ||
+    input.state === 'ready' ||
+    input.state === 'installing' ||
+    input.state === 'error'
+      ? input.state
+      : 'checking';
+
+  const steps =
+    Array.isArray(input.steps) && input.steps.length > 0
+      ? input.steps.map(mapSetupStep)
+      : defaultComfySetupSteps;
+
+  return {
+    state,
+    workspaceRoot: input.workspaceRoot?.trim() || '',
+    installDir: input.installDir?.trim() || '',
+    statusMessage: input.statusMessage?.trim() || '',
+    currentStepId: input.currentStepId?.trim() || '',
+    currentStepMessage: input.currentStepMessage?.trim() || '',
+    eventSeq: Number.isFinite(input.eventSeq)
+      ? Math.max(0, Math.round(input.eventSeq as number))
+      : 0,
+    downloadProgress: Number.isFinite(input.downloadProgress)
+      ? Math.max(0, Math.min(100, input.downloadProgress as number))
+      : 0,
+    downloadedBytes: Number.isFinite(input.downloadedBytes)
+      ? Math.max(0, Math.round(input.downloadedBytes as number))
+      : 0,
+    totalBytes: Number.isFinite(input.totalBytes)
+      ? Math.max(0, Math.round(input.totalBytes as number))
+      : 0,
+    downloadSpeed: Number.isFinite(input.downloadSpeed)
+      ? Math.max(0, input.downloadSpeed as number)
+      : 0,
+    lastError: input.lastError?.trim() || '',
+    errorKind: input.errorKind?.trim() || '',
+    permissionProblem: Boolean(input.permissionProblem),
+    permissionMessage: input.permissionMessage?.trim() || '',
+    isInstalled: Boolean(input.isInstalled),
+    isReady: Boolean(input.isReady),
+    requiresOnboarding: Boolean(input.requiresOnboarding),
+    nvidiaOnly: input.nvidiaOnly !== false,
+    steps
   };
 }
 
@@ -492,11 +694,14 @@ export const useImageGenerationStore = create<ImageGenerationState>(
   (set, get) => ({
     ...initialState,
     comfyStatus: defaultComfyStatus,
+    comfySetup: defaultComfySetupStatus,
     modelCatalog: DEFAULT_MODEL_CATALOG,
     comfyLogs: [],
     comfyError: '',
     modelCatalogError: '',
     isComfyActionPending: false,
+    isComfySetupLoading: false,
+    isComfySetupInstalling: false,
     isModelCatalogLoading: false,
     isComfyLogsLoading: false,
     isComfyConfigSaving: false,
@@ -506,6 +711,16 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     activeGenerationJobId: '',
 
     loadModelCatalog: async () => {
+      const setup = get().comfySetup;
+      if (!setup.isReady) {
+        set({
+          modelCatalog: DEFAULT_MODEL_CATALOG,
+          modelCatalogError: '',
+          isModelCatalogLoading: false
+        });
+        return;
+      }
+
       set({ isModelCatalogLoading: true, modelCatalogError: '' });
       try {
         const catalogResponse = await GetModelCatalog();
@@ -588,6 +803,69 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           }
         );
 
+        const unsubscribeSetup = Events.On(
+          'comfyui:setup',
+          (event: WailsEventLike) => {
+            const payload = getEventPayload<{
+              state: string;
+              workspaceRoot: string;
+              installDir: string;
+              statusMessage: string;
+              currentStepId: string;
+              currentStepMessage: string;
+              eventSeq: number;
+              downloadProgress: number;
+              downloadedBytes: number;
+              totalBytes: number;
+              downloadSpeed: number;
+              lastError: string;
+              errorKind: string;
+              permissionProblem: boolean;
+              permissionMessage: string;
+              isInstalled: boolean;
+              isReady: boolean;
+              requiresOnboarding: boolean;
+              nvidiaOnly: boolean;
+              steps: Array<{
+                id: string;
+                label: string;
+                status: string;
+                message: string;
+              }>;
+            }>(event.data);
+            if (!payload) {
+              return;
+            }
+
+            const previousSetupReady = get().comfySetup.isReady;
+            const nextSetup = mapSetupStatus(payload);
+            if (nextSetup.eventSeq < get().comfySetup.eventSeq) {
+              return;
+            }
+            set((state) => {
+              const normalizedStatus = normalizeStatusForSetup(
+                state.comfyStatus,
+                nextSetup
+              );
+
+              return {
+                comfySetup: nextSetup,
+                comfyStatus: normalizedStatus,
+                isComfySetupLoading: false,
+                isComfySetupInstalling: nextSetup.state === 'installing',
+                comfyError:
+                  nextSetup.lastError.trim() !== ''
+                    ? nextSetup.lastError
+                    : normalizedStatus.lastError || ''
+              };
+            });
+
+            if (nextSetup.isReady && !previousSetupReady) {
+              void get().loadModelCatalog();
+            }
+          }
+        );
+
         const unsubscribeGenerationStatus = Events.On(
           'generation:status',
           (event: WailsEventLike) => {
@@ -617,7 +895,12 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   status: payload.state,
                   isGenerating:
                     payload.state === 'queued' || payload.state === 'running',
-                  imagePath: payload.previewPath || item.imagePath,
+                  imagePath:
+                    (payload.state === 'queued' ||
+                      payload.state === 'running') &&
+                    payload.previewPath
+                      ? payload.previewPath
+                      : item.imagePath,
                   message:
                     payload.error?.trim() !== ''
                       ? payload.error
@@ -689,6 +972,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         comfyEventUnsubscribers = [
           unsubscribeStatus,
           unsubscribeLog,
+          unsubscribeSetup,
           unsubscribeGenerationStatus,
           unsubscribeGenerationPreview,
           unsubscribeGenerationResult
@@ -697,15 +981,32 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       try {
-        const [backendConfig, status, logs, catalogResponse] =
+        set({ isComfySetupLoading: true });
+
+        const [backendConfig, status, logs, setupPayload] =
           await Promise.all([
             GetComfyUIConfig(),
             GetStatus(),
             ListLogs(400),
-            GetModelCatalog()
+            GetSetupStatus()
           ]);
 
-        const catalog = mapModelCatalog(catalogResponse);
+        const mappedSetup = mapSetupStatus(setupPayload);
+        const mappedStatus = normalizeStatusForSetup(
+          mapStatus(status),
+          mappedSetup
+        );
+
+        let catalog = DEFAULT_MODEL_CATALOG;
+        let catalogError = '';
+        if (mappedSetup.isReady) {
+          try {
+            const catalogResponse = await GetModelCatalog();
+            catalog = mapModelCatalog(catalogResponse);
+          } catch (error) {
+            catalogError = toErrorMessage(error);
+          }
+        }
 
         if (!generationPanelHydrated) {
           const panelConfig = await GetGenerationPanelConfig();
@@ -723,9 +1024,13 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             history: persistedPanel.history,
             modelCatalog: catalog,
             comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
-            comfyStatus: mapStatus(status),
+            comfyStatus: mappedStatus,
+            comfySetup: mappedSetup,
             comfyLogs: logs.map(mapLog),
-            comfyError: status.lastError || ''
+            comfyError: mappedStatus.lastError || mappedSetup.lastError || '',
+            modelCatalogError: catalogError,
+            isComfySetupLoading: false,
+            isComfySetupInstalling: mappedSetup.state === 'installing'
           }));
 
           generationPanelHydrated = true;
@@ -744,13 +1049,68 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             ...withDefaults,
             modelCatalog: catalog,
             comfyUI: mapBackendConfigToComfyUI(backendConfig, state.comfyUI),
-            comfyStatus: mapStatus(status),
+            comfyStatus: mappedStatus,
+            comfySetup: mappedSetup,
             comfyLogs: logs.map(mapLog),
-            comfyError: status.lastError || ''
+            comfyError: mappedStatus.lastError || mappedSetup.lastError || '',
+            modelCatalogError: catalogError,
+            isComfySetupLoading: false,
+            isComfySetupInstalling: mappedSetup.state === 'installing'
           };
         });
       } catch (error) {
-        set({ comfyError: toErrorMessage(error) });
+        set({
+          comfyError: toErrorMessage(error),
+          isComfySetupLoading: false
+        });
+      }
+    },
+
+    refreshComfySetup: async () => {
+      set({ isComfySetupLoading: true });
+      try {
+        const setup = mapSetupStatus(await GetSetupStatus());
+        set((state) => {
+          const normalizedStatus = normalizeStatusForSetup(
+            state.comfyStatus,
+            setup
+          );
+
+          return {
+            comfySetup: setup,
+            comfyStatus: normalizedStatus,
+            isComfySetupLoading: false,
+            isComfySetupInstalling: setup.state === 'installing',
+            comfyError: setup.lastError || normalizedStatus.lastError || ''
+          };
+        });
+      } catch (error) {
+        set({
+          isComfySetupLoading: false,
+          comfyError: toErrorMessage(error)
+        });
+      }
+    },
+
+    installComfyUI: async () => {
+      set({
+        isComfySetupInstalling: true,
+        isComfySetupLoading: false,
+        comfyError: ''
+      });
+      try {
+        await InstallComfyUI();
+      } catch (error) {
+        set({
+          isComfySetupInstalling: false,
+          comfyError: toErrorMessage(error)
+        });
+      } finally {
+        await get().refreshComfySetup();
+        const latestSetup = get().comfySetup;
+        if (latestSetup.isReady) {
+          await get().initializeComfyLifecycle();
+        }
       }
     },
 
@@ -776,6 +1136,17 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     startComfyUI: async () => {
       set({ isComfyActionPending: true, comfyError: '' });
       try {
+        const setup = get().comfySetup;
+        if (!setup.isReady) {
+          set({
+            isComfyActionPending: false,
+            comfyError:
+              setup.statusMessage ||
+              setup.lastError ||
+              'ComfyUI is not installed yet. Complete setup first.'
+          });
+          return;
+        }
         await get().saveComfyUIConfig();
         await Start();
         const status = await GetStatus();
@@ -805,6 +1176,17 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     restartComfyUI: async () => {
       set({ isComfyActionPending: true, comfyError: '' });
       try {
+        const setup = get().comfySetup;
+        if (!setup.isReady) {
+          set({
+            isComfyActionPending: false,
+            comfyError:
+              setup.statusMessage ||
+              setup.lastError ||
+              'ComfyUI is not installed yet. Complete setup first.'
+          });
+          return;
+        }
         await get().saveComfyUIConfig();
         await Restart();
         const status = await GetStatus();
@@ -927,6 +1309,16 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     generateText2Image: async () => {
       const state = get();
+      if (!state.comfySetup.isReady) {
+        set({
+          comfyError:
+            state.comfySetup.statusMessage ||
+            state.comfySetup.lastError ||
+            'ComfyUI setup is not ready yet.'
+        });
+        return;
+      }
+
       if (state.mode !== 'txt2img') {
         set({ comfyError: 'Only txt2img generation is supported for now.' });
         return;

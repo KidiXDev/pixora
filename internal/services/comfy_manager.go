@@ -31,6 +31,7 @@ const (
 
 	comfyEventStatus = "comfyui:status"
 	comfyEventLog    = "comfyui:log"
+	comfyEventSetup  = "comfyui:setup"
 
 	maxComfyLogEntries = 1000
 
@@ -52,13 +53,15 @@ const (
 
 var comfyModelSubdirs = []string{
 	"checkpoints",
-	"text_encoders",
 	"clip",
 	"controlnet",
+	"diffusers",
 	"diffusion_models",
-	"unet",
 	"embeddings",
+	"latent_upscale_models",
 	"loras",
+	"text_encoders",
+	"unet",
 	"upscale_models",
 	"vae",
 }
@@ -87,6 +90,7 @@ type ComfyUIManager struct {
 
 	mu        sync.RWMutex
 	state     string
+	setup     ComfyUISetupStatus
 	logs      []ComfyUILogEntry
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
@@ -105,17 +109,42 @@ func NewComfyUIManager(cfgMgr *config.Manager) (*ComfyUIManager, error) {
 	manager := &ComfyUIManager{
 		configMgr: cfgMgr,
 		state:     comfyStateIdle,
+		setup:     defaultComfySetupStatus(),
 		logs:      []ComfyUILogEntry{},
+	}
+
+	setup := manager.refreshSetupStatus()
+	if !setup.IsReady {
+		manager.state = comfyStateStopped
+		manager.statusMsg = firstNonEmpty(setup.StatusMessage, "ComfyUI setup is not ready")
+		manager.lastError = strings.TrimSpace(setup.LastError)
+		manager.appendLog("warn", "system", manager.statusMsg)
+		return manager, nil
 	}
 
 	cfg := cfgMgr.GetComfyUIConfig()
 	normalized, err := manager.prepareRuntimeConfig(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("prepare comfy runtime config: %w", err)
+		msg := fmt.Sprintf("prepare comfy runtime config: %v", err)
+		manager.state = comfyStateError
+		manager.statusMsg = msg
+		manager.lastError = msg
+		manager.appendLog("error", "system", msg)
+		setup = manager.refreshSetupStatus()
+		if !setup.IsReady {
+			manager.statusMsg = firstNonEmpty(setup.StatusMessage, msg)
+			manager.lastError = firstNonEmpty(setup.LastError, msg)
+		}
+		return manager, nil
 	}
 
 	if err := cfgMgr.SetComfyUIConfig(normalized); err != nil {
-		return nil, fmt.Errorf("persist comfy runtime config: %w", err)
+		msg := fmt.Sprintf("persist comfy runtime config: %v", err)
+		manager.state = comfyStateError
+		manager.statusMsg = msg
+		manager.lastError = msg
+		manager.appendLog("error", "system", msg)
+		return manager, nil
 	}
 
 	if manager.isComfyReachable(normalized.Host, normalized.Port, 1500*time.Millisecond) {
@@ -179,6 +208,16 @@ func (m *ComfyUIManager) GetStatus() ComfyUIStatus {
 }
 
 func (m *ComfyUIManager) Start() error {
+	setup := m.refreshSetupStatus()
+	if !setup.IsReady {
+		userMessage := firstNonEmpty(setup.StatusMessage, setup.LastError)
+		if userMessage == "" {
+			userMessage = "ComfyUI setup is not ready yet. Complete setup first."
+		}
+		m.appendLog("warn", "system", userMessage)
+		return fmt.Errorf("%s", userMessage)
+	}
+
 	m.mu.Lock()
 	if m.state == comfyStateRunning || m.state == comfyStateStarting {
 		m.mu.Unlock()
@@ -235,6 +274,7 @@ func (m *ComfyUIManager) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, normalized.PythonPath, cmdArgs...)
 	cmd.Dir = filepath.Dir(normalized.MainScriptPath)
+	configureComfyProcess(cmd)
 
 	log.Printf("[pixora][comfyui] launch cwd=%s", cmd.Dir)
 	log.Printf("[pixora][comfyui] launch command=%s", formatCommandForLog(normalized.PythonPath, cmdArgs))
@@ -666,6 +706,17 @@ func (m *ComfyUIManager) emitLog(entry ComfyUILogEntry) {
 	}
 }
 
+func (m *ComfyUIManager) emitSetupStatus() {
+	m.mu.Lock()
+	m.setup.EventSeq++
+	setup := cloneComfySetupStatus(m.setup)
+	m.mu.Unlock()
+
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit(comfyEventSetup, setup)
+	}
+}
+
 func (m *ComfyUIManager) isComfyReachable(host string, port int, timeout time.Duration) bool {
 	if strings.TrimSpace(host) == "" || port <= 0 {
 		return false
@@ -860,13 +911,14 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 		"  text_encoders: |",
 		"    text_encoders",
 		"    clip",
-		"  clip_vision: clip_vision",
-		"  configs: configs",
 		"  controlnet: controlnet",
+		"  diffusers: diffusers",
 		"  diffusion_models: |",
+		"    diffusers",
 		"    diffusion_models",
 		"    unet",
 		"  embeddings: embeddings",
+		"  latent_upscale_models: latent_upscale_models",
 		"  loras: loras",
 		"  upscale_models: upscale_models",
 		"  vae: vae",

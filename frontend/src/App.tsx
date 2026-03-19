@@ -1,13 +1,71 @@
 import { ConfirmationProvider } from '@/components/providers/confirmation-provider';
+import { Events } from '@wailsio/runtime';
 import { useEffect, useRef, useState } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { ToggleDevTools } from '../bindings/pixora/internal/services/galleryservice';
+import { GetSetupStatus } from '../bindings/pixora/internal/services/comfyuimanager';
 import { router } from './routes';
 import { useConfigStore } from './stores/config-store';
 
 function App() {
+  const [globalPermissionMessage, setGlobalPermissionMessage] = useState('');
+
   useEffect(() => {
     useConfigStore.getState().loadConfig();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const applySetupPayload = (payload: {
+      permissionProblem?: boolean;
+      permissionMessage?: string;
+      statusMessage?: string;
+      lastError?: string;
+    }) => {
+      if (!active) {
+        return;
+      }
+
+      if (payload.permissionProblem) {
+        setGlobalPermissionMessage(
+          payload.permissionMessage?.trim() ||
+            payload.statusMessage?.trim() ||
+            payload.lastError?.trim() ||
+            'Pixora cannot write to this folder. Move the app to a normal writable folder.'
+        );
+        return;
+      }
+
+      setGlobalPermissionMessage('');
+    };
+
+    void GetSetupStatus()
+      .then(applySetupPayload)
+      .catch(() => {
+        // Ignore setup status read failures here.
+      });
+
+    const unsubscribe = Events.On('comfyui:setup', (event) => {
+      const payload = Array.isArray(event.data)
+        ? event.data[0]
+        : event.data;
+      if (!payload || typeof payload !== 'object') {
+        return;
+      }
+
+      applySetupPayload(payload as {
+        permissionProblem?: boolean;
+        permissionMessage?: string;
+        statusMessage?: string;
+        lastError?: string;
+      });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -29,6 +87,16 @@ function App() {
 
   return (
     <ConfirmationProvider>
+      {globalPermissionMessage !== '' && (
+        <div className="fixed left-4 right-4 top-16 z-[9998] rounded-lg border border-destructive/60 bg-destructive/15 px-4 py-3 text-sm text-foreground shadow-lg backdrop-blur-sm">
+          <p className="font-medium text-destructive">
+            Pixora cannot run correctly in this folder
+          </p>
+          <p className="mt-1">
+            {globalPermissionMessage}
+          </p>
+        </div>
+      )}
       <RouterProvider router={router} />
       <FpsOverlay />
     </ConfirmationProvider>

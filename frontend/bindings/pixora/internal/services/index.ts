@@ -14,6 +14,8 @@ export {
     AutocompleteQuery,
     AutocompleteSuggestion,
     ComfyUILogEntry,
+    ComfyUISetupStatus,
+    ComfyUISetupStep,
     ComfyUIStatus,
     FolderBrowseResponse,
     FolderEntry,

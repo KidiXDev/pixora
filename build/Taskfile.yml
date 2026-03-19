@@ -43,6 +43,36 @@ tasks:
     vars:
       BUILD_COMMAND: '{{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
 
+  stage:runtime:assets:
+    summary: Copies runtime backend assets into bin and prepares empty data directory structure
+    cmds:
+      - cmd: powershell -NoProfile -ExecutionPolicy Bypass -File build/scripts/stage_runtime_assets.ps1
+        platforms: [windows]
+      - cmd: |
+          set -euo pipefail
+          mkdir -p "{{.BIN_DIR}}/backend"
+          rm -rf "{{.BIN_DIR}}/backend/workflow" "{{.BIN_DIR}}/backend/ext" "{{.BIN_DIR}}/backend/node"
+          [ -d backend/workflow ] && cp -R backend/workflow "{{.BIN_DIR}}/backend/workflow"
+          [ -d backend/ext ] && cp -R backend/ext "{{.BIN_DIR}}/backend/ext"
+          if [ -d backend/node ]; then
+            if command -v rsync >/dev/null 2>&1; then
+              rsync -a --exclude='venv/' --exclude='.venv/' backend/node/ "{{.BIN_DIR}}/backend/node/"
+            else
+              cp -R backend/node "{{.BIN_DIR}}/backend/node"
+              find "{{.BIN_DIR}}/backend/node" -type d \( -name 'venv' -o -name '.venv' \) -prune -exec rm -rf {} +
+            fi
+          fi
+
+          rm -rf "{{.BIN_DIR}}/data"
+          mkdir -p "{{.BIN_DIR}}/data"
+          if [ -d data ]; then
+            find data -type d | while read -r dir; do
+              rel="${dir#data}"
+              mkdir -p "{{.BIN_DIR}}/data${rel}"
+            done
+          fi
+        platforms: [linux, darwin]
+
 
   frontend:vendor:puppertino:
     summary: Fetches Puppertino CSS into frontend/public for consistent mobile styling

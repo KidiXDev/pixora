@@ -23,15 +23,25 @@ export function GetComfyUIConfig(): $CancellablePromise<config$0.ComfyUIBackendC
     });
 }
 
-export function GetStatus(): $CancellablePromise<$models.ComfyUIStatus> {
-    return $Call.ByID(1471840282).then(($result: any) => {
+export function GetSetupStatus(): $CancellablePromise<$models.ComfyUISetupStatus> {
+    return $Call.ByID(4201319279).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
+export function GetStatus(): $CancellablePromise<$models.ComfyUIStatus> {
+    return $Call.ByID(1471840282).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function InstallComfyUI(): $CancellablePromise<void> {
+    return $Call.ByID(1585105211);
+}
+
 export function ListLogs(limit: number): $CancellablePromise<$models.ComfyUILogEntry[]> {
     return $Call.ByID(1794459087, limit).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
@@ -55,6 +65,7 @@ export function Stop(): $CancellablePromise<void> {
 
 // Private type creation functions
 const $$createType0 = config$0.ComfyUIBackendConfig.createFrom;
-const $$createType1 = $models.ComfyUIStatus.createFrom;
-const $$createType2 = $models.ComfyUILogEntry.createFrom;
-const $$createType3 = $Create.Array($$createType2);
+const $$createType1 = $models.ComfyUISetupStatus.createFrom;
+const $$createType2 = $models.ComfyUIStatus.createFrom;
+const $$createType3 = $models.ComfyUILogEntry.createFrom;
+const $$createType4 = $Create.Array($$createType3);

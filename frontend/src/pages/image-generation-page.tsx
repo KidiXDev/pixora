@@ -1,5 +1,8 @@
 import { BackendConfigDrawer } from '@/components/image-generation/backend-config-drawer';
 import { ComfyUILogsDialog } from '@/components/image-generation/comfyui-logs-dialog';
+import { ComfyUIOnboarding } from '@/components/image-generation/comfyui-onboarding';
+import { ComfyUISetupDialog } from '@/components/image-generation/comfyui-setup-dialog';
+import { useConfirmation } from '@/components/providers/confirmation-provider';
 import { GenerationParametersPanel } from '@/components/image-generation/generation-parameters-panel';
 import { GenerationPreviewPanel } from '@/components/image-generation/generation-preview-panel';
 import { GenerationSideNav } from '@/components/image-generation/generation-side-nav';
@@ -26,6 +29,7 @@ const workflowEmbedMethodNames = [
 ] as const;
 
 export default function ImageGenerationPage() {
+  const confirm = useConfirmation();
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
@@ -40,17 +44,21 @@ export default function ImageGenerationPage() {
     mode,
     comfyUI,
     comfyStatus,
+    comfySetup,
     modelCatalog,
     comfyError,
     modelCatalogError,
     isModelCatalogLoading,
     isComfyActionPending,
+    isComfySetupInstalling,
     isComfyConfigSaving,
     isGenerating,
     txt2img,
     img2img,
     history,
     initializeComfyLifecycle,
+    refreshComfySetup,
+    installComfyUI,
     saveComfyUIConfig,
     startComfyUI,
     stopComfyUI,
@@ -66,17 +74,21 @@ export default function ImageGenerationPage() {
       mode: state.mode,
       comfyUI: state.comfyUI,
       comfyStatus: state.comfyStatus,
+      comfySetup: state.comfySetup,
       modelCatalog: state.modelCatalog,
       comfyError: state.comfyError,
       modelCatalogError: state.modelCatalogError,
       isModelCatalogLoading: state.isModelCatalogLoading,
       isComfyActionPending: state.isComfyActionPending,
+      isComfySetupInstalling: state.isComfySetupInstalling,
       isComfyConfigSaving: state.isComfyConfigSaving,
       isGenerating: state.isGenerating,
       txt2img: state.txt2img,
       img2img: state.img2img,
       history: state.history,
       initializeComfyLifecycle: state.initializeComfyLifecycle,
+      refreshComfySetup: state.refreshComfySetup,
+      installComfyUI: state.installComfyUI,
       saveComfyUIConfig: state.saveComfyUIConfig,
       startComfyUI: state.startComfyUI,
       stopComfyUI: state.stopComfyUI,
@@ -145,6 +157,16 @@ export default function ImageGenerationPage() {
   }, [modelCatalogError]);
 
   const handleGenerate = useCallback(() => {
+    if (!comfySetup.isReady) {
+      toast.error('ComfyUI setup is not complete', {
+        description:
+          comfySetup.statusMessage ||
+          comfySetup.lastError ||
+          'Install ComfyUI from the onboarding page first.'
+      });
+      return;
+    }
+
     if (mode !== 'txt2img') {
       toast.error('Only txt2img is available right now.');
       return;
@@ -171,7 +193,7 @@ export default function ImageGenerationPage() {
     }
 
     void generateText2Image();
-  }, [mode, comfyStatus, generateText2Image]);
+  }, [mode, comfySetup, comfyStatus, generateText2Image]);
 
 
   useEffect(() => {
@@ -235,6 +257,16 @@ export default function ImageGenerationPage() {
   };
 
   const loadWorkflowPreview = async () => {
+    if (!comfySetup.isReady) {
+      toast.error('ComfyUI setup is not complete.', {
+        description:
+          comfySetup.statusMessage ||
+          comfySetup.lastError ||
+          'Install ComfyUI first.'
+      });
+      return;
+    }
+
     if (mode !== 'txt2img') {
       toast.error('Workflow preview is only available for txt2img right now.');
       return;
@@ -261,6 +293,16 @@ export default function ImageGenerationPage() {
   };
 
   const prepareComfyEmbed = async () => {
+    if (!comfySetup.isReady) {
+      toast.error('ComfyUI setup is not complete.', {
+        description:
+          comfySetup.statusMessage ||
+          comfySetup.lastError ||
+          'Install ComfyUI first.'
+      });
+      return;
+    }
+
     if (mode !== 'txt2img') {
       toast.error('Embedded ComfyUI is only available for txt2img right now.');
       return;
@@ -325,6 +367,94 @@ export default function ImageGenerationPage() {
       });
     }
   };
+
+  const shouldShowSetupOnboarding =
+    !comfySetup.isReady ||
+    comfySetup.requiresOnboarding ||
+    comfySetup.state === 'installing' ||
+    comfySetup.permissionProblem;
+
+  const handleInstallComfyUI = useCallback(async () => {
+    if (isComfySetupInstalling) {
+      return;
+    }
+
+    const confirmed = await confirm.confirm({
+      title: 'Install ComfyUI?',
+      description:
+        'Pixora will download and extract ComfyUI into backend/comfy.',
+      confirmText: 'Install ComfyUI',
+      cancelText: 'Cancel'
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    void installComfyUI();
+  }, [confirm, installComfyUI, isComfySetupInstalling]);
+
+  if (shouldShowSetupOnboarding) {
+    return (
+      <div className="flex h-full overflow-hidden bg-[radial-gradient(ellipse_at_top_right,var(--tw-gradient-stops))] from-primary/5 via-background to-background">
+        <GenerationSideNav
+          mode={mode}
+          onModeChange={setMode}
+          onOpenSettings={() => setIsConfigSheetOpen(true)}
+        />
+        <main className="flex min-w-0 flex-1 overflow-hidden">
+          <ComfyUIOnboarding
+            setup={comfySetup}
+            isInstalling={isComfySetupInstalling}
+            onInstall={() => {
+              void handleInstallComfyUI();
+            }}
+            onRefresh={() => {
+              void refreshComfySetup();
+            }}
+          />
+        </main>
+
+        <BackendConfigDrawer
+          open={isConfigSheetOpen}
+          onOpenChange={setIsConfigSheetOpen}
+          comfyUI={comfyUI}
+          status={comfyStatus}
+          isActionPending={isComfyActionPending}
+          isConfigSaving={isComfyConfigSaving}
+          errorMessage={comfyError}
+          onComfyUIChange={updateComfyUIConfig}
+          onSaveConfig={saveComfyUIConfig}
+          onStart={startComfyUI}
+          onStop={stopComfyUI}
+          onRestart={restartComfyUI}
+          onLogsClick={() => setIsLogsOpen(true)}
+        />
+
+        <ComfyUILogsDialog
+          open={isLogsOpen}
+          onOpenChange={setIsLogsOpen}
+          logs={comfyLogs}
+          status={comfyStatus}
+          isLoading={isComfyLogsLoading}
+          onRefresh={() => loadComfyLogs(500)}
+          onClear={clearComfyLogs}
+        />
+
+        <ComfyUISetupDialog
+          open={isComfySetupInstalling}
+          onOpenChange={() => {
+            // The setup dialog is controlled by installer state and only appears while installing.
+          }}
+          setup={comfySetup}
+          logs={comfyLogs}
+          isInstalling={isComfySetupInstalling}
+          onRefresh={() => {
+            void refreshComfySetup();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden bg-[radial-gradient(ellipse_at_top_right,var(--tw-gradient-stops))] from-primary/5 via-background to-background">
