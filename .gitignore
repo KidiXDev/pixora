@@ -9,4 +9,11 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 # dev
 plugins/
 data/
-backend/
+backend/comfy/
+backend/*7z
+backend/*yaml
+backend/redistribute
+backend/workflow/
+
+# venv
+backend/node/pixorabridge/venv/
