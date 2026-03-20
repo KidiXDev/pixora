@@ -920,7 +920,8 @@ export default function SettingsPage() {
                     <div className="flex flex-col gap-1">
                       <h3 className="font-semibold">Prompt Formatting</h3>
                       <p className="text-sm text-muted-foreground max-w-2xl">
-                        Configure how the Format button cleans up positive prompts.
+                        Configure how the Format button cleans up positive
+                        prompts.
                       </p>
                     </div>
 
@@ -978,7 +979,7 @@ export default function SettingsPage() {
                           }
                           disabled={isPromptFormatSaving}
                         >
-                          <SelectTrigger className="w-full md:max-w-xs">
+                          <SelectTrigger className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

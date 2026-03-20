@@ -1,7 +1,29 @@
 import {
-  defaultImg2ImgParameters,
-  defaultTxt2ImgParameters
-} from '@/constants/generation-defaults';
+  buildPreviewItem,
+  clamp,
+  defaultState,
+  DEFAULT_MODEL_CATALOG,
+  getEventPayload,
+  isSameImg2Img,
+  isSameTxt2Img,
+  normalizeDimension,
+  PersistedImageGenerationState,
+  sanitizePersistedState,
+  setupNotReadyMessage
+} from '@/stores/image-generation/store-core';
+import {
+  applyCatalogDefaults,
+  buildComfyApiURL,
+  DEFAULT_COMFYUI_HOST,
+  DEFAULT_COMFYUI_PORT,
+  mapBackendConfigToComfyUI,
+  mapLog,
+  mapStatus,
+  normalizeComfyPort,
+  normalizeStatusForSetup,
+  toBackendComfyConfig,
+  toErrorMessage
+} from '@/stores/image-generation/store-mappers';
 import {
   ComfyUIConfig,
   ComfyUILogEntry,
@@ -12,7 +34,6 @@ import {
   GenerationModelCatalog,
   GenerationResultEvent,
   GenerationStatusEvent,
-  ImageGenerationBackend,
   ImageGenerationMode,
   Img2ImgParameters,
   Txt2ImgParameters
@@ -20,7 +41,6 @@ import {
 import { Events } from '@wailsio/runtime';
 import { create } from 'zustand';
 import {
-  ComfyUIBackendConfig,
   GenerationPanelConfig
 } from '../../bindings/pixora/internal/config/models';
 import {
@@ -42,15 +62,6 @@ import {
   QueueText2Image,
   SetGenerationPanelConfig
 } from '../../bindings/pixora/internal/services/generationservice';
-
-interface PersistedImageGenerationState {
-  activeBackend: ImageGenerationBackend;
-  mode: ImageGenerationMode;
-  comfyUI: ComfyUIConfig;
-  txt2img: Txt2ImgParameters;
-  img2img: Img2ImgParameters;
-  history: GeneratedPreviewItem[];
-}
 
 interface ImageGenerationState extends PersistedImageGenerationState {
   comfyStatus: ComfyUIStatus;
@@ -94,307 +105,10 @@ interface WailsEventLike {
   data: unknown;
 }
 
-const DEFAULT_COMFYUI_HOST = '127.0.0.1';
-const DEFAULT_COMFYUI_PORT = 7180;
-const DEFAULT_COMFYUI_API_URL = buildComfyApiURL(
-  DEFAULT_COMFYUI_HOST,
-  DEFAULT_COMFYUI_PORT
-);
-
 let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
 let generationPanelHydrated = false;
 let generationPanelPersistTimer: ReturnType<typeof setTimeout> | null = null;
-
-const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
-  samplers: [],
-  schedulers: [],
-  checkpoints: [],
-  vaes: [],
-  loras: [],
-  controlnets: [],
-  upscaleModels: [],
-  textEncoders: [],
-  diffusionModels: [],
-  unets: []
-};
-
-const defaultTxt2Img: Txt2ImgParameters = {
-  ...defaultTxt2ImgParameters
-};
-
-const defaultImg2Img: Img2ImgParameters = {
-  ...defaultImg2ImgParameters
-};
-
-const defaultState: PersistedImageGenerationState = {
-  activeBackend: 'comfyui',
-  mode: 'txt2img',
-  comfyUI: {
-    apiUrl: DEFAULT_COMFYUI_API_URL,
-    localPath: '',
-    args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager',
-    outputDir: '',
-    rootDir: '',
-    pythonPath: '',
-    mainScriptPath: '',
-    modelPathsYAML: '',
-    host: DEFAULT_COMFYUI_HOST,
-    port: DEFAULT_COMFYUI_PORT
-  },
-  txt2img: defaultTxt2Img,
-  img2img: defaultImg2Img,
-  history: []
-};
-
-function fallbackIfBlank(value: string | undefined, fallback: string): string {
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-
-  return value.trim() !== '' ? value : fallback;
-}
-
-function sanitizePersistedState(
-  raw: unknown
-): PersistedImageGenerationState | null {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-
-  const candidate = raw as Partial<PersistedImageGenerationState>;
-  const mode =
-    candidate.mode === 'txt2img' || candidate.mode === 'img2img'
-      ? candidate.mode
-      : defaultState.mode;
-
-  const nextTxt2Img: Txt2ImgParameters = {
-    ...defaultState.txt2img,
-    ...(candidate.txt2img ?? {}),
-    resolution: {
-      ...defaultState.txt2img.resolution,
-      ...(candidate.txt2img?.resolution ?? {})
-    },
-    prompt: fallbackIfBlank(
-      candidate.txt2img?.prompt,
-      defaultState.txt2img.prompt
-    ),
-    negativePrompt: fallbackIfBlank(
-      candidate.txt2img?.negativePrompt,
-      defaultState.txt2img.negativePrompt
-    ),
-    sampler: fallbackIfBlank(
-      candidate.txt2img?.sampler,
-      defaultState.txt2img.sampler
-    ),
-    vae: fallbackIfBlank(candidate.txt2img?.vae, defaultState.txt2img.vae),
-    scheduler: fallbackIfBlank(
-      candidate.txt2img?.scheduler,
-      defaultState.txt2img.scheduler
-    )
-  };
-  const nextImg2Img: Img2ImgParameters = {
-    ...defaultState.img2img,
-    ...(candidate.img2img ?? {}),
-    resolution: {
-      ...defaultState.img2img.resolution,
-      ...(candidate.img2img?.resolution ?? {})
-    },
-    prompt: fallbackIfBlank(
-      candidate.img2img?.prompt,
-      defaultState.img2img.prompt
-    ),
-    negativePrompt: fallbackIfBlank(
-      candidate.img2img?.negativePrompt,
-      defaultState.img2img.negativePrompt
-    ),
-    sampler: fallbackIfBlank(
-      candidate.img2img?.sampler,
-      defaultState.img2img.sampler
-    ),
-    vae: fallbackIfBlank(candidate.img2img?.vae, defaultState.img2img.vae),
-    scheduler: fallbackIfBlank(
-      candidate.img2img?.scheduler,
-      defaultState.img2img.scheduler
-    )
-  };
-
-  const normalizedTxt2Img: Txt2ImgParameters = {
-    ...nextTxt2Img,
-    resolution: {
-      width: normalizeDimension(nextTxt2Img.resolution.width),
-      height: normalizeDimension(nextTxt2Img.resolution.height)
-    },
-    steps:
-      Number.isFinite(nextTxt2Img.steps) && nextTxt2Img.steps > 0
-        ? clamp(Math.round(nextTxt2Img.steps), 1, 200)
-        : defaultState.txt2img.steps,
-    cfgScale:
-      Number.isFinite(nextTxt2Img.cfgScale) && nextTxt2Img.cfgScale > 0
-        ? clamp(nextTxt2Img.cfgScale, 0.1, 30)
-        : defaultState.txt2img.cfgScale
-  };
-  const normalizedImg2Img: Img2ImgParameters = {
-    ...nextImg2Img,
-    resolution: {
-      width: normalizeDimension(nextImg2Img.resolution.width),
-      height: normalizeDimension(nextImg2Img.resolution.height)
-    },
-    steps:
-      Number.isFinite(nextImg2Img.steps) && nextImg2Img.steps > 0
-        ? clamp(Math.round(nextImg2Img.steps), 1, 200)
-        : defaultState.img2img.steps,
-    cfgScale:
-      Number.isFinite(nextImg2Img.cfgScale) && nextImg2Img.cfgScale > 0
-        ? clamp(nextImg2Img.cfgScale, 0.1, 30)
-        : defaultState.img2img.cfgScale,
-    denoiseStrength: Number.isFinite(nextImg2Img.denoiseStrength)
-      ? clamp(nextImg2Img.denoiseStrength, 0, 1)
-      : defaultState.img2img.denoiseStrength
-  };
-
-  return {
-    ...defaultState,
-    activeBackend: 'comfyui',
-    mode,
-    comfyUI: {
-      ...defaultState.comfyUI,
-      ...(candidate.comfyUI ?? {})
-    },
-    txt2img: normalizedTxt2Img,
-    img2img: normalizedImg2Img,
-    history: Array.isArray(candidate.history)
-      ? candidate.history.slice(0, 24).filter((item) => Boolean(item?.id))
-      : []
-  };
-}
-
-function normalizeComfyPort(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_COMFYUI_PORT;
-  }
-
-  const rounded = Math.round(value);
-  if (rounded <= 0 || rounded > 65535) {
-    return DEFAULT_COMFYUI_PORT;
-  }
-
-  return rounded;
-}
-
-function buildComfyApiURL(host: string, port: number): string {
-  const normalizedHost = host.trim() || DEFAULT_COMFYUI_HOST;
-  const normalizedPort = normalizeComfyPort(port);
-  return `http://${normalizedHost}:${normalizedPort.toString(10)}`;
-}
-
-function mapBackendConfigToComfyUI(
-  backend: ComfyUIBackendConfig,
-  current: ComfyUIConfig
-): ComfyUIConfig {
-  const host = backend.host.trim() || current.host || DEFAULT_COMFYUI_HOST;
-  const port = normalizeComfyPort(backend.port || current.port);
-
-  return {
-    ...current,
-    rootDir: backend.rootDir,
-    pythonPath: backend.pythonPath,
-    mainScriptPath: backend.mainScriptPath,
-    modelPathsYAML: backend.modelPathsYAML,
-    args: backend.args,
-    outputDir: backend.outputDir,
-    host,
-    port,
-    localPath: backend.mainScriptPath,
-    apiUrl: buildComfyApiURL(host, port)
-  };
-}
-
-function toBackendComfyConfig(input: ComfyUIConfig): ComfyUIBackendConfig {
-  return new ComfyUIBackendConfig({
-    rootDir: input.rootDir,
-    pythonPath: input.pythonPath,
-    mainScriptPath: input.mainScriptPath,
-    args: input.args,
-    outputDir: input.outputDir,
-    modelPathsYAML: input.modelPathsYAML,
-    host: input.host,
-    port: normalizeComfyPort(input.port)
-  });
-}
-
-function mapStatus(input: {
-  state: string;
-  running: boolean;
-  pid: number;
-  host: string;
-  port: number;
-  startedAt: string;
-  lastError: string;
-  statusMessage?: string;
-  managedExternally?: boolean;
-}): ComfyUIStatus {
-  return {
-    state:
-      input.state === 'idle' ||
-      input.state === 'stopped' ||
-      input.state === 'starting' ||
-      input.state === 'running' ||
-      input.state === 'stopping' ||
-      input.state === 'error'
-        ? input.state
-        : 'stopped',
-    running: input.running,
-    pid: Number.isFinite(input.pid) ? input.pid : 0,
-    host: input.host || DEFAULT_COMFYUI_HOST,
-    port: normalizeComfyPort(input.port),
-    startedAt: input.startedAt || '',
-    lastError: input.lastError || '',
-    statusMessage: input.statusMessage || '',
-    managedExternally: Boolean(input.managedExternally)
-  };
-}
-
-function normalizeStatusForSetup(
-  status: ComfyUIStatus,
-  setup: ComfyUISetupStatus
-): ComfyUIStatus {
-  if (!setup.isReady || status.running) {
-    return status;
-  }
-
-  const combined = `${status.statusMessage || ''} ${status.lastError || ''}`
-    .trim()
-    .toLowerCase();
-  const hasStaleSetupMessage =
-    combined.includes('setup is not ready') ||
-    combined.includes('not installed');
-
-  if (!hasStaleSetupMessage) {
-    return status;
-  }
-
-  return {
-    ...status,
-    lastError: '',
-    statusMessage: 'ComfyUI is stopped'
-  };
-}
-
-function mapLog(input: {
-  timestamp: string;
-  level: string;
-  stream: string;
-  message: string;
-}): ComfyUILogEntry {
-  return {
-    timestamp: input.timestamp || '',
-    level: (input.level || 'info').toLowerCase(),
-    stream: (input.stream || 'stdout').toLowerCase(),
-    message: input.message || ''
-  };
-}
-
 const defaultComfySetupSteps: ComfyUISetupStep[] = [
   { id: 'check_environment', label: 'Check Environment', status: 'pending', message: '' },
   { id: 'detect_comfy', label: 'Detect ComfyUI', status: 'pending', message: '' },
@@ -556,90 +270,6 @@ function mapModelCatalog(
   };
 }
 
-function applyCatalogDefaults(
-  txt2img: Txt2ImgParameters,
-  img2img: Img2ImgParameters,
-  catalog: GenerationModelCatalog
-): { txt2img: Txt2ImgParameters; img2img: Img2ImgParameters } {
-  const pickOption = (
-    currentValue: string,
-    options: string[],
-    fallback: string
-  ): string => {
-    if (options.length === 0) {
-      return currentValue || fallback;
-    }
-
-    if (currentValue && options.includes(currentValue)) {
-      return currentValue;
-    }
-
-    return options[0];
-  };
-
-  const nextTxt2ImgModel = pickOption(txt2img.model, catalog.checkpoints, '');
-  const nextImg2ImgModel = pickOption(img2img.model, catalog.checkpoints, '');
-  const nextTxt2ImgSampler = pickOption(
-    txt2img.sampler,
-    catalog.samplers,
-    defaultState.txt2img.sampler
-  );
-  const nextImg2ImgSampler = pickOption(
-    img2img.sampler,
-    catalog.samplers,
-    defaultState.img2img.sampler
-  );
-  const nextTxt2ImgScheduler = pickOption(
-    txt2img.scheduler,
-    catalog.schedulers,
-    defaultState.txt2img.scheduler
-  );
-  const nextImg2ImgScheduler = pickOption(
-    img2img.scheduler,
-    catalog.schedulers,
-    defaultState.img2img.scheduler
-  );
-  const nextTxt2ImgVAE = pickOption(txt2img.vae, catalog.vaes, 'Auto');
-  const nextImg2ImgVAE = pickOption(img2img.vae, catalog.vaes, 'Auto');
-
-  return {
-    txt2img: {
-      ...txt2img,
-      model: nextTxt2ImgModel,
-      sampler: nextTxt2ImgSampler,
-      scheduler: nextTxt2ImgScheduler,
-      vae: nextTxt2ImgVAE
-    },
-    img2img: {
-      ...img2img,
-      model: nextImg2ImgModel,
-      sampler: nextImg2ImgSampler,
-      scheduler: nextImg2ImgScheduler,
-      vae: nextImg2ImgVAE
-    }
-  };
-}
-
-function getEventPayload<T>(data: unknown): T | undefined {
-  if (Array.isArray(data)) {
-    return data[0] as T | undefined;
-  }
-
-  return data as T | undefined;
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== '') {
-    return error.message;
-  }
-
-  if (typeof error === 'string' && error.trim() !== '') {
-    return error;
-  }
-
-  return 'Unknown ComfyUI error';
-}
-
 function toPersistedState(
   state: ImageGenerationState
 ): PersistedImageGenerationState {
@@ -681,67 +311,8 @@ function queuePersistGenerationPanelState(
   }, 250);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizeDimension(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 512;
-  }
-
-  return clamp(Math.round(value), 0, 4096);
-}
-
-function isSameResolution(
-  a: { width: number; height: number },
-  b: { width: number; height: number }
-): boolean {
-  return a.width === b.width && a.height === b.height;
-}
-
-function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
-  return (
-    a.prompt === b.prompt &&
-    a.negativePrompt === b.negativePrompt &&
-    a.seed === b.seed &&
-    a.steps === b.steps &&
-    a.cfgScale === b.cfgScale &&
-    isSameResolution(a.resolution, b.resolution) &&
-    a.model === b.model &&
-    a.vae === b.vae &&
-    a.sampler === b.sampler &&
-    a.scheduler === b.scheduler
-  );
-}
-
-function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
-  return (
-    isSameTxt2Img(a, b) &&
-    a.sourceImagePath === b.sourceImagePath &&
-    a.denoiseStrength === b.denoiseStrength
-  );
-}
-
-function buildPreviewItem(
-  state: PersistedImageGenerationState
-): GeneratedPreviewItem {
-  const current = state.mode === 'txt2img' ? state.txt2img : state.img2img;
-
-  return {
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    backend: 'comfyui',
-    mode: state.mode,
-    prompt: current.prompt.trim() || '(empty prompt)',
-    createdAtISO: new Date().toISOString(),
-    resolution: {
-      width: current.resolution.width,
-      height: current.resolution.height
-    },
-    steps: current.steps,
-    cfgScale: current.cfgScale,
-    seed: current.seed.trim() || 'random'
-  };
+function persistFromStoreSnapshot(get: () => ImageGenerationState): void {
+  queuePersistGenerationPanelState(toPersistedState(get()));
 }
 
 const initialState = defaultState;
@@ -806,7 +377,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             isModelCatalogLoading: false
           };
         });
-        queuePersistGenerationPanelState(toPersistedState(get()));
+        persistFromStoreSnapshot(get);
       } catch (error) {
         set({
           isModelCatalogLoading: false,
@@ -1032,7 +603,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   : item
               )
             }));
-            queuePersistGenerationPanelState(toPersistedState(get()));
+            persistFromStoreSnapshot(get);
           }
         );
 
@@ -1101,7 +672,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           }));
 
           generationPanelHydrated = true;
-          queuePersistGenerationPanelState(toPersistedState(get()));
+          persistFromStoreSnapshot(get);
           return;
         }
 
@@ -1190,7 +761,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           comfyUI: mapBackendConfigToComfyUI(saved, state.comfyUI),
           isComfyConfigSaving: false
         }));
-        queuePersistGenerationPanelState(toPersistedState(get()));
+        persistFromStoreSnapshot(get);
       } catch (error) {
         set({
           isComfyConfigSaving: false,
@@ -1207,10 +778,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         if (!setup.isReady) {
           set({
             isComfyActionPending: false,
-            comfyError:
-              setup.statusMessage ||
-              setup.lastError ||
-              'ComfyUI is not installed yet. Complete setup first.'
+            comfyError: setupNotReadyMessage(setup)
           });
           return;
         }
@@ -1247,10 +815,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         if (!setup.isReady) {
           set({
             isComfyActionPending: false,
-            comfyError:
-              setup.statusMessage ||
-              setup.lastError ||
-              'ComfyUI is not installed yet. Complete setup first.'
+            comfyError: setupNotReadyMessage(setup)
           });
           return;
         }
@@ -1293,7 +858,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     setMode: (mode) => {
       set({ mode });
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
     },
 
     updateComfyUIConfig: (patch) => {
@@ -1316,7 +881,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           };
         })()
       }));
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
     },
 
     updateTxt2Img: (patch) => {
@@ -1332,7 +897,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             patch.resolution?.height ?? state.txt2img.resolution.height
           )
         },
-        steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 0, 200),
+        steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30)
       };
 
@@ -1341,7 +906,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       set({ txt2img: nextValue });
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
     },
 
     updateImg2Img: (patch) => {
@@ -1357,7 +922,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             patch.resolution?.height ?? state.img2img.resolution.height
           )
         },
-        steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 0, 200),
+        steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.img2img.cfgScale, 0, 30),
         denoiseStrength: clamp(
           patch.denoiseStrength ?? state.img2img.denoiseStrength,
@@ -1371,7 +936,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       set({ img2img: nextValue });
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
     },
 
     generateText2Image: async () => {
@@ -1414,7 +979,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         activeGenerationJobId: pendingPromptID,
         history: [pendingItem, ...current.history].slice(0, 24)
       }));
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
 
       try {
         const queued = await QueueText2Image({
@@ -1454,7 +1019,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             };
           })
         }));
-        queuePersistGenerationPanelState(toPersistedState(get()));
+        persistFromStoreSnapshot(get);
       } catch (error) {
         const message = toErrorMessage(error);
         set((current) => ({
@@ -1476,7 +1041,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             };
           })
         }));
-        queuePersistGenerationPanelState(toPersistedState(get()));
+        persistFromStoreSnapshot(get);
       }
     },
 
@@ -1505,7 +1070,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
               : item
           )
         }));
-        queuePersistGenerationPanelState(toPersistedState(get()));
+        persistFromStoreSnapshot(get);
       } catch (error) {
         set({ comfyError: toErrorMessage(error) });
       }
@@ -1513,7 +1078,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     clearHistory: () => {
       set({ history: [] });
-      queuePersistGenerationPanelState(toPersistedState(get()));
+      persistFromStoreSnapshot(get);
     }
   })
 );
@@ -1532,3 +1097,4 @@ if (import.meta.hot) {
     generationPanelHydrated = false;
   });
 }
+

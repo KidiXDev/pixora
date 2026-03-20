@@ -287,34 +287,11 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 
 	modifiedUnixNs := info.ModTime().UnixNano()
 	if stored != nil && stored.FileSize == info.Size() && stored.ModifiedUnixNs == modifiedUnixNs {
-		refreshMetadata = shouldRefreshPNGMetadata(ext, stored)
-		if refreshMetadata {
-			log.Printf("Refreshing stale PNG metadata for %s (missing parsed metadata)", path)
-		} else if stored.ThumbReady {
+		shouldContinue, nextRefreshMetadata := i.handleStoredImage(path, ext, stored)
+		if !shouldContinue {
 			return
 		}
-
-		if stored.Hash == "" {
-			return
-		}
-
-		if !refreshMetadata && i.thumbnailSvc.Exists(stored.Hash) {
-			if err := i.database.MarkThumbnailReadyByHash(context.Background(), stored.Hash); err != nil {
-				log.Printf("Failed marking existing thumbnail ready for %s: %v", path, err)
-				return
-			}
-			i.emitThumbnailReadyEvent(path, stored.Hash)
-			return
-		}
-
-		if !refreshMetadata {
-			select {
-			case <-i.ctx.Done():
-				return
-			case i.thumbJobs <- thumbnailJob{path: path, hash: stored.Hash}:
-			}
-			return
-		}
+		refreshMetadata = nextRefreshMetadata
 	}
 
 	// Acquire semaphore only when a write is actually needed.
@@ -326,65 +303,22 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 		return
 	}
 
-	var prompt, negPrompt, model, sampler, seed string
-	var cfgScale float64
-	var width, height int
-	metadataStatus := db.MetadataStatusUnknown
-
-	if ext == ".png" {
-		meta, parseCtx, err := parser.ParsePNGMetadataWithContext(path)
-		if err != nil {
-			metadataStatus = db.MetadataStatusMissing
-			if refreshMetadata {
-				log.Printf("PNG metadata unavailable after refresh for %s: %v", path, err)
-			}
-		} else {
-			if meta == nil {
-				meta = &parser.ImageMetadata{}
-			}
-
-			if i.pluginManager != nil {
-				if pluginMeta, _, pluginErr := i.pluginManager.ParsePNG(parseCtx); pluginErr == nil && pluginMeta != nil {
-					meta = mergeParsedMetadata(meta, pluginMeta)
-				} else if pluginErr != nil {
-					log.Printf("Plugin parse failed for %s: %v", path, pluginErr)
-				}
-			}
-
-			metadataStatus = classifyMetadataStatus(meta)
-			if refreshMetadata {
-				if metadataStatus == db.MetadataStatusPresent {
-					log.Printf("Fixed stale metadata for %s", path)
-				} else {
-					log.Printf("PNG metadata unavailable after refresh for %s", path)
-				}
-			}
-
-			prompt = meta.Prompt
-			negPrompt = meta.NegativePrompt
-			model = meta.Model
-			sampler = meta.Sampler
-			seed = meta.Seed
-			cfgScale = meta.CfgScale
-			width = meta.Width
-			height = meta.Height
-		}
-	}
+	metadata := i.extractMetadata(path, ext, refreshMetadata)
 
 	record := db.ImageRecord{
 		Path:           path,
 		Hash:           hash,
 		FileSize:       info.Size(),
 		ModifiedUnixNs: modifiedUnixNs,
-		MetadataStatus: metadataStatus,
-		Prompt:         prompt,
-		NegativePrompt: negPrompt,
-		Model:          model,
-		Sampler:        sampler,
-		Seed:           seed,
-		CfgScale:       cfgScale,
-		Width:          width,
-		Height:         height,
+		MetadataStatus: metadata.status,
+		Prompt:         metadata.prompt,
+		NegativePrompt: metadata.negativePrompt,
+		Model:          metadata.model,
+		Sampler:        metadata.sampler,
+		Seed:           metadata.seed,
+		CfgScale:       metadata.cfgScale,
+		Width:          metadata.width,
+		Height:         metadata.height,
 		AddedAt:        info.ModTime(),
 	}
 
@@ -399,6 +333,99 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 		return
 	case i.thumbJobs <- thumbnailJob{path: path, hash: hash}:
 	}
+}
+
+func (i *Indexer) handleStoredImage(path string, ext string, stored *db.ImageRecord) (bool, bool) {
+	refreshMetadata := shouldRefreshPNGMetadata(ext, stored)
+	if refreshMetadata {
+		log.Printf("Refreshing stale PNG metadata for %s (missing parsed metadata)", path)
+	} else if stored.ThumbReady {
+		return false, refreshMetadata
+	}
+
+	if stored.Hash == "" {
+		return false, refreshMetadata
+	}
+
+	if !refreshMetadata && i.thumbnailSvc.Exists(stored.Hash) {
+		if err := i.database.MarkThumbnailReadyByHash(context.Background(), stored.Hash); err != nil {
+			log.Printf("Failed marking existing thumbnail ready for %s: %v", path, err)
+			return false, refreshMetadata
+		}
+		i.emitThumbnailReadyEvent(path, stored.Hash)
+		return false, refreshMetadata
+	}
+
+	if !refreshMetadata {
+		select {
+		case <-i.ctx.Done():
+			return false, refreshMetadata
+		case i.thumbJobs <- thumbnailJob{path: path, hash: stored.Hash}:
+		}
+		return false, refreshMetadata
+	}
+
+	return true, refreshMetadata
+}
+
+type extractedMetadata struct {
+	status         int
+	prompt         string
+	negativePrompt string
+	model          string
+	sampler        string
+	seed           string
+	cfgScale       float64
+	width          int
+	height         int
+}
+
+func (i *Indexer) extractMetadata(path string, ext string, refreshMetadata bool) extractedMetadata {
+	result := extractedMetadata{status: db.MetadataStatusUnknown}
+	if ext != ".png" {
+		return result
+	}
+
+	meta, parseCtx, err := parser.ParsePNGMetadataWithContext(path)
+	if err != nil {
+		result.status = db.MetadataStatusMissing
+		if refreshMetadata {
+			log.Printf("PNG metadata unavailable after refresh for %s: %v", path, err)
+		}
+		return result
+	}
+
+	if meta == nil {
+		meta = &parser.ImageMetadata{}
+	}
+
+	if i.pluginManager != nil {
+		if pluginMeta, _, pluginErr := i.pluginManager.ParsePNG(parseCtx); pluginErr == nil && pluginMeta != nil {
+			meta = mergeParsedMetadata(meta, pluginMeta)
+		} else if pluginErr != nil {
+			log.Printf("Plugin parse failed for %s: %v", path, pluginErr)
+		}
+	}
+
+	result.status = classifyMetadataStatus(meta)
+	if refreshMetadata {
+		if result.status == db.MetadataStatusPresent {
+			log.Printf("Fixed stale metadata for %s", path)
+		} else {
+			log.Printf("PNG metadata unavailable after refresh for %s", path)
+		}
+	}
+
+	result.prompt = meta.Prompt
+	result.negativePrompt = meta.NegativePrompt
+	result.model = meta.Model
+	result.sampler = meta.Sampler
+	result.seed = meta.Seed
+	result.cfgScale = meta.CfgScale
+	result.width = meta.Width
+	result.height = meta.Height
+
+	return result
 }
 
 func mergeParsedMetadata(base *parser.ImageMetadata, override *parser.ImageMetadata) *parser.ImageMetadata {

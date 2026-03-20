@@ -34,7 +34,7 @@ import {
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { useForm, type FormValidateOrFn } from '@tanstack/react-form';
-import { BrushCleaningIcon } from 'lucide-react';
+import { BrushCleaningIcon, RefreshCcwIcon } from 'lucide-react';
 import * as React from 'react';
 import { z } from 'zod';
 
@@ -72,6 +72,7 @@ interface GenerationParametersPanelProps {
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
   isGenerating: boolean;
+  onRefreshModelCatalog: () => void;
   onTxt2ImgChange: (patch: Partial<Txt2ImgParameters>) => void;
   onImg2ImgChange: (patch: Partial<Img2ImgParameters>) => void;
 }
@@ -81,6 +82,36 @@ interface RenderNumericParameterFieldsOptions {
   showDenoise?: boolean;
 }
 
+function isSameResolution(
+  a: { width: number; height: number },
+  b: { width: number; height: number }
+): boolean {
+  return a.width === b.width && a.height === b.height;
+}
+
+function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
+  return (
+    a.prompt === b.prompt &&
+    a.negativePrompt === b.negativePrompt &&
+    a.seed === b.seed &&
+    a.steps === b.steps &&
+    a.cfgScale === b.cfgScale &&
+    isSameResolution(a.resolution, b.resolution) &&
+    a.model === b.model &&
+    a.vae === b.vae &&
+    a.sampler === b.sampler &&
+    a.scheduler === b.scheduler
+  );
+}
+
+function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
+  return (
+    isSameTxt2Img(a, b) &&
+    a.sourceImagePath === b.sourceImagePath &&
+    a.denoiseStrength === b.denoiseStrength
+  );
+}
+
 function GenerationParametersPanelBase({
   mode,
   modelCatalog,
@@ -88,6 +119,7 @@ function GenerationParametersPanelBase({
   txt2img,
   img2img,
   isGenerating,
+  onRefreshModelCatalog,
   onTxt2ImgChange,
   onImg2ImgChange
 }: GenerationParametersPanelProps) {
@@ -654,30 +686,55 @@ function GenerationParametersPanelBase({
                 >
                   VAE
                 </FieldLabel>
-                <Select
-                  name={field.name}
-                  value={field.state.value}
-                  onValueChange={(value) => field.handleChange(value)}
-                >
-                  <SelectTrigger
-                    id={field.name}
-                    aria-invalid={isInvalid}
-                    className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                <div className="flex items-center gap-1.5">
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      name={field.name}
+                      value={field.state.value}
+                      onValueChange={(value) => field.handleChange(value)}
+                    >
+                      <SelectTrigger
+                        id={field.name}
+                        aria-invalid={isInvalid}
+                        className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                      >
+                        <SelectValue
+                          placeholder={
+                            modelCatalogLoading
+                              ? 'Loading VAEs...'
+                              : 'Select VAE'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vaeOptions.map((item) => (
+                          <SelectItem
+                            key={item}
+                            value={item}
+                            className="text-xs"
+                          >
+                            {item}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-10 shrink-0 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors shadow-sm"
+                    onClick={onRefreshModelCatalog}
+                    disabled={modelCatalogLoading || isGenerating}
+                    title="Refresh"
                   >
-                    <SelectValue
-                      placeholder={
-                        modelCatalogLoading ? 'Loading VAEs...' : 'Select VAE'
-                      }
+                    <RefreshCcwIcon
+                      className={`size-4 ${
+                        modelCatalogLoading ? 'animate-spin' : ''
+                      }`}
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vaeOptions.map((item) => (
-                      <SelectItem key={item} value={item} className="text-xs">
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  </Button>
+                </div>
                 {isInvalid && <FieldError errors={field.state.meta.errors} />}
               </Field>
             );
@@ -699,10 +756,10 @@ function GenerationParametersPanelBase({
     const currentTxt2Img = form.getFieldValue('txt2img');
     const currentImg2Img = form.getFieldValue('img2img');
 
-    if (JSON.stringify(currentTxt2Img) !== JSON.stringify(txt2img)) {
+    if (!isSameTxt2Img(currentTxt2Img, txt2img)) {
       form.setFieldValue('txt2img', txt2img);
     }
-    if (JSON.stringify(currentImg2Img) !== JSON.stringify(img2img)) {
+    if (!isSameImg2Img(currentImg2Img, img2img)) {
       form.setFieldValue('img2img', img2img);
     }
   }, [form, txt2img, img2img]);
@@ -746,7 +803,9 @@ function GenerationParametersPanelBase({
                     title="Format Prompts"
                   >
                     <BrushCleaningIcon className="size-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-tight">Format</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight">
+                      Format
+                    </span>
                   </Button>
                 </div>
 
@@ -847,7 +906,9 @@ function GenerationParametersPanelBase({
                     title="Format Prompts"
                   >
                     <BrushCleaningIcon className="size-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-tight">Format</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight">
+                      Format
+                    </span>
                   </Button>
                 </div>
 
@@ -964,4 +1025,6 @@ function GenerationParametersPanelBase({
   );
 }
 
-export const GenerationParametersPanel = React.memo(GenerationParametersPanelBase);
+export const GenerationParametersPanel = React.memo(
+  GenerationParametersPanelBase
+);

@@ -2,18 +2,18 @@ import { BackendConfigDrawer } from '@/components/image-generation/backend-confi
 import { ComfyUILogsDialog } from '@/components/image-generation/comfyui-logs-dialog';
 import { ComfyUIOnboarding } from '@/components/image-generation/comfyui-onboarding';
 import { ComfyUISetupDialog } from '@/components/image-generation/comfyui-setup-dialog';
-import { useConfirmation } from '@/components/providers/confirmation-provider';
 import { GenerationParametersPanel } from '@/components/image-generation/generation-parameters-panel';
 import { GenerationPreviewPanel } from '@/components/image-generation/generation-preview-panel';
 import { GenerationSideNav } from '@/components/image-generation/generation-side-nav';
 import { GenerationWorkflowDialog } from '@/components/image-generation/generation-workflow-dialog';
+import { useConfirmation } from '@/components/providers/confirmation-provider';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup
 } from '@/components/ui/resizable';
-import { Call } from '@wailsio/runtime';
 import { useImageGenerationStore } from '@/stores/image-generation-store';
+import { Call } from '@wailsio/runtime';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
@@ -57,6 +57,7 @@ export default function ImageGenerationPage() {
     img2img,
     history,
     initializeComfyLifecycle,
+    loadModelCatalog,
     refreshComfySetup,
     installComfyUI,
     saveComfyUIConfig,
@@ -87,6 +88,7 @@ export default function ImageGenerationPage() {
       img2img: state.img2img,
       history: state.history,
       initializeComfyLifecycle: state.initializeComfyLifecycle,
+      loadModelCatalog: state.loadModelCatalog,
       refreshComfySetup: state.refreshComfySetup,
       installComfyUI: state.installComfyUI,
       saveComfyUIConfig: state.saveComfyUIConfig,
@@ -101,19 +103,15 @@ export default function ImageGenerationPage() {
       interruptGeneration: state.interruptGeneration
     }))
   );
-  const {
-    comfyLogs,
-    isComfyLogsLoading,
-    loadComfyLogs,
-    clearComfyLogs
-  } = useImageGenerationStore(
-    useShallow((state) => ({
-      comfyLogs: state.comfyLogs,
-      isComfyLogsLoading: state.isComfyLogsLoading,
-      loadComfyLogs: state.loadComfyLogs,
-      clearComfyLogs: state.clearComfyLogs
-    }))
-  );
+  const { comfyLogs, isComfyLogsLoading, loadComfyLogs, clearComfyLogs } =
+    useImageGenerationStore(
+      useShallow((state) => ({
+        comfyLogs: state.comfyLogs,
+        isComfyLogsLoading: state.isComfyLogsLoading,
+        loadComfyLogs: state.loadComfyLogs,
+        clearComfyLogs: state.clearComfyLogs
+      }))
+    );
 
   useEffect(() => {
     void initializeComfyLifecycle();
@@ -142,10 +140,7 @@ export default function ImageGenerationPage() {
 
   useEffect(() => {
     const nextError = modelCatalogError.trim();
-    if (
-      nextError === '' ||
-      nextError === lastModelCatalogErrorRef.current
-    ) {
+    if (nextError === '' || nextError === lastModelCatalogErrorRef.current) {
       lastModelCatalogErrorRef.current = nextError;
       return;
     }
@@ -195,13 +190,9 @@ export default function ImageGenerationPage() {
     void generateText2Image();
   }, [mode, comfySetup, comfyStatus, generateText2Image]);
 
-
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key === 'Enter'
-      ) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         handleGenerate();
         event.preventDefault();
       }
@@ -210,7 +201,6 @@ export default function ImageGenerationPage() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [handleGenerate]);
-
 
   const buildWorkflowRequest = useCallback(
     () => ({
@@ -230,7 +220,6 @@ export default function ImageGenerationPage() {
     }),
     [mode, txt2img]
   );
-
 
   const callGenerationService = async (
     methodNames: readonly string[],
@@ -470,8 +459,8 @@ export default function ImageGenerationPage() {
           className="flex-1 items-stretch"
         >
           <ResizablePanel
-            defaultSize="30"
-            minSize="27"
+            defaultSize="40"
+            minSize="40"
             maxSize="65"
             className="flex flex-col bg-card/10 min-h-0 overflow-hidden"
           >
@@ -482,11 +471,12 @@ export default function ImageGenerationPage() {
               txt2img={txt2img}
               img2img={img2img}
               isGenerating={isGenerating}
+              onRefreshModelCatalog={() => {
+                void loadModelCatalog();
+              }}
               onTxt2ImgChange={updateTxt2Img}
               onImg2ImgChange={updateImg2Img}
             />
-
-
           </ResizablePanel>
 
           <ResizableHandle
