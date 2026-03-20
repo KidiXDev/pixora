@@ -695,6 +695,18 @@ function GenerationParametersPanelBase({
     return () => sub.unsubscribe();
   }, [form.store, onTxt2ImgChange, onImg2ImgChange]);
 
+  React.useEffect(() => {
+    const currentTxt2Img = form.getFieldValue('txt2img');
+    const currentImg2Img = form.getFieldValue('img2img');
+
+    if (JSON.stringify(currentTxt2Img) !== JSON.stringify(txt2img)) {
+      form.setFieldValue('txt2img', txt2img);
+    }
+    if (JSON.stringify(currentImg2Img) !== JSON.stringify(img2img)) {
+      form.setFieldValue('img2img', img2img);
+    }
+  }, [form, txt2img, img2img]);
+
   return (
     <div className="flex flex-col h-full bg-background/30 overflow-hidden">
       <div className="flex items-center justify-between px-6 py-5 border-b border-border/10 bg-muted/20 backdrop-blur-md">

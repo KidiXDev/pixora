@@ -37,6 +37,15 @@ const (
 	generationQueueStateError     = "error"
 )
 
+const (
+	defaultGenerationSteps     = 28
+	defaultGenerationCFGScale  = 7.0
+	defaultGenerationWidth     = 1024
+	defaultGenerationHeight    = 1024
+	defaultGenerationSampler   = "euler_ancestral"
+	defaultGenerationScheduler = "normal"
+)
+
 var checkpointLikeExtensions = map[string]struct{}{
 	".safetensor":  {},
 	".safetensors": {},
@@ -232,6 +241,7 @@ func (s *GenerationService) QueueText2Image(req GenerationRequest) (*QueueGenera
 	if prompt == "" {
 		return nil, fmt.Errorf("prompt is required")
 	}
+	req = normalizeGenerationRequest(req)
 
 	jobID := strings.TrimSpace(req.RequestID)
 	if jobID == "" {
@@ -587,6 +597,7 @@ func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req Ge
 	if mode != "txt2img" {
 		return nil, "", fmt.Errorf("only txt2img workflow preview is supported for now")
 	}
+	req = normalizeGenerationRequest(req)
 
 	cfg := s.config.GetComfyUIConfig()
 	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
@@ -616,6 +627,43 @@ func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req Ge
 		OutputDir:    outputDir,
 		ResolvedSeed: resolvedSeed,
 	}, runtimeRoot, nil
+}
+
+func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
+	if req.Steps <= 0 {
+		req.Steps = defaultGenerationSteps
+	}
+	if req.CFGScale <= 0 {
+		req.CFGScale = defaultGenerationCFGScale
+	}
+	if req.Width <= 0 {
+		req.Width = defaultGenerationWidth
+	}
+	if req.Height <= 0 {
+		req.Height = defaultGenerationHeight
+	}
+
+	sampler := strings.TrimSpace(req.Sampler)
+	if sampler == "" {
+		req.Sampler = defaultGenerationSampler
+	} else {
+		normalizedSampler := strings.ToLower(sampler)
+		switch normalizedSampler {
+		case "euler a", "euler_a":
+			req.Sampler = "euler_ancestral"
+		default:
+			req.Sampler = sampler
+		}
+	}
+
+	scheduler := strings.TrimSpace(req.Scheduler)
+	if scheduler == "" {
+		req.Scheduler = defaultGenerationScheduler
+	} else {
+		req.Scheduler = scheduler
+	}
+
+	return req
 }
 
 type AutocompleteQuery struct {

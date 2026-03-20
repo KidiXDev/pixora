@@ -69,8 +69,7 @@ export function ComfyUISetupDialog({
   const isDownloadRunning = useMemo(
     () =>
       setup.steps.some(
-        (step) =>
-          step.id === 'download_archive' && step.status === 'running'
+        (step) => step.id === 'download_archive' && step.status === 'running'
       ),
     [setup.steps]
   );
@@ -180,9 +179,6 @@ export function ComfyUISetupDialog({
             >
               <Terminal className="mr-2 h-4 w-4" />
               {verbose ? 'Hide verbose' : 'Verbose'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={onRefresh}>
-              Refresh
             </Button>
           </div>
 

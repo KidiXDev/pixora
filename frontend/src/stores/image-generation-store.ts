@@ -1,4 +1,8 @@
 import {
+  defaultImg2ImgParameters,
+  defaultTxt2ImgParameters
+} from '@/constants/generation-defaults';
+import {
   ComfyUIConfig,
   ComfyUILogEntry,
   ComfyUISetupStatus,
@@ -116,22 +120,11 @@ const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
 };
 
 const defaultTxt2Img: Txt2ImgParameters = {
-  prompt: '',
-  negativePrompt: '',
-  seed: '',
-  steps: 28,
-  cfgScale: 7,
-  resolution: { width: 1024, height: 1024 },
-  model: '',
-  vae: '',
-  sampler: '',
-  scheduler: ''
+  ...defaultTxt2ImgParameters
 };
 
 const defaultImg2Img: Img2ImgParameters = {
-  ...defaultTxt2Img,
-  sourceImagePath: '',
-  denoiseStrength: 0.55
+  ...defaultImg2ImgParameters
 };
 
 const defaultState: PersistedImageGenerationState = {
@@ -530,9 +523,28 @@ function applyCatalogDefaults(
   img2img: Img2ImgParameters,
   catalog: GenerationModelCatalog
 ): { txt2img: Txt2ImgParameters; img2img: Img2ImgParameters } {
+  const pickPreferredOption = (
+    preferred: string,
+    options: string[],
+    fallback: string
+  ): string => {
+    if (preferred && options.includes(preferred)) {
+      return preferred;
+    }
+    return options[0] ?? fallback;
+  };
+
   const firstCheckpoint = catalog.checkpoints[0] ?? '';
-  const firstSampler = catalog.samplers[0] ?? txt2img.sampler;
-  const firstScheduler = catalog.schedulers[0] ?? txt2img.scheduler;
+  const firstSampler = pickPreferredOption(
+    txt2img.sampler,
+    catalog.samplers,
+    defaultState.txt2img.sampler
+  );
+  const firstScheduler = pickPreferredOption(
+    txt2img.scheduler,
+    catalog.schedulers,
+    defaultState.txt2img.scheduler
+  );
   const firstVAE = catalog.vaes[0] ?? 'Auto';
 
   return {
