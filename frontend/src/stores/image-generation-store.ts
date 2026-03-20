@@ -338,7 +338,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     comfyError: '',
     modelCatalogError: '',
     isComfyActionPending: false,
-    isComfySetupLoading: false,
+    isComfySetupLoading: true,
     isComfySetupInstalling: false,
     isModelCatalogLoading: false,
     isComfyLogsLoading: false,

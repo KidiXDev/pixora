@@ -807,7 +807,7 @@ func (m *ComfyUIManager) prepareRuntimeConfig(cfg config.ComfyUIBackendConfig) (
 		return config.ComfyUIBackendConfig{}, fmt.Errorf("create output dir: %w", err)
 	}
 
-	modelsRoot := filepath.Join(rootDir, "data", "sd")
+	modelsRoot := resolvePreferredModelsRoot(rootDir)
 	for _, dir := range comfyModelSubdirs {
 		if err := os.MkdirAll(filepath.Join(modelsRoot, dir), 0755); err != nil {
 			return config.ComfyUIBackendConfig{}, fmt.Errorf("create model dir %s: %w", dir, err)
@@ -925,6 +925,36 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 	}, "\n") + "\n"
 
 	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func resolvePreferredModelsRoot(runtimeRoot string) string {
+	defaultRoot := filepath.Join(runtimeRoot, "data", "sd")
+	candidates := []string{defaultRoot}
+
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(cwd, "data", "sd"))
+	}
+
+	bestPath := ""
+	bestScore := -1
+	for _, candidate := range uniqueAndSorted(candidates) {
+		info, statErr := os.Stat(candidate)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+
+		score := scoreModelsRoot(candidate)
+		if score > bestScore {
+			bestScore = score
+			bestPath = candidate
+		}
+	}
+
+	if strings.TrimSpace(bestPath) != "" {
+		return bestPath
+	}
+
+	return defaultRoot
 }
 
 func (m *ComfyUIManager) syncBundledCustomNodes(rootDir string) error {

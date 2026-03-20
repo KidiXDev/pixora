@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/resizable';
 import { useImageGenerationStore } from '@/stores/image-generation-store';
 import { Call } from '@wailsio/runtime';
+import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
@@ -50,6 +51,7 @@ export default function ImageGenerationPage() {
     modelCatalogError,
     isModelCatalogLoading,
     isComfyActionPending,
+    isComfySetupLoading,
     isComfySetupInstalling,
     isComfyConfigSaving,
     isGenerating,
@@ -81,6 +83,7 @@ export default function ImageGenerationPage() {
       modelCatalogError: state.modelCatalogError,
       isModelCatalogLoading: state.isModelCatalogLoading,
       isComfyActionPending: state.isComfyActionPending,
+      isComfySetupLoading: state.isComfySetupLoading,
       isComfySetupInstalling: state.isComfySetupInstalling,
       isComfyConfigSaving: state.isComfyConfigSaving,
       isGenerating: state.isGenerating,
@@ -358,10 +361,11 @@ export default function ImageGenerationPage() {
   };
 
   const shouldShowSetupOnboarding =
-    !comfySetup.isReady ||
-    comfySetup.requiresOnboarding ||
-    comfySetup.state === 'installing' ||
-    comfySetup.permissionProblem;
+    !isComfySetupLoading &&
+    (!comfySetup.isReady ||
+      comfySetup.requiresOnboarding ||
+      comfySetup.state === 'installing' ||
+      comfySetup.permissionProblem);
 
   const handleInstallComfyUI = useCallback(async () => {
     if (isComfySetupInstalling) {
@@ -381,6 +385,29 @@ export default function ImageGenerationPage() {
 
     void installComfyUI();
   }, [confirm, installComfyUI, isComfySetupInstalling]);
+
+  if (isComfySetupLoading) {
+    return (
+      <div className="flex h-full overflow-hidden bg-[radial-gradient(ellipse_at_top_right,var(--tw-gradient-stops))] from-primary/5 via-background to-background">
+        <GenerationSideNav
+          mode={mode}
+          onModeChange={setMode}
+          onOpenSettings={() => setIsConfigSheetOpen(true)}
+        />
+        <main className="flex min-w-0 flex-1 items-center justify-center px-8">
+          <div className="flex max-w-md flex-col items-center gap-4 text-center">
+            <Loader2 className="size-7 animate-spin text-primary" />
+            <h2 className="font-semibold text-lg text-foreground">
+              Preparing Image Generation
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Checking ComfyUI setup and loading your generation workspace...
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (shouldShowSetupOnboarding) {
     return (

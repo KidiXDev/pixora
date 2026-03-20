@@ -16,7 +16,7 @@ export function Titlebar() {
 
   return (
     <div
-      className="flex h-10 w-full shrink-0 items-center justify-between border-b border-white/10 bg-background text-foreground shadow-sm"
+      className="relative z-10000 flex h-10 w-full shrink-0 items-center justify-between border-b border-white/10 bg-background text-foreground shadow-sm"
       style={{ '--wails-draggable': 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center px-4 font-semibold text-sm">Pixora</div>
