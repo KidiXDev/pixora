@@ -147,6 +147,14 @@ const defaultState: PersistedImageGenerationState = {
   history: []
 };
 
+function fallbackIfBlank(value: string | undefined, fallback: string): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  return value.trim() !== '' ? value : fallback;
+}
+
 function sanitizePersistedState(
   raw: unknown
 ): PersistedImageGenerationState | null {
@@ -167,8 +175,23 @@ function sanitizePersistedState(
       ...defaultState.txt2img.resolution,
       ...(candidate.txt2img?.resolution ?? {})
     },
-    vae: candidate.txt2img?.vae || defaultState.txt2img.vae,
-    scheduler: candidate.txt2img?.scheduler || defaultState.txt2img.scheduler
+    prompt: fallbackIfBlank(
+      candidate.txt2img?.prompt,
+      defaultState.txt2img.prompt
+    ),
+    negativePrompt: fallbackIfBlank(
+      candidate.txt2img?.negativePrompt,
+      defaultState.txt2img.negativePrompt
+    ),
+    sampler: fallbackIfBlank(
+      candidate.txt2img?.sampler,
+      defaultState.txt2img.sampler
+    ),
+    vae: fallbackIfBlank(candidate.txt2img?.vae, defaultState.txt2img.vae),
+    scheduler: fallbackIfBlank(
+      candidate.txt2img?.scheduler,
+      defaultState.txt2img.scheduler
+    )
   };
   const nextImg2Img: Img2ImgParameters = {
     ...defaultState.img2img,
@@ -177,8 +200,23 @@ function sanitizePersistedState(
       ...defaultState.img2img.resolution,
       ...(candidate.img2img?.resolution ?? {})
     },
-    vae: candidate.img2img?.vae || defaultState.img2img.vae,
-    scheduler: candidate.img2img?.scheduler || defaultState.img2img.scheduler
+    prompt: fallbackIfBlank(
+      candidate.img2img?.prompt,
+      defaultState.img2img.prompt
+    ),
+    negativePrompt: fallbackIfBlank(
+      candidate.img2img?.negativePrompt,
+      defaultState.img2img.negativePrompt
+    ),
+    sampler: fallbackIfBlank(
+      candidate.img2img?.sampler,
+      defaultState.img2img.sampler
+    ),
+    vae: fallbackIfBlank(candidate.img2img?.vae, defaultState.img2img.vae),
+    scheduler: fallbackIfBlank(
+      candidate.img2img?.scheduler,
+      defaultState.img2img.scheduler
+    )
   };
 
   const normalizedTxt2Img: Txt2ImgParameters = {
@@ -523,44 +561,61 @@ function applyCatalogDefaults(
   img2img: Img2ImgParameters,
   catalog: GenerationModelCatalog
 ): { txt2img: Txt2ImgParameters; img2img: Img2ImgParameters } {
-  const pickPreferredOption = (
-    preferred: string,
+  const pickOption = (
+    currentValue: string,
     options: string[],
     fallback: string
   ): string => {
-    if (preferred && options.includes(preferred)) {
-      return preferred;
+    if (options.length === 0) {
+      return currentValue || fallback;
     }
-    return options[0] ?? fallback;
+
+    if (currentValue && options.includes(currentValue)) {
+      return currentValue;
+    }
+
+    return options[0];
   };
 
-  const firstCheckpoint = catalog.checkpoints[0] ?? '';
-  const firstSampler = pickPreferredOption(
+  const nextTxt2ImgModel = pickOption(txt2img.model, catalog.checkpoints, '');
+  const nextImg2ImgModel = pickOption(img2img.model, catalog.checkpoints, '');
+  const nextTxt2ImgSampler = pickOption(
     txt2img.sampler,
     catalog.samplers,
     defaultState.txt2img.sampler
   );
-  const firstScheduler = pickPreferredOption(
+  const nextImg2ImgSampler = pickOption(
+    img2img.sampler,
+    catalog.samplers,
+    defaultState.img2img.sampler
+  );
+  const nextTxt2ImgScheduler = pickOption(
     txt2img.scheduler,
     catalog.schedulers,
     defaultState.txt2img.scheduler
   );
-  const firstVAE = catalog.vaes[0] ?? 'Auto';
+  const nextImg2ImgScheduler = pickOption(
+    img2img.scheduler,
+    catalog.schedulers,
+    defaultState.img2img.scheduler
+  );
+  const nextTxt2ImgVAE = pickOption(txt2img.vae, catalog.vaes, 'Auto');
+  const nextImg2ImgVAE = pickOption(img2img.vae, catalog.vaes, 'Auto');
 
   return {
     txt2img: {
       ...txt2img,
-      model: txt2img.model || firstCheckpoint,
-      sampler: txt2img.sampler || firstSampler,
-      scheduler: txt2img.scheduler || firstScheduler,
-      vae: txt2img.vae || firstVAE
+      model: nextTxt2ImgModel,
+      sampler: nextTxt2ImgSampler,
+      scheduler: nextTxt2ImgScheduler,
+      vae: nextTxt2ImgVAE
     },
     img2img: {
       ...img2img,
-      model: img2img.model || firstCheckpoint,
-      sampler: img2img.sampler || firstSampler,
-      scheduler: img2img.scheduler || firstScheduler,
-      vae: img2img.vae || firstVAE
+      model: nextImg2ImgModel,
+      sampler: nextImg2ImgSampler,
+      scheduler: nextImg2ImgScheduler,
+      vae: nextImg2ImgVAE
     }
   };
 }

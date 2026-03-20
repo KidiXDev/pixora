@@ -111,6 +111,8 @@ type GenerationQueueJob struct {
 	req      GenerationRequest
 	cancel   context.CancelFunc
 	canceled bool
+
+	comfyPromptID string
 }
 
 type QueueGenerationResponse struct {
@@ -324,6 +326,8 @@ func (s *GenerationService) CancelGenerationJob(jobID string) error {
 	}
 
 	job.canceled = true
+	comfyPromptID := strings.TrimSpace(job.comfyPromptID)
+	isRunning := job.State == generationQueueStateRunning
 	if job.cancel != nil {
 		job.cancel()
 	}
@@ -334,6 +338,14 @@ func (s *GenerationService) CancelGenerationJob(jobID string) error {
 		job.FinishedAt = time.Now().Format(time.RFC3339)
 	}
 	s.queueMu.Unlock()
+
+	if isRunning && s.config != nil {
+		cfg := s.config.GetComfyUIConfig()
+		baseURL := buildComfyBaseURL(cfg)
+		if err := interruptComfyGeneration(baseURL, comfyPromptID); err != nil {
+			log.Printf("[pixora] Failed to interrupt ComfyUI generation for job=%s prompt=%s: %v", trimmed, comfyPromptID, err)
+		}
+	}
 
 	s.emitGenerationStatus(GenerationStatus{
 		PromptID:  trimmed,
@@ -376,11 +388,18 @@ func (s *GenerationService) processQueue() {
 		job.StartedAt = time.Now().Format(time.RFC3339)
 		s.queueMu.Unlock()
 
-		result, err := s.generateText2ImageInternal(ctx, job.req, job.JobID)
+		result, err := s.generateText2ImageInternal(ctx, job.req, job.JobID, func(promptID string) {
+			s.queueMu.Lock()
+			if trackedJob, ok := s.jobs[job.JobID]; ok {
+				trackedJob.comfyPromptID = strings.TrimSpace(promptID)
+			}
+			s.queueMu.Unlock()
+		})
 		cancel()
 
 		s.queueMu.Lock()
 		job.cancel = nil
+		job.comfyPromptID = ""
 		job.FinishedAt = time.Now().Format(time.RFC3339)
 		if job.canceled {
 			job.State = generationQueueStateCanceled
@@ -416,7 +435,7 @@ func (s *GenerationService) dequeueNextRunnableJob() *GenerationQueueJob {
 }
 
 func (s *GenerationService) GenerateText2Image(req GenerationRequest) (*GenerationResult, error) {
-	return s.generateText2ImageInternal(context.Background(), req, "")
+	return s.generateText2ImageInternal(context.Background(), req, "", nil)
 }
 
 func (s *GenerationService) PreviewText2ImageWorkflow(req GenerationRequest) (string, error) {
@@ -466,7 +485,7 @@ func (s *GenerationService) PrepareEmbeddedText2ImageWorkflow(req GenerationRequ
 	return relativePath, nil
 }
 
-func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string) (*GenerationResult, error) {
+func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string, onPromptQueued func(string)) (*GenerationResult, error) {
 	if s.config == nil {
 		return nil, fmt.Errorf("missing config manager")
 	}
@@ -498,6 +517,9 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	promptID, err := postComfyPrompt(baseURL, workflow, clientID)
 	if err != nil {
 		return nil, err
+	}
+	if onPromptQueued != nil {
+		onPromptQueued(promptID)
 	}
 
 	emitPromptID := strings.TrimSpace(req.RequestID)
@@ -578,6 +600,43 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	s.emitGenerationResult(*result)
 
 	return result, nil
+}
+
+func interruptComfyGeneration(baseURL string, promptID string) error {
+	endpoint := fmt.Sprintf("%s/interrupt", baseURL)
+
+	var body io.Reader
+	if strings.TrimSpace(promptID) != "" {
+		payload, err := json.Marshal(map[string]string{
+			"prompt_id": strings.TrimSpace(promptID),
+		})
+		if err != nil {
+			return fmt.Errorf("serialize comfy interrupt payload: %w", err)
+		}
+		body = bytes.NewReader(payload)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, body)
+	if err != nil {
+		return fmt.Errorf("create comfy interrupt request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request comfy interrupt: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return fmt.Errorf("comfy interrupt failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	return nil
 }
 
 func (s *GenerationService) buildText2ImageWorkflowPreview(req GenerationRequest) (*WorkflowPreview, error) {
