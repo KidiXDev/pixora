@@ -15,6 +15,9 @@ export const DEFAULT_CFG_SCALE = 7;
 export const DEFAULT_DENOISE_STRENGTH = 0.55;
 export const DEFAULT_SAMPLER = 'euler_ancestral';
 export const DEFAULT_SCHEDULER = 'normal';
+export const DEFAULT_REFINE_STEPS = 14;
+export const DEFAULT_REFINE_SCALE_BY = 1.5;
+export const DEFAULT_REFINE_DENOISE_STRENGTH = 0.35;
 
 export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   prompt: DEFAULT_GENERATION_PROMPT,
@@ -26,7 +29,16 @@ export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   model: '',
   vae: '',
   sampler: DEFAULT_SAMPLER,
-  scheduler: DEFAULT_SCHEDULER
+  scheduler: DEFAULT_SCHEDULER,
+  refine: {
+    enabled: false,
+    upscaleMode: 'latent',
+    upscaleMethod: 'nearest-exact',
+    upscaleModel: '',
+    scaleBy: DEFAULT_REFINE_SCALE_BY,
+    steps: DEFAULT_REFINE_STEPS,
+    denoiseStrength: DEFAULT_REFINE_DENOISE_STRENGTH
+  }
 };
 
 export const defaultImg2ImgParameters: Img2ImgParameters = {
@@ -34,3 +46,4 @@ export const defaultImg2ImgParameters: Img2ImgParameters = {
   sourceImagePath: '',
   denoiseStrength: DEFAULT_DENOISE_STRENGTH
 };
+

@@ -388,6 +388,51 @@ export class GenerationPanelImg2Img {
     }
 }
 
+export class GenerationPanelRefine {
+    "enabled": boolean;
+    "upscaleMode": string;
+    "upscaleMethod": string;
+    "upscaleModel": string;
+    "scaleBy": number;
+    "steps": number;
+    "denoiseStrength": number;
+
+    /** Creates a new GenerationPanelRefine instance. */
+    constructor($$source: Partial<GenerationPanelRefine> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("upscaleMode" in $$source)) {
+            this["upscaleMode"] = "";
+        }
+        if (!("upscaleMethod" in $$source)) {
+            this["upscaleMethod"] = "";
+        }
+        if (!("upscaleModel" in $$source)) {
+            this["upscaleModel"] = "";
+        }
+        if (!("scaleBy" in $$source)) {
+            this["scaleBy"] = 0;
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("denoiseStrength" in $$source)) {
+            this["denoiseStrength"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelRefine instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelRefine {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationPanelRefine($$parsedSource as Partial<GenerationPanelRefine>);
+    }
+}
+
 export class GenerationPanelResolution {
     "width": number;
     "height": number;
@@ -424,6 +469,7 @@ export class GenerationPanelTxt2Img {
     "vae": string;
     "sampler": string;
     "scheduler": string;
+    "refine": GenerationPanelRefine;
 
     /** Creates a new GenerationPanelTxt2Img instance. */
     constructor($$source: Partial<GenerationPanelTxt2Img> = {}) {
@@ -457,6 +503,9 @@ export class GenerationPanelTxt2Img {
         if (!("scheduler" in $$source)) {
             this["scheduler"] = "";
         }
+        if (!("refine" in $$source)) {
+            this["refine"] = (new GenerationPanelRefine());
+        }
 
         Object.assign(this, $$source);
     }
@@ -466,9 +515,13 @@ export class GenerationPanelTxt2Img {
      */
     static createFrom($$source: any = {}): GenerationPanelTxt2Img {
         const $$createField5_0 = $$createType13;
+        const $$createField10_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+        }
+        if ("refine" in $$parsedSource) {
+            $$parsedSource["refine"] = $$createField10_0($$parsedSource["refine"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
     }
@@ -615,8 +668,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType14;
-        const $$createField3_0 = $$createType14;
+        const $$createField1_0 = $$createType15;
+        const $$createField3_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -643,4 +696,5 @@ const $$createType10 = GenerationPanelImg2Img.createFrom;
 const $$createType11 = GenerationPanelHistoryItem.createFrom;
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = GenerationPanelResolution.createFrom;
-const $$createType14 = WindowBounds.createFrom;
+const $$createType14 = GenerationPanelRefine.createFrom;
+const $$createType15 = WindowBounds.createFrom;

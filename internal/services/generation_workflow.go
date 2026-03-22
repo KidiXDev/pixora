@@ -141,6 +141,21 @@ func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
 		req.Scheduler = scheduler
 	}
 
+	req.Refine.UpscaleMode = normalizeRefineUpscaleMode(req.Refine.UpscaleMode)
+	req.Refine.UpscaleMethod = normalizeRefineUpscaleMethod(req.Refine.UpscaleMethod)
+	if req.Refine.ScaleBy <= 0 {
+		req.Refine.ScaleBy = 1.5
+	}
+	req.Refine.ScaleBy = clampFloat(req.Refine.ScaleBy, 1.05, 4)
+	if req.Refine.Steps <= 0 {
+		req.Refine.Steps = 14
+	}
+	req.Refine.Steps = clampInt(req.Refine.Steps, 1, 80)
+	if req.Refine.DenoiseStrength <= 0 {
+		req.Refine.DenoiseStrength = 0.35
+	}
+	req.Refine.DenoiseStrength = clampFloat(req.Refine.DenoiseStrength, 0.05, 1)
+
 	return req
 }
 
@@ -191,6 +206,7 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	ksamplerNode.Inputs["seed"] = seedValue
 	ksamplerNode.Inputs["steps"] = clampInt(req.Steps, 1, 200)
 	ksamplerNode.Inputs["cfg"] = clampFloat(req.CFGScale, 1, 30)
+	ksamplerNode.Inputs["denoise"] = 1
 	if strings.TrimSpace(req.Sampler) != "" {
 		ksamplerNode.Inputs["sampler_name"] = strings.TrimSpace(req.Sampler)
 	}
@@ -236,6 +252,97 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	} else {
 		decodeNode.Inputs["vae"] = buildWorkflowLink(checkpointNodeID, 2)
 	}
+
+	finalSamplesNodeID := ksamplerNodeID
+	if req.Refine.Enabled {
+		refineLatentInputNodeID := ""
+		switch req.Refine.UpscaleMode {
+		case "model":
+			upscaleModel := strings.TrimSpace(req.Refine.UpscaleModel)
+			if upscaleModel == "" {
+				return fmt.Errorf("refine upscale model is required when using model mode")
+			}
+
+			preRefineDecodeNodeID := nextWorkflowNodeID(graph)
+			graph[preRefineDecodeNodeID] = comfyWorkflowNode{
+				ClassType: "VAEDecode",
+				Inputs: map[string]any{
+					"samples": buildWorkflowLink(ksamplerNodeID, 0),
+					"vae":     decodeNode.Inputs["vae"],
+				},
+				Meta: map[string]any{
+					"title": "Refine Decode",
+				},
+			}
+
+			upscaleNodeID := nextWorkflowNodeID(graph)
+			graph[upscaleNodeID] = comfyWorkflowNode{
+				ClassType: "PixoraImageUpscaler",
+				Inputs: map[string]any{
+					"image":          buildWorkflowLink(preRefineDecodeNodeID, 0),
+					"upscale_model":  upscaleModel,
+					"multiplier":     clampFloat(req.Refine.ScaleBy, 1.05, 4),
+					"upscale_method": req.Refine.UpscaleMethod,
+				},
+				Meta: map[string]any{
+					"title": "Refine Upscale Image",
+				},
+			}
+
+			encodeNodeID := nextWorkflowNodeID(graph)
+			graph[encodeNodeID] = comfyWorkflowNode{
+				ClassType: "VAEEncode",
+				Inputs: map[string]any{
+					"pixels": buildWorkflowLink(upscaleNodeID, 0),
+					"vae":    decodeNode.Inputs["vae"],
+				},
+				Meta: map[string]any{
+					"title": "Refine VAE Encode",
+				},
+			}
+
+			refineLatentInputNodeID = encodeNodeID
+		default:
+			upscaleNodeID := nextWorkflowNodeID(graph)
+			graph[upscaleNodeID] = comfyWorkflowNode{
+				ClassType: "LatentUpscaleBy",
+				Inputs: map[string]any{
+					"upscale_method": req.Refine.UpscaleMethod,
+					"scale_by":       clampFloat(req.Refine.ScaleBy, 1.05, 4),
+					"samples":        buildWorkflowLink(ksamplerNodeID, 0),
+				},
+				Meta: map[string]any{
+					"title": "Refine Upscale Latent",
+				},
+			}
+			refineLatentInputNodeID = upscaleNodeID
+		}
+
+		refineSamplerNodeID := nextWorkflowNodeID(graph)
+		refineSeed := seedValue + 1
+		graph[refineSamplerNodeID] = comfyWorkflowNode{
+			ClassType: "KSampler",
+			Inputs: map[string]any{
+				"seed":         refineSeed,
+				"steps":        clampInt(req.Refine.Steps, 1, 80),
+				"cfg":          clampFloat(req.CFGScale, 1, 30),
+				"sampler_name": strings.TrimSpace(req.Sampler),
+				"scheduler":    strings.TrimSpace(req.Scheduler),
+				"denoise":      clampFloat(req.Refine.DenoiseStrength, 0.05, 1),
+				"model":        buildWorkflowLink(checkpointNodeID, 0),
+				"positive":     buildWorkflowLink(positiveNodeID, 0),
+				"negative":     buildWorkflowLink(negativeNodeID, 0),
+				"latent_image": buildWorkflowLink(refineLatentInputNodeID, 0),
+			},
+			Meta: map[string]any{
+				"title": "Refine KSampler",
+			},
+		}
+
+		finalSamplesNodeID = refineSamplerNodeID
+	}
+
+	decodeNode.Inputs["samples"] = buildWorkflowLink(finalSamplesNodeID, 0)
 	graph[decodeNodeID] = decodeNode
 
 	saveNodeID, err := findNodeByTitle(graph, "Pixora Save Image", "PixoraSaveImage")
@@ -248,6 +355,38 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	graph[saveNodeID] = saveNode
 
 	return nil
+}
+
+func normalizeRefineUpscaleMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "model":
+		return "model"
+	default:
+		return "latent"
+	}
+}
+
+func normalizeRefineUpscaleMethod(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "bilinear", "area", "bicubic", "bislerp", "lanczos":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "nearest-exact"
+	}
+}
+
+func nextWorkflowNodeID(graph map[string]comfyWorkflowNode) string {
+	next := 1
+	for nodeID := range graph {
+		parsed, err := strconv.Atoi(strings.TrimSpace(nodeID))
+		if err != nil {
+			continue
+		}
+		if parsed >= next {
+			next = parsed + 1
+		}
+	}
+	return strconv.Itoa(next)
 }
 
 func buildWorkflowLink(nodeID string, outputIndex int) []any {

@@ -128,7 +128,16 @@ export function sanitizePersistedState(
     scheduler: fallbackIfBlank(
       candidate.txt2img?.scheduler,
       defaultState.txt2img.scheduler
-    )
+    ),
+    refine: {
+      ...defaultState.txt2img.refine,
+      ...(candidate.txt2img?.refine ?? {}),
+      upscaleMethod: fallbackIfBlank(
+        candidate.txt2img?.refine?.upscaleMethod,
+        defaultState.txt2img.refine.upscaleMethod
+      ),
+      upscaleModel: candidate.txt2img?.refine?.upscaleModel ?? defaultState.txt2img.refine.upscaleModel
+    }
   };
   const nextImg2Img: Img2ImgParameters = {
     ...defaultState.img2img,
@@ -169,7 +178,27 @@ export function sanitizePersistedState(
     cfgScale:
       Number.isFinite(nextTxt2Img.cfgScale) && nextTxt2Img.cfgScale > 0
         ? clamp(nextTxt2Img.cfgScale, 0.1, 30)
-        : defaultState.txt2img.cfgScale
+        : defaultState.txt2img.cfgScale,
+    refine: {
+      ...nextTxt2Img.refine,
+      enabled: Boolean(nextTxt2Img.refine.enabled),
+      upscaleMode:
+        nextTxt2Img.refine.upscaleMode === 'model' ? 'model' : 'latent',
+      upscaleMethod:
+        nextTxt2Img.refine.upscaleMethod?.trim() ||
+        defaultState.txt2img.refine.upscaleMethod,
+      upscaleModel: nextTxt2Img.refine.upscaleModel?.trim() || '',
+      scaleBy: Number.isFinite(nextTxt2Img.refine.scaleBy)
+        ? clamp(nextTxt2Img.refine.scaleBy, 1.05, 4)
+        : defaultState.txt2img.refine.scaleBy,
+      steps:
+        Number.isFinite(nextTxt2Img.refine.steps) && nextTxt2Img.refine.steps > 0
+          ? clamp(Math.round(nextTxt2Img.refine.steps), 1, 80)
+          : defaultState.txt2img.refine.steps,
+      denoiseStrength: Number.isFinite(nextTxt2Img.refine.denoiseStrength)
+        ? clamp(nextTxt2Img.refine.denoiseStrength, 0.05, 1)
+        : defaultState.txt2img.refine.denoiseStrength
+    }
   };
   const normalizedImg2Img: Img2ImgParameters = {
     ...nextImg2Img,
@@ -243,13 +272,29 @@ export function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boole
     a.model === b.model &&
     a.vae === b.vae &&
     a.sampler === b.sampler &&
-    a.scheduler === b.scheduler
+    a.scheduler === b.scheduler &&
+    a.refine.enabled === b.refine.enabled &&
+    a.refine.upscaleMode === b.refine.upscaleMode &&
+    a.refine.upscaleMethod === b.refine.upscaleMethod &&
+    a.refine.upscaleModel === b.refine.upscaleModel &&
+    a.refine.scaleBy === b.refine.scaleBy &&
+    a.refine.steps === b.refine.steps &&
+    a.refine.denoiseStrength === b.refine.denoiseStrength
   );
 }
 
 export function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
   return (
-    isSameTxt2Img(a, b) &&
+    a.prompt === b.prompt &&
+    a.negativePrompt === b.negativePrompt &&
+    a.seed === b.seed &&
+    a.steps === b.steps &&
+    a.cfgScale === b.cfgScale &&
+    isSameResolution(a.resolution, b.resolution) &&
+    a.model === b.model &&
+    a.vae === b.vae &&
+    a.sampler === b.sampler &&
+    a.scheduler === b.scheduler &&
     a.sourceImagePath === b.sourceImagePath &&
     a.denoiseStrength === b.denoiseStrength
   );
@@ -275,3 +320,5 @@ export function buildPreviewItem(
     seed: current.seed.trim() || 'random'
   };
 }
+
+

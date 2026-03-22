@@ -531,6 +531,51 @@ export class GenerationQueueJob {
     }
 }
 
+export class GenerationRefineRequest {
+    "enabled": boolean;
+    "upscaleMode": string;
+    "upscaleMethod": string;
+    "upscaleModel": string;
+    "scaleBy": number;
+    "steps": number;
+    "denoiseStrength": number;
+
+    /** Creates a new GenerationRefineRequest instance. */
+    constructor($$source: Partial<GenerationRefineRequest> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("upscaleMode" in $$source)) {
+            this["upscaleMode"] = "";
+        }
+        if (!("upscaleMethod" in $$source)) {
+            this["upscaleMethod"] = "";
+        }
+        if (!("upscaleModel" in $$source)) {
+            this["upscaleModel"] = "";
+        }
+        if (!("scaleBy" in $$source)) {
+            this["scaleBy"] = 0;
+        }
+        if (!("steps" in $$source)) {
+            this["steps"] = 0;
+        }
+        if (!("denoiseStrength" in $$source)) {
+            this["denoiseStrength"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationRefineRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationRefineRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationRefineRequest($$parsedSource as Partial<GenerationRefineRequest>);
+    }
+}
+
 export class GenerationRequest {
     "requestId": string;
     "mode": string;
@@ -545,6 +590,7 @@ export class GenerationRequest {
     "vae": string;
     "sampler": string;
     "scheduler": string;
+    "refine": GenerationRefineRequest;
 
     /** Creates a new GenerationRequest instance. */
     constructor($$source: Partial<GenerationRequest> = {}) {
@@ -587,6 +633,9 @@ export class GenerationRequest {
         if (!("scheduler" in $$source)) {
             this["scheduler"] = "";
         }
+        if (!("refine" in $$source)) {
+            this["refine"] = (new GenerationRefineRequest());
+        }
 
         Object.assign(this, $$source);
     }
@@ -595,7 +644,11 @@ export class GenerationRequest {
      * Creates a new GenerationRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationRequest {
+        const $$createField13_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("refine" in $$parsedSource) {
+            $$parsedSource["refine"] = $$createField13_0($$parsedSource["refine"]);
+        }
         return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
     }
 }
@@ -817,3 +870,4 @@ const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = db$0.ImageRecord.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = GenerationRefineRequest.createFrom;

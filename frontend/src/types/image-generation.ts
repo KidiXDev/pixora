@@ -20,7 +20,21 @@ export interface BaseGenerationParameters {
   scheduler: string;
 }
 
-export type Txt2ImgParameters = BaseGenerationParameters;
+export type RefineUpscaleMode = 'latent' | 'model';
+
+export interface Txt2ImgRefineParameters {
+  enabled: boolean;
+  upscaleMode: RefineUpscaleMode;
+  upscaleMethod: string;
+  upscaleModel: string;
+  scaleBy: number;
+  steps: number;
+  denoiseStrength: number;
+}
+
+export interface Txt2ImgParameters extends BaseGenerationParameters {
+  refine: Txt2ImgRefineParameters;
+}
 
 export interface Img2ImgParameters extends BaseGenerationParameters {
   sourceImagePath: string;

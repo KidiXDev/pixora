@@ -4,6 +4,9 @@ import {
   DEFAULT_DENOISE_STRENGTH,
   DEFAULT_GENERATION_PROMPT,
   DEFAULT_NEGATIVE_PROMPT,
+  DEFAULT_REFINE_DENOISE_STRENGTH,
+  DEFAULT_REFINE_SCALE_BY,
+  DEFAULT_REFINE_STEPS,
   DEFAULT_RESOLUTION,
   DEFAULT_SAMPLER,
   DEFAULT_SCHEDULER,
@@ -14,6 +17,43 @@ export const resolutionSchema = z.object({
   width: z.coerce.number().min(64).max(4096),
   height: z.coerce.number().min(64).max(4096)
 });
+
+export const txt2imgRefineSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    upscaleMode: z.enum(['latent', 'model']).default('latent'),
+    upscaleMethod: z
+      .enum([
+        'nearest-exact',
+        'bilinear',
+        'area',
+        'bicubic',
+        'bislerp',
+        'lanczos'
+      ])
+      .default('nearest-exact'),
+    upscaleModel: z.string().default(''),
+    scaleBy: z.coerce.number().min(1.05).max(4).default(DEFAULT_REFINE_SCALE_BY),
+    steps: z.coerce.number().min(1).max(80).default(DEFAULT_REFINE_STEPS),
+    denoiseStrength: z
+      .coerce.number()
+      .min(0.05)
+      .max(1)
+      .default(DEFAULT_REFINE_DENOISE_STRENGTH)
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.enabled &&
+      value.upscaleMode === 'model' &&
+      value.upscaleModel.trim() === ''
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Upscale model is required when using model upscale.',
+        path: ['upscaleModel']
+      });
+    }
+  });
 
 export const baseGenerationSchema = z.object({
   prompt: z.string().optional().default(DEFAULT_GENERATION_PROMPT),
@@ -31,7 +71,17 @@ export const baseGenerationSchema = z.object({
     .default(DEFAULT_SCHEDULER)
 });
 
-export const txt2imgSchema = baseGenerationSchema;
+export const txt2imgSchema = baseGenerationSchema.extend({
+  refine: txt2imgRefineSchema.default({
+    enabled: false,
+    upscaleMode: 'latent',
+    upscaleMethod: 'nearest-exact',
+    upscaleModel: '',
+    scaleBy: DEFAULT_REFINE_SCALE_BY,
+    steps: DEFAULT_REFINE_STEPS,
+    denoiseStrength: DEFAULT_REFINE_DENOISE_STRENGTH
+  })
+});
 
 export const img2imgSchema = baseGenerationSchema.extend({
   sourceImagePath: z.string().min(1, 'Source image path is required'),

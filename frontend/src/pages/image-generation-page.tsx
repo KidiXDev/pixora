@@ -219,7 +219,8 @@ export default function ImageGenerationPage() {
       model: txt2img.model,
       vae: txt2img.vae,
       sampler: txt2img.sampler,
-      scheduler: txt2img.scheduler
+      scheduler: txt2img.scheduler,
+      refine: txt2img.refine
     }),
     [mode, txt2img]
   );
@@ -577,3 +578,4 @@ export default function ImageGenerationPage() {
     </div>
   );
 }
+

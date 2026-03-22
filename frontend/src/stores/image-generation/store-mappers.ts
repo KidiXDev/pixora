@@ -183,6 +183,11 @@ export function applyCatalogDefaults(
   );
   const nextTxt2ImgVAE = pickOption(txt2img.vae, catalog.vaes, 'Auto');
   const nextImg2ImgVAE = pickOption(img2img.vae, catalog.vaes, 'Auto');
+  const nextTxt2ImgRefineUpscaleModel = pickOption(
+    txt2img.refine.upscaleModel,
+    catalog.upscaleModels,
+    ''
+  );
 
   return {
     txt2img: {
@@ -190,7 +195,11 @@ export function applyCatalogDefaults(
       model: nextTxt2ImgModel,
       sampler: nextTxt2ImgSampler,
       scheduler: nextTxt2ImgScheduler,
-      vae: nextTxt2ImgVAE
+      vae: nextTxt2ImgVAE,
+      refine: {
+        ...txt2img.refine,
+        upscaleModel: nextTxt2ImgRefineUpscaleModel
+      }
     },
     img2img: {
       ...img2img,
@@ -213,3 +222,4 @@ export function toErrorMessage(error: unknown): string {
 
   return 'Unknown ComfyUI error';
 }
+

@@ -113,19 +113,30 @@ type QueueGenerationResponse struct {
 }
 
 type GenerationRequest struct {
-	RequestID      string  `json:"requestId"`
-	Mode           string  `json:"mode"`
-	Prompt         string  `json:"prompt"`
-	NegativePrompt string  `json:"negativePrompt"`
-	Seed           string  `json:"seed"`
-	Steps          int     `json:"steps"`
-	CFGScale       float64 `json:"cfgScale"`
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	Model          string  `json:"model"`
-	VAE            string  `json:"vae"`
-	Sampler        string  `json:"sampler"`
-	Scheduler      string  `json:"scheduler"`
+	RequestID      string                  `json:"requestId"`
+	Mode           string                  `json:"mode"`
+	Prompt         string                  `json:"prompt"`
+	NegativePrompt string                  `json:"negativePrompt"`
+	Seed           string                  `json:"seed"`
+	Steps          int                     `json:"steps"`
+	CFGScale       float64                 `json:"cfgScale"`
+	Width          int                     `json:"width"`
+	Height         int                     `json:"height"`
+	Model          string                  `json:"model"`
+	VAE            string                  `json:"vae"`
+	Sampler        string                  `json:"sampler"`
+	Scheduler      string                  `json:"scheduler"`
+	Refine         GenerationRefineRequest `json:"refine"`
+}
+
+type GenerationRefineRequest struct {
+	Enabled         bool    `json:"enabled"`
+	UpscaleMode     string  `json:"upscaleMode"`
+	UpscaleMethod   string  `json:"upscaleMethod"`
+	UpscaleModel    string  `json:"upscaleModel"`
+	ScaleBy         float64 `json:"scaleBy"`
+	Steps           int     `json:"steps"`
+	DenoiseStrength float64 `json:"denoiseStrength"`
 }
 
 type GenerationStatus struct {

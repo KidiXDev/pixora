@@ -76,6 +76,16 @@ type GenerationPanelResolution struct {
 	Height int `json:"height"`
 }
 
+type GenerationPanelRefine struct {
+	Enabled         bool    `json:"enabled"`
+	UpscaleMode     string  `json:"upscaleMode"`
+	UpscaleMethod   string  `json:"upscaleMethod"`
+	UpscaleModel    string  `json:"upscaleModel"`
+	ScaleBy         float64 `json:"scaleBy"`
+	Steps           int     `json:"steps"`
+	DenoiseStrength float64 `json:"denoiseStrength"`
+}
+
 type GenerationPanelTxt2Img struct {
 	Prompt         string                    `json:"prompt"`
 	NegativePrompt string                    `json:"negativePrompt"`
@@ -87,6 +97,7 @@ type GenerationPanelTxt2Img struct {
 	VAE            string                    `json:"vae"`
 	Sampler        string                    `json:"sampler"`
 	Scheduler      string                    `json:"scheduler"`
+	Refine         GenerationPanelRefine     `json:"refine"`
 }
 
 type GenerationPanelImg2Img struct {
@@ -389,6 +400,30 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.Generation.Txt2Img.Resolution.Height <= 0 {
 		m.config.Generation.Txt2Img.Resolution.Height = 1024
+	}
+
+	switch m.config.Generation.Txt2Img.Refine.UpscaleMode {
+	case "latent", "model":
+	default:
+		m.config.Generation.Txt2Img.Refine.UpscaleMode = "latent"
+	}
+
+	switch m.config.Generation.Txt2Img.Refine.UpscaleMethod {
+	case "nearest-exact", "bilinear", "area", "bicubic", "bislerp", "lanczos":
+	default:
+		m.config.Generation.Txt2Img.Refine.UpscaleMethod = "nearest-exact"
+	}
+
+	if m.config.Generation.Txt2Img.Refine.ScaleBy < 1.05 || m.config.Generation.Txt2Img.Refine.ScaleBy > 4 {
+		m.config.Generation.Txt2Img.Refine.ScaleBy = 1.5
+	}
+
+	if m.config.Generation.Txt2Img.Refine.Steps <= 0 || m.config.Generation.Txt2Img.Refine.Steps > 80 {
+		m.config.Generation.Txt2Img.Refine.Steps = 14
+	}
+
+	if m.config.Generation.Txt2Img.Refine.DenoiseStrength <= 0 || m.config.Generation.Txt2Img.Refine.DenoiseStrength > 1 {
+		m.config.Generation.Txt2Img.Refine.DenoiseStrength = 0.35
 	}
 
 	if m.config.Generation.Img2Img.Steps <= 0 {

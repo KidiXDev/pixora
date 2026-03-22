@@ -21,6 +21,7 @@ export {
     FolderEntry,
     GenerationModelCatalog,
     GenerationQueueJob,
+    GenerationRefineRequest,
     GenerationRequest,
     GenerationResult,
     PaginatedImages,

@@ -9,6 +9,7 @@ export {
     GenerationPanelConfig,
     GenerationPanelHistoryItem,
     GenerationPanelImg2Img,
+    GenerationPanelRefine,
     GenerationPanelResolution,
     GenerationPanelTxt2Img,
     PromptFormatConfig,

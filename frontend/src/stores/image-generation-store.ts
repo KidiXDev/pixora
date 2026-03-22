@@ -898,7 +898,34 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           )
         },
         steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 1, 200),
-        cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30)
+        cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30),
+        refine: {
+          ...state.txt2img.refine,
+          ...(patch.refine ?? {}),
+          upscaleMethod:
+            patch.refine?.upscaleMethod ?? state.txt2img.refine.upscaleMethod,
+          upscaleMode:
+            patch.refine?.upscaleMode ?? state.txt2img.refine.upscaleMode,
+          upscaleModel:
+            patch.refine?.upscaleModel ?? state.txt2img.refine.upscaleModel,
+          enabled: patch.refine?.enabled ?? state.txt2img.refine.enabled,
+          scaleBy: clamp(
+            patch.refine?.scaleBy ?? state.txt2img.refine.scaleBy,
+            1.05,
+            4
+          ),
+          steps: clamp(
+            Math.round(patch.refine?.steps ?? state.txt2img.refine.steps),
+            1,
+            80
+          ),
+          denoiseStrength: clamp(
+            patch.refine?.denoiseStrength ??
+              state.txt2img.refine.denoiseStrength,
+            0.05,
+            1
+          )
+        }
       };
 
       if (isSameTxt2Img(state.txt2img, nextValue)) {
@@ -995,7 +1022,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           model: state.txt2img.model,
           vae: state.txt2img.vae,
           sampler: state.txt2img.sampler,
-          scheduler: state.txt2img.scheduler
+          scheduler: state.txt2img.scheduler,
+          refine: state.txt2img.refine
         });
 
         const resolvedPromptID = queued?.jobId || pendingPromptID;
@@ -1097,4 +1125,5 @@ if (import.meta.hot) {
     generationPanelHydrated = false;
   });
 }
+
 
