@@ -30,6 +30,9 @@ function buildImageURL(imagePath: string, cacheKey?: string): string {
   if (imagePath.startsWith('data:image/')) {
     return imagePath;
   }
+  if (imagePath.startsWith('/preview/live/')) {
+    return imagePath;
+  }
 
   const encoded = encodeURIComponent(imagePath);
   if (!cacheKey || cacheKey.trim() === '') {
@@ -72,31 +75,19 @@ function GenerationPreviewPanelBase({
     const delta = -e.deltaY * 0.001;
     setScale((s) => Math.min(Math.max(s + delta, 0.5), 20));
   };
-  const latestImageURL = useMemo(
-    () => {
-      if (!latest?.imagePath) {
-        return '';
-      }
+  const latestImageURL = useMemo(() => {
+    if (!latest?.imagePath) {
+      return '';
+    }
 
-      const cacheKey = [
-        latest.status || '',
-        latest.message || '',
-        latest.completedAtISO || '',
-        latest.createdAtISO || '',
-        latest.promptId || ''
-      ].join('|');
+    const cacheKey = [
+      latest.imagePath || '',
+      latest.completedAtISO || '',
+      latest.promptId || ''
+    ].join('|');
 
-      return buildImageURL(latest.imagePath, cacheKey);
-    },
-    [
-      latest?.imagePath,
-      latest?.status,
-      latest?.message,
-      latest?.completedAtISO,
-      latest?.createdAtISO,
-      latest?.promptId
-    ]
-  );
+    return buildImageURL(latest.imagePath, cacheKey);
+  }, [latest?.imagePath, latest?.completedAtISO, latest?.promptId]);
   const canOpenFullscreen = latest?.status === 'completed';
 
   return (
@@ -125,7 +116,11 @@ function GenerationPreviewPanelBase({
                   onGenerate();
                 }
               }}
-              className="gap-2 h-10 px-6 text-xs font-bold shadow-xl shadow-primary/20 bg-linear-to-r from-primary via-primary to-primary/80 active:scale-[0.98] transition-all duration-300 rounded-lg group/btn"
+              className={`gap-2 h-10 px-6 text-xs font-bold shadow-xl active:scale-[0.98] transition-all duration-300 rounded-lg group/btn ${
+                isGenerating
+                  ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20'
+                  : 'bg-linear-to-r from-primary via-primary to-primary/80 shadow-primary/20'
+              }`}
             >
               {isGenerating ? (
                 <>
@@ -153,7 +148,7 @@ function GenerationPreviewPanelBase({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
                   className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 bg-black/40 backdrop-blur-md rounded-2xl"
                 >
                   <div className="relative">
@@ -344,15 +339,15 @@ function GenerationPreviewPanelBase({
                   <motion.div
                     drag={scale > 1}
                     dragMomentum={false}
-                  initial={{ opacity: 0 }}
-                  animate={{ scale, opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{
-                    type: 'spring',
-                    damping: 30,
-                    stiffness: 450,
-                    scale: { duration: 0.15 }
-                  }}
+                    initial={{ opacity: 0 }}
+                    animate={{ scale, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      type: 'spring',
+                      damping: 30,
+                      stiffness: 450,
+                      scale: { duration: 0.15 }
+                    }}
                     className={cn(
                       'relative flex items-center justify-center',
                       scale > 1 ? 'cursor-move' : 'cursor-default'

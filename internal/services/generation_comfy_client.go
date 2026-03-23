@@ -3,7 +3,6 @@ package services
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +17,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	generationPreviewFrameInterval           = 120 * time.Millisecond
+	generationProgressUpdateInterval         = 200 * time.Millisecond
+	generationProgressMinDelta       float64 = 0.03
 )
 
 func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string, onPromptQueued func(string)) (*GenerationResult, error) {
@@ -64,6 +69,7 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	if strings.TrimSpace(overridePromptID) != "" {
 		emitPromptID = strings.TrimSpace(overridePromptID)
 	}
+	defer s.clearLivePreviewFrame(emitPromptID)
 
 	startTime := time.Now()
 	startedAt := startTime.Format(time.RFC3339)
@@ -76,7 +82,9 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	})
 
 	knownFiles := snapshotImageFiles(outputDir)
-	resultPath, err := monitorGeneration(ctx, baseURL, promptID, clientID, outputDir, knownFiles, func(previewPath string) {
+	lastProgressEmitAt := time.Time{}
+	lastProgressValue := -1.0
+	resultPath, err := s.monitorGeneration(ctx, baseURL, promptID, emitPromptID, clientID, outputDir, knownFiles, func(previewPath string) {
 		s.emitGenerationStatus(GenerationStatus{
 			PromptID:    emitPromptID,
 			State:       "running",
@@ -85,12 +93,24 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 			PreviewPath: previewPath,
 			StartedAt:   startedAt,
 		})
-		s.emitGenerationPreview(emitPromptID, previewPath)
 	}, func(progress float64, message string) {
+		now := time.Now()
+		normalizedProgress := clampFloat(progress, 0, 1)
+		shouldEmit := lastProgressValue < 0 ||
+			normalizedProgress >= 0.99 ||
+			normalizedProgress-lastProgressValue >= generationProgressMinDelta ||
+			now.Sub(lastProgressEmitAt) >= generationProgressUpdateInterval
+		if !shouldEmit {
+			return
+		}
+
+		lastProgressEmitAt = now
+		lastProgressValue = normalizedProgress
+
 		s.emitGenerationStatus(GenerationStatus{
 			PromptID:  emitPromptID,
 			State:     "running",
-			Progress:  progress,
+			Progress:  normalizedProgress,
 			Message:   message,
 			StartedAt: startedAt,
 		})
@@ -222,10 +242,11 @@ func postComfyPrompt(baseURL string, graph map[string]comfyWorkflowNode, clientI
 	return strings.TrimSpace(parsed.PromptID), nil
 }
 
-func monitorGeneration(
+func (s *GenerationService) monitorGeneration(
 	ctx context.Context,
 	baseURL string,
 	promptID string,
+	previewKey string,
 	clientID string,
 	outputDir string,
 	knownFiles map[string]time.Time,
@@ -238,7 +259,7 @@ func monitorGeneration(
 
 	wsDone := make(chan struct{})
 	defer close(wsDone)
-	go streamComfyPreview(ctx, baseURL, clientID, promptID, outputDir, onPreview, onProgress, wsDone)
+	go s.streamComfyPreview(ctx, baseURL, clientID, promptID, previewKey, outputDir, onPreview, onProgress, wsDone)
 
 	lastPreview := ""
 	for {
@@ -399,11 +420,12 @@ func isImageFile(path string) bool {
 	}
 }
 
-func streamComfyPreview(
+func (s *GenerationService) streamComfyPreview(
 	ctx context.Context,
 	baseURL string,
 	clientID string,
 	promptID string,
+	previewKey string,
 	outputDir string,
 	onPreview func(string),
 	onProgress func(float64, string),
@@ -434,7 +456,7 @@ func streamComfyPreview(
 		}
 	}()
 
-	activePrompt := false
+	lastPreviewEmitAt := time.Time{}
 	for {
 		if err := ctx.Err(); err != nil {
 			return
@@ -458,23 +480,14 @@ func streamComfyPreview(
 			switch msg.Type {
 			case "execution_start":
 				if getMapString(msg.Data, "prompt_id") == promptID {
-					activePrompt = true
 					onProgress(0.5, "execution started")
 				}
 			case "executing":
 				if getMapString(msg.Data, "prompt_id") == promptID {
-					activePrompt = true
 					onProgress(0.55, "executing workflow")
-					if isExecutionFinished(msg.Data) {
-						activePrompt = false
-					}
-				} else {
-					activePrompt = false
 				}
 			case "execution_error":
-				if getMapString(msg.Data, "prompt_id") == promptID {
-					activePrompt = false
-				}
+				// no-op: status update handled by history polling and execution_error status.
 			case "executed":
 				if getMapString(msg.Data, "prompt_id") != promptID {
 					continue
@@ -500,56 +513,30 @@ func streamComfyPreview(
 				onProgress(clampFloat(progress, 0.55, 0.95), fmt.Sprintf("step %.0f/%.0f", value, max))
 			}
 		case websocket.BinaryMessage:
-			if !activePrompt {
-				debugGenerationWS("ws binary ignored (inactive prompt): prompt=%s bytes=%d", promptID, len(payload))
-				continue
-			}
-
 			imageBytes, ext, ok := extractPreviewImagePayload(payload)
 			if !ok {
 				debugGenerationWS("ws binary not preview image: prompt=%s bytes=%d", promptID, len(payload))
 				continue
 			}
 
-			previewDataURL := encodePreviewDataURL(imageBytes, ext)
-			if previewDataURL == "" {
-				debugGenerationWS("preview data url encode failed: prompt=%s ext=%s", promptID, ext)
+			cacheKey := strings.TrimSpace(previewKey)
+			if cacheKey == "" {
+				cacheKey = promptID
+			}
+			previewPath := s.cacheLivePreviewFrame(cacheKey, imageBytes, ext)
+			if previewPath == "" {
+				debugGenerationWS("preview frame cache failed: prompt=%s ext=%s", promptID, ext)
 				continue
 			}
 
-			onPreview(previewDataURL)
+			now := time.Now()
+			if !lastPreviewEmitAt.IsZero() && now.Sub(lastPreviewEmitAt) < generationPreviewFrameInterval {
+				continue
+			}
+			lastPreviewEmitAt = now
+
+			onPreview(previewPath)
 		}
-	}
-}
-
-func encodePreviewDataURL(imageBytes []byte, ext string) string {
-	if len(imageBytes) == 0 {
-		return ""
-	}
-
-	mimeType := previewMimeTypeByExt(ext)
-	if mimeType == "" {
-		mimeType = "image/png"
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(imageBytes)
-	if strings.TrimSpace(encoded) == "" {
-		return ""
-	}
-
-	return "data:" + mimeType + ";base64," + encoded
-}
-
-func previewMimeTypeByExt(ext string) string {
-	switch strings.ToLower(strings.TrimSpace(ext)) {
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".webp":
-		return "image/webp"
-	default:
-		return ""
 	}
 }
 

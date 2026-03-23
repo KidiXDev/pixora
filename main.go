@@ -110,6 +110,10 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 			Middleware: func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasPrefix(r.URL.Path, "/preview/live/") {
+						services.ServeGenerationLivePreview(generationSvc, w, r)
+						return
+					}
 					if strings.HasPrefix(r.URL.Path, "/thumbs/") {
 						http.StripPrefix("/thumbs/", http.FileServer(http.Dir(thumbSvc.CacheDir()))).ServeHTTP(w, r)
 						return

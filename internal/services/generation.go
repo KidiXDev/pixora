@@ -86,6 +86,10 @@ type GenerationService struct {
 	queue         []*GenerationQueueJob
 	jobs          map[string]*GenerationQueueJob
 	queueWakeupCh chan struct{}
+
+	previewMu    sync.RWMutex
+	previewCache map[string]livePreviewFrame
+	previewBytes int64
 }
 
 type GenerationQueueJob struct {
@@ -205,6 +209,7 @@ func NewGenerationService(cfg *config.Manager) *GenerationService {
 		queue:         make([]*GenerationQueueJob, 0),
 		jobs:          make(map[string]*GenerationQueueJob),
 		queueWakeupCh: make(chan struct{}, 1),
+		previewCache:  make(map[string]livePreviewFrame),
 	}
 
 	go service.processQueue()

@@ -1,8 +1,8 @@
 import {
   buildPreviewItem,
   clamp,
-  defaultState,
   DEFAULT_MODEL_CATALOG,
+  defaultState,
   getEventPayload,
   isSameImg2Img,
   isSameTxt2Img,
@@ -15,7 +15,6 @@ import {
   applyCatalogDefaults,
   buildComfyApiURL,
   DEFAULT_COMFYUI_HOST,
-  DEFAULT_COMFYUI_PORT,
   mapBackendConfigToComfyUI,
   mapLog,
   mapStatus,
@@ -40,9 +39,7 @@ import {
 } from '@/types/image-generation';
 import { Events } from '@wailsio/runtime';
 import { create } from 'zustand';
-import {
-  GenerationPanelConfig
-} from '../../bindings/pixora/internal/config/models';
+import { GenerationPanelConfig } from '../../bindings/pixora/internal/config/models';
 import {
   ClearLogs,
   GetComfyUIConfig,
@@ -110,14 +107,54 @@ let comfyEventsBound = false;
 let generationPanelHydrated = false;
 let generationPanelPersistTimer: ReturnType<typeof setTimeout> | null = null;
 const defaultComfySetupSteps: ComfyUISetupStep[] = [
-  { id: 'check_environment', label: 'Check Environment', status: 'pending', message: '' },
-  { id: 'detect_comfy', label: 'Detect ComfyUI', status: 'pending', message: '' },
-  { id: 'download_archive', label: 'Download Archive', status: 'pending', message: '' },
-  { id: 'extract_archive', label: 'Extract Archive', status: 'pending', message: '' },
-  { id: 'finalize_install_dir', label: 'Finalize Installation Folder', status: 'pending', message: '' },
-  { id: 'prepare_model_paths', label: 'Prepare Model Paths', status: 'pending', message: '' },
-  { id: 'copy_custom_nodes', label: 'Copy Custom Nodes', status: 'pending', message: '' },
-  { id: 'complete', label: 'Installation Complete', status: 'pending', message: '' }
+  {
+    id: 'check_environment',
+    label: 'Check Environment',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'detect_comfy',
+    label: 'Detect ComfyUI',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'download_archive',
+    label: 'Download Archive',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'extract_archive',
+    label: 'Extract Archive',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'finalize_install_dir',
+    label: 'Finalize Installation Folder',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'prepare_model_paths',
+    label: 'Prepare Model Paths',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'copy_custom_nodes',
+    label: 'Copy Custom Nodes',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'complete',
+    label: 'Installation Complete',
+    status: 'pending',
+    message: ''
+  }
 ];
 
 const defaultComfySetupStatus: ComfyUISetupStatus = {
@@ -308,7 +345,7 @@ function queuePersistGenerationPanelState(
     void SetGenerationPanelConfig(payload).catch(() => {
       // Ignore persistence failures here to keep typing/editing smooth.
     });
-  }, 250);
+  }, 600);
 }
 
 function persistFromStoreSnapshot(get: () => ImageGenerationState): void {
@@ -512,64 +549,117 @@ export const useImageGenerationStore = create<ImageGenerationState>(
               return;
             }
 
-            set((state) => ({
-              isGenerating:
-                payload.state === 'queued' || payload.state === 'running',
-              generationProgress: payload.progress,
-              generationMessage: payload.message || '',
-              activeGenerationJobId:
+            set((state) => {
+              const nextIsGenerating =
+                payload.state === 'queued' || payload.state === 'running';
+              const nextGenerationProgress = payload.progress;
+              const nextGenerationMessage = payload.message || '';
+              const nextActiveGenerationJobID =
                 payload.state === 'queued' || payload.state === 'running'
                   ? payload.promptId || state.activeGenerationJobId
                   : state.activeGenerationJobId === payload.promptId
                     ? ''
-                    : state.activeGenerationJobId,
-              history: state.history.map((item) => {
-                if (item.promptId !== payload.promptId) {
-                  return item;
+                    : state.activeGenerationJobId;
+
+              let historyChanged = false;
+              let nextHistory = state.history;
+
+              const nextItemMessage =
+                payload.error?.trim() !== ''
+                  ? payload.error
+                  : payload.message || '';
+
+              let targetIndex = -1;
+              for (let index = 0; index < state.history.length; index += 1) {
+                if (state.history[index].promptId === payload.promptId) {
+                  targetIndex = index;
+                  break;
                 }
+              }
 
-                return {
-                  ...item,
+              // Race fix: status events can arrive with backend job id before
+              // pending item id is remapped, so bind the active pending item.
+              if (
+                targetIndex < 0 &&
+                (payload.state === 'queued' || payload.state === 'running')
+              ) {
+                const fallbackIndex = state.history.findIndex(
+                  (item) =>
+                    item.isGenerating === true &&
+                    typeof item.promptId === 'string' &&
+                    item.promptId.startsWith('pending-')
+                );
+                if (fallbackIndex >= 0) {
+                  targetIndex = fallbackIndex;
+                }
+              }
+
+              if (targetIndex >= 0) {
+                const item = state.history[targetIndex];
+                const nextItemIsGenerating =
+                  payload.state === 'queued' || payload.state === 'running';
+                const nextItemImagePath =
+                  nextItemIsGenerating && payload.previewPath
+                    ? payload.previewPath
+                    : item.imagePath;
+                const resolvedMessage =
+                  nextItemMessage !== '' ? nextItemMessage : item.message;
+                const nextPromptID = payload.promptId || item.promptId;
+
+                if (
+                  item.promptId !== nextPromptID ||
+                  item.status !== payload.state ||
+                  item.isGenerating !== nextItemIsGenerating ||
+                  item.imagePath !== nextItemImagePath ||
+                  item.message !== resolvedMessage
+                ) {
+                  nextHistory = [...state.history];
+                  nextHistory[targetIndex] = {
+                    ...item,
+                    promptId: nextPromptID,
+                    status: payload.state,
+                    isGenerating: nextItemIsGenerating,
+                    imagePath: nextItemImagePath,
+                    message: resolvedMessage
+                  };
+                  historyChanged = true;
+                }
+              } else if (
+                (payload.state === 'queued' || payload.state === 'running') &&
+                payload.previewPath
+              ) {
+                // Safety net: keep preview visible even if id-mapping races.
+                const fallbackItem: GeneratedPreviewItem = {
+                  ...buildPreviewItem(toPersistedState(state)),
+                  promptId: payload.promptId,
                   status: payload.state,
-                  isGenerating:
-                    payload.state === 'queued' || payload.state === 'running',
-                  imagePath:
-                    (payload.state === 'queued' ||
-                      payload.state === 'running') &&
-                    payload.previewPath
-                      ? payload.previewPath
-                      : item.imagePath,
+                  isGenerating: true,
+                  imagePath: payload.previewPath,
                   message:
-                    payload.error?.trim() !== ''
-                      ? payload.error
-                      : payload.message || item.message
+                    nextItemMessage || payload.message || 'generation running'
                 };
-              })
-            }));
-          }
-        );
+                nextHistory = [fallbackItem, ...state.history].slice(0, 24);
+                historyChanged = true;
+              }
 
-        const unsubscribeGenerationPreview = Events.On(
-          'generation:preview',
-          (event: WailsEventLike) => {
-            const payload = getEventPayload<{
-              promptId: string;
-              imagePath: string;
-            }>(event.data);
-            if (!payload || !payload.promptId || !payload.imagePath) {
-              return;
-            }
+              const hasRootChanges =
+                state.isGenerating !== nextIsGenerating ||
+                state.generationProgress !== nextGenerationProgress ||
+                state.generationMessage !== nextGenerationMessage ||
+                state.activeGenerationJobId !== nextActiveGenerationJobID;
 
-            set((state) => ({
-              history: state.history.map((item) =>
-                item.promptId === payload.promptId
-                  ? {
-                      ...item,
-                      imagePath: payload.imagePath
-                    }
-                  : item
-              )
-            }));
+              if (!hasRootChanges && !historyChanged) {
+                return state;
+              }
+
+              return {
+                isGenerating: nextIsGenerating,
+                generationProgress: nextGenerationProgress,
+                generationMessage: nextGenerationMessage,
+                activeGenerationJobId: nextActiveGenerationJobID,
+                ...(historyChanged ? { history: nextHistory } : {})
+              };
+            });
           }
         );
 
@@ -612,7 +702,6 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           unsubscribeLog,
           unsubscribeSetup,
           unsubscribeGenerationStatus,
-          unsubscribeGenerationPreview,
           unsubscribeGenerationResult
         ];
         comfyEventsBound = true;
@@ -621,13 +710,12 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       try {
         set({ isComfySetupLoading: true });
 
-        const [backendConfig, status, logs, setupPayload] =
-          await Promise.all([
-            GetComfyUIConfig(),
-            GetStatus(),
-            ListLogs(400),
-            GetSetupStatus()
-          ]);
+        const [backendConfig, status, logs, setupPayload] = await Promise.all([
+          GetComfyUIConfig(),
+          GetStatus(),
+          ListLogs(400),
+          GetSetupStatus()
+        ]);
 
         const mappedSetup = mapSetupStatus(setupPayload);
         const mappedStatus = normalizeStatusForSetup(
@@ -858,7 +946,9 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
     setMode: (mode) => {
       set({ mode });
-      persistFromStoreSnapshot(get);
+      if (!get().isGenerating) {
+        persistFromStoreSnapshot(get);
+      }
     },
 
     updateComfyUIConfig: (patch) => {
@@ -881,7 +971,9 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           };
         })()
       }));
-      persistFromStoreSnapshot(get);
+      if (!get().isGenerating) {
+        persistFromStoreSnapshot(get);
+      }
     },
 
     updateTxt2Img: (patch) => {
@@ -933,7 +1025,9 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       set({ txt2img: nextValue });
-      persistFromStoreSnapshot(get);
+      if (!get().isGenerating) {
+        persistFromStoreSnapshot(get);
+      }
     },
 
     updateImg2Img: (patch) => {
@@ -963,7 +1057,9 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       }
 
       set({ img2img: nextValue });
-      persistFromStoreSnapshot(get);
+      if (!get().isGenerating) {
+        persistFromStoreSnapshot(get);
+      }
     },
 
     generateText2Image: async () => {
@@ -1125,5 +1221,3 @@ if (import.meta.hot) {
     generationPanelHydrated = false;
   });
 }
-
-

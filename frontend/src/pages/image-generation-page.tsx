@@ -15,7 +15,7 @@ import {
 import { useImageGenerationStore } from '@/stores/image-generation-store';
 import { Call } from '@wailsio/runtime';
 import { Loader2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -46,20 +46,13 @@ export default function ImageGenerationPage() {
     comfyUI,
     comfyStatus,
     comfySetup,
-    modelCatalog,
     comfyError,
     modelCatalogError,
-    isModelCatalogLoading,
     isComfyActionPending,
     isComfySetupLoading,
     isComfySetupInstalling,
     isComfyConfigSaving,
-    isGenerating,
-    txt2img,
-    img2img,
-    history,
     initializeComfyLifecycle,
-    loadModelCatalog,
     refreshComfySetup,
     installComfyUI,
     saveComfyUIConfig,
@@ -68,30 +61,20 @@ export default function ImageGenerationPage() {
     restartComfyUI,
     setMode,
     updateComfyUIConfig,
-    updateTxt2Img,
-    updateImg2Img,
-    generateText2Image,
-    interruptGeneration
+    generateText2Image
   } = useImageGenerationStore(
     useShallow((state) => ({
       mode: state.mode,
       comfyUI: state.comfyUI,
       comfyStatus: state.comfyStatus,
       comfySetup: state.comfySetup,
-      modelCatalog: state.modelCatalog,
       comfyError: state.comfyError,
       modelCatalogError: state.modelCatalogError,
-      isModelCatalogLoading: state.isModelCatalogLoading,
       isComfyActionPending: state.isComfyActionPending,
       isComfySetupLoading: state.isComfySetupLoading,
       isComfySetupInstalling: state.isComfySetupInstalling,
       isComfyConfigSaving: state.isComfyConfigSaving,
-      isGenerating: state.isGenerating,
-      txt2img: state.txt2img,
-      img2img: state.img2img,
-      history: state.history,
       initializeComfyLifecycle: state.initializeComfyLifecycle,
-      loadModelCatalog: state.loadModelCatalog,
       refreshComfySetup: state.refreshComfySetup,
       installComfyUI: state.installComfyUI,
       saveComfyUIConfig: state.saveComfyUIConfig,
@@ -100,10 +83,7 @@ export default function ImageGenerationPage() {
       restartComfyUI: state.restartComfyUI,
       setMode: state.setMode,
       updateComfyUIConfig: state.updateComfyUIConfig,
-      updateTxt2Img: state.updateTxt2Img,
-      updateImg2Img: state.updateImg2Img,
-      generateText2Image: state.generateText2Image,
-      interruptGeneration: state.interruptGeneration
+      generateText2Image: state.generateText2Image
     }))
   );
   const { comfyLogs, isComfyLogsLoading, loadComfyLogs, clearComfyLogs } =
@@ -205,25 +185,28 @@ export default function ImageGenerationPage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [handleGenerate]);
 
-  const buildWorkflowRequest = useCallback(
-    () => ({
+  const buildWorkflowRequest = useCallback(() => {
+    const state = useImageGenerationStore.getState();
+    const currentMode = state.mode;
+    const currentTxt2Img = state.txt2img;
+
+    return {
       requestId: '',
-      mode,
-      prompt: txt2img.prompt,
-      negativePrompt: txt2img.negativePrompt,
-      seed: txt2img.seed,
-      steps: txt2img.steps,
-      cfgScale: txt2img.cfgScale,
-      width: txt2img.resolution.width,
-      height: txt2img.resolution.height,
-      model: txt2img.model,
-      vae: txt2img.vae,
-      sampler: txt2img.sampler,
-      scheduler: txt2img.scheduler,
-      refine: txt2img.refine
-    }),
-    [mode, txt2img]
-  );
+      mode: currentMode,
+      prompt: currentTxt2Img.prompt,
+      negativePrompt: currentTxt2Img.negativePrompt,
+      seed: currentTxt2Img.seed,
+      steps: currentTxt2Img.steps,
+      cfgScale: currentTxt2Img.cfgScale,
+      width: currentTxt2Img.resolution.width,
+      height: currentTxt2Img.resolution.height,
+      model: currentTxt2Img.model,
+      vae: currentTxt2Img.vae,
+      sampler: currentTxt2Img.sampler,
+      scheduler: currentTxt2Img.scheduler,
+      refine: currentTxt2Img.refine
+    };
+  }, []);
 
   const callGenerationService = async (
     methodNames: readonly string[],
@@ -492,19 +475,7 @@ export default function ImageGenerationPage() {
             maxSize="65"
             className="flex flex-col bg-card/10 min-h-0 overflow-hidden"
           >
-            <GenerationParametersPanel
-              mode={mode}
-              modelCatalog={modelCatalog}
-              modelCatalogLoading={isModelCatalogLoading}
-              txt2img={txt2img}
-              img2img={img2img}
-              isGenerating={isGenerating}
-              onRefreshModelCatalog={() => {
-                void loadModelCatalog();
-              }}
-              onTxt2ImgChange={updateTxt2Img}
-              onImg2ImgChange={updateImg2Img}
-            />
+            <GenerationParametersPanelContainer />
           </ResizablePanel>
 
           <ResizableHandle
@@ -514,14 +485,9 @@ export default function ImageGenerationPage() {
 
           <ResizablePanel defaultSize="70" className="flex flex-col min-h-0">
             <div className="flex-1 min-w-0 h-full p-6 lg:p-8 overflow-hidden">
-              <GenerationPreviewPanel
-                history={history}
-                isGenerating={isGenerating}
+              <GenerationPreviewPanelContainer
                 isWorkflowLoading={isWorkflowLoading}
                 onGenerate={handleGenerate}
-                onInterrupt={() => {
-                  void interruptGeneration();
-                }}
                 onOpenWorkflow={() => {
                   void loadWorkflowPreview();
                 }}
@@ -578,4 +544,79 @@ export default function ImageGenerationPage() {
     </div>
   );
 }
+
+const GenerationParametersPanelContainer = memo(
+  function GenerationParametersPanelContainer() {
+    const {
+      mode,
+      modelCatalog,
+      isModelCatalogLoading,
+      txt2img,
+      img2img,
+      isGenerating,
+      loadModelCatalog,
+      updateTxt2Img,
+      updateImg2Img
+    } = useImageGenerationStore(
+      useShallow((state) => ({
+        mode: state.mode,
+        modelCatalog: state.modelCatalog,
+        isModelCatalogLoading: state.isModelCatalogLoading,
+        txt2img: state.txt2img,
+        img2img: state.img2img,
+        isGenerating: state.isGenerating,
+        loadModelCatalog: state.loadModelCatalog,
+        updateTxt2Img: state.updateTxt2Img,
+        updateImg2Img: state.updateImg2Img
+      }))
+    );
+
+    return (
+      <GenerationParametersPanel
+        mode={mode}
+        modelCatalog={modelCatalog}
+        modelCatalogLoading={isModelCatalogLoading}
+        txt2img={txt2img}
+        img2img={img2img}
+        isGenerating={isGenerating}
+        onRefreshModelCatalog={() => {
+          void loadModelCatalog();
+        }}
+        onTxt2ImgChange={updateTxt2Img}
+        onImg2ImgChange={updateImg2Img}
+      />
+    );
+  }
+);
+
+const GenerationPreviewPanelContainer = memo(function GenerationPreviewPanelContainer({
+  isWorkflowLoading,
+  onGenerate,
+  onOpenWorkflow
+}: {
+  isWorkflowLoading: boolean;
+  onGenerate: () => void;
+  onOpenWorkflow: () => void;
+}) {
+  const { history, isGenerating, interruptGeneration } = useImageGenerationStore(
+    useShallow((state) => ({
+      history: state.history,
+      isGenerating: state.isGenerating,
+      interruptGeneration: state.interruptGeneration
+    }))
+  );
+
+  return (
+    <GenerationPreviewPanel
+      history={history}
+      isGenerating={isGenerating}
+      isWorkflowLoading={isWorkflowLoading}
+      onGenerate={onGenerate}
+      onInterrupt={() => {
+        void interruptGeneration();
+      }}
+      onOpenWorkflow={onOpenWorkflow}
+    />
+  );
+});
 
