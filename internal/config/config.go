@@ -97,6 +97,7 @@ type GenerationPanelTxt2Img struct {
 	VAE            string                    `json:"vae"`
 	Sampler        string                    `json:"sampler"`
 	Scheduler      string                    `json:"scheduler"`
+	BatchSize      int                       `json:"batchSize"`
 	Refine         GenerationPanelRefine     `json:"refine"`
 }
 
@@ -112,6 +113,7 @@ type GenerationPanelImg2Img struct {
 	Sampler         string                    `json:"sampler"`
 	Scheduler       string                    `json:"scheduler"`
 	SourceImagePath string                    `json:"sourceImagePath"`
+	BatchSize       int                       `json:"batchSize"`
 	DenoiseStrength float64                   `json:"denoiseStrength"`
 }
 
@@ -133,6 +135,7 @@ type GenerationPanelConfig struct {
 	Txt2Img       GenerationPanelTxt2Img       `json:"txt2img"`
 	Img2Img       GenerationPanelImg2Img       `json:"img2img"`
 	History       []GenerationPanelHistoryItem `json:"history"`
+	GenerateForever bool                       `json:"generateForever"`
 }
 
 type AppConfig struct {
@@ -402,6 +405,10 @@ func (m *Manager) ensureDefaultsLocked() {
 		m.config.Generation.Txt2Img.Resolution.Height = 1024
 	}
 
+	if m.config.Generation.Txt2Img.BatchSize <= 0 {
+		m.config.Generation.Txt2Img.BatchSize = 1
+	}
+
 	switch m.config.Generation.Txt2Img.Refine.UpscaleMode {
 	case "latent", "model":
 	default:
@@ -444,6 +451,10 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.Generation.Img2Img.DenoiseStrength <= 0 || m.config.Generation.Img2Img.DenoiseStrength > 1 {
 		m.config.Generation.Img2Img.DenoiseStrength = 0.55
+	}
+
+	if m.config.Generation.Img2Img.BatchSize <= 0 {
+		m.config.Generation.Img2Img.BatchSize = 1
 	}
 
 	if m.config.Generation.History == nil {

@@ -590,6 +590,7 @@ export class GenerationRequest {
     "vae": string;
     "sampler": string;
     "scheduler": string;
+    "batchSize": number;
     "refine": GenerationRefineRequest;
 
     /** Creates a new GenerationRequest instance. */
@@ -633,6 +634,9 @@ export class GenerationRequest {
         if (!("scheduler" in $$source)) {
             this["scheduler"] = "";
         }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
+        }
         if (!("refine" in $$source)) {
             this["refine"] = (new GenerationRefineRequest());
         }
@@ -644,10 +648,10 @@ export class GenerationRequest {
      * Creates a new GenerationRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationRequest {
-        const $$createField13_0 = $$createType7;
+        const $$createField14_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("refine" in $$parsedSource) {
-            $$parsedSource["refine"] = $$createField13_0($$parsedSource["refine"]);
+            $$parsedSource["refine"] = $$createField14_0($$parsedSource["refine"]);
         }
         return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
     }

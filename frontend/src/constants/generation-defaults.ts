@@ -15,6 +15,7 @@ export const DEFAULT_CFG_SCALE = 7;
 export const DEFAULT_DENOISE_STRENGTH = 0.55;
 export const DEFAULT_SAMPLER = 'euler_ancestral';
 export const DEFAULT_SCHEDULER = 'normal';
+export const DEFAULT_BATCH_SIZE = 1;
 export const DEFAULT_REFINE_STEPS = 14;
 export const DEFAULT_REFINE_SCALE_BY = 1.5;
 export const DEFAULT_REFINE_DENOISE_STRENGTH = 0.35;
@@ -30,6 +31,7 @@ export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   vae: '',
   sampler: DEFAULT_SAMPLER,
   scheduler: DEFAULT_SCHEDULER,
+  batchSize: DEFAULT_BATCH_SIZE,
   refine: {
     enabled: false,
     upscaleMode: 'latent',

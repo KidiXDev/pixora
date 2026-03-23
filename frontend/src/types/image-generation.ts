@@ -18,6 +18,7 @@ export interface BaseGenerationParameters {
   vae: string;
   sampler: string;
   scheduler: string;
+  batchSize: number;
 }
 
 export type RefineUpscaleMode = 'latent' | 'model';

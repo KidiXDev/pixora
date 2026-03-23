@@ -219,6 +219,7 @@ export class GenerationPanelConfig {
     "txt2img": GenerationPanelTxt2Img;
     "img2img": GenerationPanelImg2Img;
     "history": GenerationPanelHistoryItem[];
+    "generateForever": boolean;
 
     /** Creates a new GenerationPanelConfig instance. */
     constructor($$source: Partial<GenerationPanelConfig> = {}) {
@@ -236,6 +237,9 @@ export class GenerationPanelConfig {
         }
         if (!("history" in $$source)) {
             this["history"] = [];
+        }
+        if (!("generateForever" in $$source)) {
+            this["generateForever"] = false;
         }
 
         Object.assign(this, $$source);
@@ -331,6 +335,7 @@ export class GenerationPanelImg2Img {
     "sampler": string;
     "scheduler": string;
     "sourceImagePath": string;
+    "batchSize": number;
     "denoiseStrength": number;
 
     /** Creates a new GenerationPanelImg2Img instance. */
@@ -367,6 +372,9 @@ export class GenerationPanelImg2Img {
         }
         if (!("sourceImagePath" in $$source)) {
             this["sourceImagePath"] = "";
+        }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
         }
         if (!("denoiseStrength" in $$source)) {
             this["denoiseStrength"] = 0;
@@ -469,6 +477,7 @@ export class GenerationPanelTxt2Img {
     "vae": string;
     "sampler": string;
     "scheduler": string;
+    "batchSize": number;
     "refine": GenerationPanelRefine;
 
     /** Creates a new GenerationPanelTxt2Img instance. */
@@ -503,6 +512,9 @@ export class GenerationPanelTxt2Img {
         if (!("scheduler" in $$source)) {
             this["scheduler"] = "";
         }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
+        }
         if (!("refine" in $$source)) {
             this["refine"] = (new GenerationPanelRefine());
         }
@@ -515,13 +527,13 @@ export class GenerationPanelTxt2Img {
      */
     static createFrom($$source: any = {}): GenerationPanelTxt2Img {
         const $$createField5_0 = $$createType13;
-        const $$createField10_0 = $$createType14;
+        const $$createField11_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
         }
         if ("refine" in $$parsedSource) {
-            $$parsedSource["refine"] = $$createField10_0($$parsedSource["refine"]);
+            $$parsedSource["refine"] = $$createField11_0($$parsedSource["refine"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
     }

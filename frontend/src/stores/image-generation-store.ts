@@ -95,6 +95,7 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   updateImg2Img: (patch: Partial<Img2ImgParameters>) => void;
   generateText2Image: () => Promise<void>;
   interruptGeneration: () => Promise<void>;
+  setGenerateForever: (enabled: boolean) => void;
   clearHistory: () => void;
 }
 
@@ -316,7 +317,8 @@ function toPersistedState(
     comfyUI: state.comfyUI,
     txt2img: state.txt2img,
     img2img: state.img2img,
-    history: state.history
+    history: state.history,
+    generateForever: state.generateForever
   };
 }
 
@@ -328,7 +330,8 @@ function toGenerationPanelConfig(
     mode: state.mode,
     txt2img: state.txt2img,
     img2img: state.img2img,
-    history: state.history
+    history: state.history,
+    generateForever: state.generateForever
   });
 }
 
@@ -368,6 +371,7 @@ const defaultComfyStatus: ComfyUIStatus = {
 export const useImageGenerationStore = create<ImageGenerationState>(
   (set, get) => ({
     ...initialState,
+    generateForever: false,
     comfyStatus: defaultComfyStatus,
     comfySetup: defaultComfySetupStatus,
     modelCatalog: DEFAULT_MODEL_CATALOG,
@@ -705,6 +709,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   : item
               )
             }));
+
+            if (get().generateForever) {
+              void get().generateText2Image();
+            }
+
             persistFromStoreSnapshot(get);
           }
         );
@@ -1003,6 +1012,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         },
         steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30),
+        batchSize: clamp(
+          Math.round(patch.batchSize ?? state.txt2img.batchSize),
+          1,
+          100
+        ),
         refine: {
           ...state.txt2img.refine,
           ...(patch.refine ?? {}),
@@ -1057,6 +1071,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         },
         steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.img2img.cfgScale, 0, 30),
+        batchSize: clamp(
+          Math.round(patch.batchSize ?? state.img2img.batchSize),
+          1,
+          100
+        ),
         denoiseStrength: clamp(
           patch.denoiseStrength ?? state.img2img.denoiseStrength,
           0,
@@ -1072,6 +1091,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
       if (!get().isGenerating) {
         persistFromStoreSnapshot(get);
       }
+    },
+
+    setGenerateForever: (enabled: boolean) => {
+      set({ generateForever: enabled });
+      persistFromStoreSnapshot(get);
     },
 
     generateText2Image: async () => {
@@ -1096,88 +1120,92 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         return;
       }
 
-      const persisted = toPersistedState(state);
-      const item = buildPreviewItem(persisted);
-      const pendingPromptID = `pending-${Date.now().toString(36)}`;
-      const pendingItem: GeneratedPreviewItem = {
-        ...item,
-        promptId: pendingPromptID,
-        status: 'queued',
-        isGenerating: true,
-        message: 'Queueing generation...'
-      };
+      const batchSize =
+        state.mode === 'txt2img'
+          ? state.txt2img.batchSize
+          : state.img2img.batchSize;
+      const effectiveBatchSize = Math.max(1, batchSize);
 
-      set((current) => ({
-        isGenerating: true,
-        generationProgress: 0,
-        generationMessage: 'Queueing generation...',
-        activeGenerationJobId: pendingPromptID,
-        history: [pendingItem, ...current.history].slice(0, 24)
-      }));
-      persistFromStoreSnapshot(get);
+      for (let i = 0; i < effectiveBatchSize; i++) {
+        const currentMode = get().mode;
+        const currentParams =
+          currentMode === 'txt2img' ? get().txt2img : get().img2img;
 
-      try {
-        const queued = await QueueText2Image({
-          requestId: pendingPromptID,
-          mode: state.mode,
-          prompt: state.txt2img.prompt,
-          negativePrompt: state.txt2img.negativePrompt,
-          seed: state.txt2img.seed,
-          steps: state.txt2img.steps,
-          cfgScale: state.txt2img.cfgScale,
-          width: state.txt2img.resolution.width,
-          height: state.txt2img.resolution.height,
-          model: state.txt2img.model,
-          vae: state.txt2img.vae,
-          sampler: state.txt2img.sampler,
-          scheduler: state.txt2img.scheduler,
-          refine: state.txt2img.refine
-        });
-
-        const resolvedPromptID = queued?.jobId || pendingPromptID;
+        const persisted = toPersistedState(get());
+        const item = buildPreviewItem(persisted);
+        const pendingPromptID = `pending-${Date.now().toString(36)}-${i}`;
+        const pendingItem: GeneratedPreviewItem = {
+          ...item,
+          promptId: pendingPromptID,
+          status: 'queued',
+          isGenerating: true,
+          message: 'Queueing generation...'
+        };
 
         set((current) => ({
           isGenerating: true,
           generationProgress: 0,
-          generationMessage: 'Queued generation...',
-          activeGenerationJobId: resolvedPromptID,
-          history: current.history.map((historyItem) => {
-            if (historyItem.promptId !== pendingPromptID) {
-              return historyItem;
-            }
-
-            return {
-              ...historyItem,
-              promptId: resolvedPromptID,
-              status: 'queued',
-              isGenerating: true,
-              message: 'Queued generation...'
-            };
-          })
+          generationMessage: 'Queueing generation...',
+          activeGenerationJobId: pendingPromptID,
+          history: [pendingItem, ...current.history].slice(0, 24)
         }));
         persistFromStoreSnapshot(get);
-      } catch (error) {
-        const message = toErrorMessage(error);
-        set((current) => ({
-          isGenerating: false,
-          generationProgress: 0,
-          generationMessage: '',
-          activeGenerationJobId: '',
-          comfyError: message,
-          history: current.history.map((historyItem) => {
-            if (historyItem.promptId !== pendingPromptID) {
-              return historyItem;
-            }
 
-            return {
-              ...historyItem,
-              status: 'error',
-              isGenerating: false,
-              message
-            };
-          })
-        }));
-        persistFromStoreSnapshot(get);
+        try {
+          const queued = await QueueText2Image({
+            requestId: pendingPromptID,
+            mode: currentMode,
+            prompt: currentParams.prompt,
+            negativePrompt: currentParams.negativePrompt,
+            seed: currentParams.seed,
+            steps: currentParams.steps,
+            cfgScale: currentParams.cfgScale,
+            width: currentParams.resolution.width,
+            height: currentParams.resolution.height,
+            model: currentParams.model,
+            vae: currentParams.vae,
+            sampler: currentParams.sampler,
+            scheduler: currentParams.scheduler,
+            batchSize: 1,
+            refine: (currentParams as Txt2ImgParameters).refine
+          });
+
+          const resolvedPromptID = queued?.jobId || pendingPromptID;
+
+          set((current) => ({
+            activeGenerationJobId: resolvedPromptID,
+            history: current.history.map((historyItem) => {
+              if (historyItem.promptId !== pendingPromptID) {
+                return historyItem;
+              }
+
+              return {
+                ...historyItem,
+                promptId: resolvedPromptID
+              };
+            })
+          }));
+        } catch (error) {
+          const errorMessage = toErrorMessage(error);
+          set((current) => ({
+            isGenerating: false,
+            generationMessage: '',
+            comfyError: errorMessage,
+            history: current.history.map((historyItem) => {
+              if (historyItem.promptId !== pendingPromptID) {
+                return historyItem;
+              }
+
+              return {
+                ...historyItem,
+                status: 'error',
+                isGenerating: false,
+                message: errorMessage
+              };
+            })
+          }));
+          break;
+        }
       }
     },
 

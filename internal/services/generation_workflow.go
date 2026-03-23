@@ -143,6 +143,10 @@ func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
 
 	req.Refine.UpscaleMode = normalizeRefineUpscaleMode(req.Refine.UpscaleMode)
 	req.Refine.UpscaleMethod = normalizeRefineUpscaleMethod(req.Refine.UpscaleMethod)
+	if req.BatchSize <= 0 {
+		req.BatchSize = 1
+	}
+	req.BatchSize = clampInt(req.BatchSize, 1, 100)
 	if req.Refine.ScaleBy <= 0 {
 		req.Refine.ScaleBy = 1.5
 	}
@@ -222,7 +226,7 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	emptyLatentNode := graph[emptyLatentNodeID]
 	emptyLatentNode.Inputs["width"] = clampInt(req.Width, 64, 4096)
 	emptyLatentNode.Inputs["height"] = clampInt(req.Height, 64, 4096)
-	emptyLatentNode.Inputs["batch_size"] = 1
+	emptyLatentNode.Inputs["batch_size"] = clampInt(req.BatchSize, 1, 100)
 	graph[emptyLatentNodeID] = emptyLatentNode
 
 	checkpointNodeID, err := findNodeByTitle(graph, "Load Checkpoint", "CheckpointLoaderSimple")

@@ -130,6 +130,7 @@ type GenerationRequest struct {
 	VAE            string                  `json:"vae"`
 	Sampler        string                  `json:"sampler"`
 	Scheduler      string                  `json:"scheduler"`
+	BatchSize      int                     `json:"batchSize"`
 	Refine         GenerationRefineRequest `json:"refine"`
 }
 

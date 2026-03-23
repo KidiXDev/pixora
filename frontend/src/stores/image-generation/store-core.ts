@@ -24,6 +24,7 @@ export interface PersistedImageGenerationState {
   txt2img: Txt2ImgParameters;
   img2img: Img2ImgParameters;
   history: GeneratedPreviewItem[];
+  generateForever: boolean;
 }
 
 export const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
@@ -69,7 +70,8 @@ export const defaultState: PersistedImageGenerationState = {
   },
   txt2img: defaultTxt2Img,
   img2img: defaultImg2Img,
-  history: []
+  history: [],
+  generateForever: false
 };
 
 function fallbackIfBlank(value: string | undefined, fallback: string): string {
@@ -179,6 +181,10 @@ export function sanitizePersistedState(
       Number.isFinite(nextTxt2Img.cfgScale) && nextTxt2Img.cfgScale > 0
         ? clamp(nextTxt2Img.cfgScale, 0.1, 30)
         : defaultState.txt2img.cfgScale,
+    batchSize:
+      Number.isFinite(nextTxt2Img.batchSize) && nextTxt2Img.batchSize > 0
+        ? clamp(Math.round(nextTxt2Img.batchSize), 1, 100)
+        : defaultState.txt2img.batchSize,
     refine: {
       ...nextTxt2Img.refine,
       enabled: Boolean(nextTxt2Img.refine.enabled),
@@ -214,6 +220,10 @@ export function sanitizePersistedState(
       Number.isFinite(nextImg2Img.cfgScale) && nextImg2Img.cfgScale > 0
         ? clamp(nextImg2Img.cfgScale, 0.1, 30)
         : defaultState.img2img.cfgScale,
+    batchSize:
+      Number.isFinite(nextImg2Img.batchSize) && nextImg2Img.batchSize > 0
+        ? clamp(Math.round(nextImg2Img.batchSize), 1, 100)
+        : defaultState.img2img.batchSize,
     denoiseStrength: Number.isFinite(nextImg2Img.denoiseStrength)
       ? clamp(nextImg2Img.denoiseStrength, 0, 1)
       : defaultState.img2img.denoiseStrength
@@ -223,6 +233,7 @@ export function sanitizePersistedState(
     ...defaultState,
     activeBackend: 'comfyui',
     mode,
+    generateForever: Boolean(candidate.generateForever),
     comfyUI: {
       ...defaultState.comfyUI,
       ...(candidate.comfyUI ?? {})
@@ -273,6 +284,7 @@ export function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boole
     a.vae === b.vae &&
     a.sampler === b.sampler &&
     a.scheduler === b.scheduler &&
+    a.batchSize === b.batchSize &&
     a.refine.enabled === b.refine.enabled &&
     a.refine.upscaleMode === b.refine.upscaleMode &&
     a.refine.upscaleMethod === b.refine.upscaleMethod &&
@@ -295,6 +307,7 @@ export function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boole
     a.vae === b.vae &&
     a.sampler === b.sampler &&
     a.scheduler === b.scheduler &&
+    a.batchSize === b.batchSize &&
     a.sourceImagePath === b.sourceImagePath &&
     a.denoiseStrength === b.denoiseStrength
   );

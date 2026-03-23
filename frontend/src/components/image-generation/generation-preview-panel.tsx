@@ -8,10 +8,12 @@ import {
   Image as ImageIcon,
   Square,
   WandSparkles,
-  X
+  X,
+  EllipsisVertical
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface GenerationPreviewPanelProps {
   history: ReadonlyArray<GeneratedPreviewItem>;
@@ -20,6 +22,8 @@ interface GenerationPreviewPanelProps {
   onGenerate: () => void;
   onInterrupt: () => void;
   onOpenWorkflow: () => void;
+  generateForever: boolean;
+  onGenerateForeverChange: (enabled: boolean) => void;
 }
 
 function resolutionLabel(width: number, height: number): string {
@@ -56,13 +60,17 @@ function GenerationPreviewPanelBase({
   isWorkflowLoading = false,
   onGenerate,
   onInterrupt,
-  onOpenWorkflow
+  onOpenWorkflow,
+  generateForever,
+  onGenerateForeverChange
 }: GenerationPreviewPanelProps) {
   const latest = history[0] ?? null;
   const hasImage = !!latest?.imagePath;
   const showLoading = isGenerating && !hasImage;
   const [isFullPreviewOpen, setIsFullPreviewOpen] = useState(false);
   const [scale, setScale] = useState(1);
+  const [isGenerateForeverMenuOpen, setIsGenerateForeverMenuOpen] =
+    useState(false);
 
   useEffect(() => {
     if (isFullPreviewOpen) {
@@ -108,32 +116,72 @@ function GenerationPreviewPanelBase({
               <GitBranch className="size-3.5" />
               {isWorkflowLoading ? 'Loading...' : 'View Workflow'}
             </Button>
-            <Button
-              onClick={() => {
-                if (isGenerating) {
-                  onInterrupt();
-                } else {
-                  onGenerate();
-                }
-              }}
-              className={`gap-2 h-10 px-6 text-xs font-bold shadow-xl active:scale-[0.98] transition-all duration-300 rounded-lg group/btn ${
-                isGenerating
-                  ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20'
-                  : 'bg-linear-to-r from-primary via-primary to-primary/80 shadow-primary/20'
-              }`}
-            >
-              {isGenerating ? (
-                <>
-                  <Square className="size-3.5 fill-current" />
-                  Interrupt
-                </>
-              ) : (
-                <>
-                  <WandSparkles className="size-3.5 transition-transform duration-300 group-hover:rotate-12" />
-                  Generate
-                </>
+            <div className="flex items-center -space-x-px">
+              <Button
+                onClick={() => {
+                  if (isGenerating) {
+                    onInterrupt();
+                  } else {
+                    onGenerate();
+                  }
+                }}
+                className={cn(
+                  'gap-2 h-10 px-6 text-xs font-bold shadow-xl active:scale-[0.98] transition-all duration-300 group/btn z-10',
+                  isGenerating
+                    ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20 rounded-lg'
+                    : 'bg-primary hover:bg-primary/90 shadow-primary/20 rounded-l-lg rounded-r-none'
+                )}
+              >
+                {isGenerating ? (
+                  <>
+                    <Square className="size-3.5 fill-current" />
+                    Interrupt
+                  </>
+                ) : (
+                  <>
+                    <WandSparkles className="size-3.5 transition-transform duration-300 group-hover:rotate-12" />
+                    Generate
+                  </>
+                )}
+              </Button>
+
+              {!isGenerating && (
+                <Popover
+                  open={isGenerateForeverMenuOpen}
+                  onOpenChange={setIsGenerateForeverMenuOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      size="icon"
+                      className="h-10 w-10 rounded-r-lg rounded-l-none border-l border-white/10 bg-primary hover:bg-primary/90 text-white shadow-primary/20 flex items-center justify-center p-0 transition-colors"
+                    >
+                      <EllipsisVertical className="size-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="bottom"
+                    align="end"
+                    className="w-48 p-2 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-50 mt-1"
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={cn(
+                        'w-full justify-start px-2.5 text-xs font-semibold',
+                        generateForever &&
+                          'text-primary bg-primary/10 hover:bg-primary/15'
+                      )}
+                      onClick={() => {
+                        onGenerateForeverChange(!generateForever);
+                        setIsGenerateForeverMenuOpen(false);
+                      }}
+                    >
+                      Generate Forever
+                    </Button>
+                  </PopoverContent>
+                </Popover>
               )}
-            </Button>
+            </div>
           </div>
         </div>
       </CardHeader>

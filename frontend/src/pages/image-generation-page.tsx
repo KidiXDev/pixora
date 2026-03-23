@@ -206,6 +206,7 @@ export default function ImageGenerationPage() {
       vae: currentTxt2Img.vae,
       sampler: currentTxt2Img.sampler,
       scheduler: currentTxt2Img.scheduler,
+      batchSize: currentTxt2Img.batchSize,
       refine: currentTxt2Img.refine
     };
   }, []);
@@ -625,11 +626,19 @@ const GenerationPreviewPanelContainer = memo(function GenerationPreviewPanelCont
   onGenerate: () => void;
   onOpenWorkflow: () => void;
 }) {
-  const { history, isGenerating, interruptGeneration } = useImageGenerationStore(
+  const {
+    history,
+    isGenerating,
+    interruptGeneration,
+    generateForever,
+    setGenerateForever
+  } = useImageGenerationStore(
     useShallow((state) => ({
       history: state.history,
       isGenerating: state.isGenerating,
-      interruptGeneration: state.interruptGeneration
+      interruptGeneration: state.interruptGeneration,
+      generateForever: state.generateForever,
+      setGenerateForever: state.setGenerateForever
     }))
   );
 
@@ -643,6 +652,8 @@ const GenerationPreviewPanelContainer = memo(function GenerationPreviewPanelCont
         void interruptGeneration();
       }}
       onOpenWorkflow={onOpenWorkflow}
+      generateForever={generateForever}
+      onGenerateForeverChange={setGenerateForever}
     />
   );
 });

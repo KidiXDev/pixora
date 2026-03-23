@@ -10,7 +10,8 @@ import {
   DEFAULT_RESOLUTION,
   DEFAULT_SAMPLER,
   DEFAULT_SCHEDULER,
-  DEFAULT_STEPS
+  DEFAULT_STEPS,
+  DEFAULT_BATCH_SIZE
 } from '@/constants/generation-defaults';
 
 export const resolutionSchema = z.object({
@@ -68,7 +69,8 @@ export const baseGenerationSchema = z.object({
   scheduler: z
     .string()
     .min(1, 'Scheduler is required')
-    .default(DEFAULT_SCHEDULER)
+    .default(DEFAULT_SCHEDULER),
+  batchSize: z.coerce.number().min(1).max(100).default(DEFAULT_BATCH_SIZE)
 });
 
 export const txt2imgSchema = baseGenerationSchema.extend({

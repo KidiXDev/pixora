@@ -31,7 +31,7 @@ import {
   formatPromptText,
   type PromptFormatOptions
 } from '@/lib/prompt-format';
-import { filterNumeric, parseNumeric } from '@/lib/utils';
+import { cn, filterNumeric, parseNumeric } from '@/lib/utils';
 import { img2imgSchema, txt2imgSchema } from '@/schema/generation-schema';
 import { useConfigStore } from '@/stores/config-store';
 import {
@@ -72,13 +72,12 @@ const RESOLUTION_PRESETS = {
   ]
 } as const;
 
-const REFINE_UPSCALE_METHOD_OPTIONS = [
+const REFINE_LATENT_UPSCALE_METHOD_OPTIONS = [
   'nearest-exact',
   'bilinear',
   'area',
   'bicubic',
-  'bislerp',
-  'lanczos'
+  'bislerp'
 ] as const;
 const STORE_SYNC_DEBOUNCE_MS = 80;
 
@@ -118,6 +117,7 @@ function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
     a.vae === b.vae &&
     a.sampler === b.sampler &&
     a.scheduler === b.scheduler &&
+    a.batchSize === b.batchSize &&
     a.refine.enabled === b.refine.enabled &&
     a.refine.upscaleMode === b.refine.upscaleMode &&
     a.refine.upscaleMethod === b.refine.upscaleMethod &&
@@ -140,6 +140,7 @@ function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
     a.vae === b.vae &&
     a.sampler === b.sampler &&
     a.scheduler === b.scheduler &&
+    a.batchSize === b.batchSize &&
     a.sourceImagePath === b.sourceImagePath &&
     a.denoiseStrength === b.denoiseStrength
   );
@@ -207,6 +208,8 @@ function GenerationParametersPanelBase({
       }) as FormValidateOrFn<FormValues>
     }
   });
+
+  const [isRefineExpanded, setIsRefineExpanded] = React.useState(false);
   const storeSyncTimerRef = React.useRef<number | null>(null);
   const pendingValuesRef = React.useRef<FormValues>({
     txt2img,
@@ -283,6 +286,405 @@ function GenerationParametersPanelBase({
       }
     }
   };
+
+  const renderModelFields = (prefix: 'txt2img' | 'img2img') => (
+    <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+      <form.Field
+        name={prefix === 'txt2img' ? 'txt2img.model' : 'img2img.model'}
+        children={(field) => {
+          const isInvalid =
+            field.state.meta.isTouched && !!field.state.meta.errors.length;
+          return (
+            <Field data-invalid={isInvalid}>
+              <FieldLabel
+                htmlFor={field.name}
+                className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
+              >
+                Checkpoint
+              </FieldLabel>
+              <Select
+                name={field.name}
+                value={field.state.value}
+                onValueChange={(value) => field.handleChange(value)}
+              >
+                <SelectTrigger
+                  id={field.name}
+                  aria-invalid={isInvalid}
+                  className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                >
+                  <SelectValue
+                    placeholder={
+                      modelCatalogLoading
+                        ? 'Loading checkpoints...'
+                        : 'Select model'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                    {modelOptions.map((item) => (
+                      <SelectItem key={item} value={item} className="text-xs">
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {isInvalid && <FieldError errors={field.state.meta.errors} />}
+            </Field>
+          );
+        }}
+      />
+
+      <form.Field
+        name={prefix === 'txt2img' ? 'txt2img.vae' : 'img2img.vae'}
+        children={(field) => {
+          const isInvalid =
+            field.state.meta.isTouched && !!field.state.meta.errors.length;
+          return (
+            <Field data-invalid={isInvalid}>
+              <FieldLabel
+                htmlFor={field.name}
+                className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
+              >
+                VAE
+              </FieldLabel>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    name={field.name}
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value)}
+                  >
+                    <SelectTrigger
+                      id={field.name}
+                      aria-invalid={isInvalid}
+                      className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
+                    >
+                      <SelectValue
+                        placeholder={
+                          modelCatalogLoading
+                            ? 'Loading VAEs...'
+                            : 'Select VAE'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                        {vaeOptions.map((item) => (
+                          <SelectItem
+                            key={item}
+                            value={item}
+                            className="text-xs"
+                          >
+                            {item}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-10 shrink-0 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors shadow-sm"
+                  onClick={onRefreshModelCatalog}
+                  disabled={modelCatalogLoading || isGenerating}
+                  title="Refresh"
+                >
+                  <RefreshCcwIcon
+                    className={`size-4 ${
+                      modelCatalogLoading ? 'animate-spin' : ''
+                    }`}
+                  />
+                </Button>
+              </div>
+              {isInvalid && <FieldError errors={field.state.meta.errors} />}
+            </Field>
+          );
+        }}
+      />
+    </div>
+  );
+  const renderRefineFields = () => (
+    <div className="space-y-3 pt-2 border-t border-border/10">
+      <form.Field
+        name="txt2img.refine"
+        children={(field) => {
+          const value = field.state.value;
+          const isModelMode = value.upscaleMode === 'model';
+          const isExpanded = isRefineExpanded;
+
+          return (
+            <Accordion
+              type="single"
+              value={isExpanded ? 'refine' : ''}
+              onValueChange={(nextValue) => {
+                setIsRefineExpanded(nextValue === 'refine');
+              }}
+              collapsible
+              className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
+            >
+              <AccordionItem value="refine" className="border-none">
+                <div className="relative w-full py-3 pr-1">
+                  <AccordionTrigger className="w-full items-center py-1 pr-16 hover:no-underline">
+                    <div className="space-y-0.5 text-left">
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
+                        Refine (Hi-Res Fix)
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Upscale and run a second denoise pass for cleaner details.
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <div
+                    className="absolute right-1 top-1/2 flex h-8 -translate-y-1/2 items-center border-l border-border/10 pl-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={value.enabled}
+                      aria-label="Enable refine"
+                      onCheckedChange={(checked) => {
+                        field.handleChange({
+                          ...value,
+                          enabled: checked
+                        });
+                        if (checked) {
+                          setIsRefineExpanded(true);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <AccordionContent className="space-y-4 pb-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Upscale Type
+                      </FieldLabel>
+                      <Select
+                        value={value.upscaleMode}
+                        onValueChange={(upscaleMode) => {
+                          const mode = upscaleMode as 'latent' | 'model';
+                          let nextMethod = value.upscaleMethod;
+                          if (mode === 'model') {
+                            nextMethod = 'lanczos';
+                          } else if (nextMethod === 'lanczos') {
+                            nextMethod = 'nearest-exact';
+                          }
+                          field.handleChange({
+                            ...value,
+                            upscaleMode: mode,
+                            upscaleMethod: nextMethod
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="latent" className="text-xs">
+                            Latent Upscale
+                          </SelectItem>
+                          <SelectItem value="model" className="text-xs">
+                            Upscale Model
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Upscale Method
+                      </FieldLabel>
+                      <Select
+                        key={value.upscaleMode}
+                        value={value.upscaleMethod}
+                        disabled={isModelMode}
+                        onValueChange={(upscaleMethod) => {
+                          field.handleChange({
+                            ...value,
+                            upscaleMethod
+                          });
+                        }}
+                      >
+                        <SelectTrigger
+                          className={cn(
+                            'h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors',
+                            isModelMode && 'opacity-50 cursor-not-allowed'
+                          )}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {isModelMode ? (
+                            <SelectItem value="lanczos" className="text-xs">
+                              lanczos
+                            </SelectItem>
+                          ) : (
+                            REFINE_LATENT_UPSCALE_METHOD_OPTIONS.map(
+                              (method) => (
+                                <SelectItem
+                                  key={method}
+                                  value={method}
+                                  className="text-xs"
+                                >
+                                  {method}
+                                </SelectItem>
+                              )
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field className="col-span-2">
+                      <FieldLabel className={cn(
+                        "text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5 transition-opacity",
+                        !isModelMode && "opacity-40"
+                      )}>
+                        Upscale Model
+                      </FieldLabel>
+                      <Select
+                        value={value.upscaleModel}
+                        disabled={!isModelMode}
+                        onValueChange={(upscaleModel) => {
+                          field.handleChange({
+                            ...value,
+                            upscaleModel
+                          });
+                        }}
+                      >
+                        <SelectTrigger className={cn(
+                          "h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-all",
+                          !isModelMode && "opacity-50 cursor-not-allowed grayscale-[0.5]"
+                        )}>
+                          <SelectValue
+                            placeholder={
+                              modelCatalogLoading
+                                ? 'Loading upscale models...'
+                                : 'Select upscale model'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                            {modelCatalog.upscaleModels.map((model) => (
+                              <SelectItem key={model} value={model} className="text-xs">
+                                {model}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/10">
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Scale By
+                        </FieldLabel>
+                        <Input
+                          value={value.scaleBy}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              scaleBy: parseNumeric(
+                                filterNumeric(event.target.value, true)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.scaleBy]}
+                        min={1.05}
+                        max={4}
+                        step={0.05}
+                        onValueChange={([scaleBy]) =>
+                          field.handleChange({
+                            ...value,
+                            scaleBy
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Refine Steps
+                        </FieldLabel>
+                        <Input
+                          value={value.steps}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              steps: parseNumeric(
+                                filterNumeric(event.target.value, false)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.steps]}
+                        min={1}
+                        max={80}
+                        step={1}
+                        onValueChange={([steps]) =>
+                          field.handleChange({
+                            ...value,
+                            steps
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field className="space-y-2 col-span-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Refine Denoise
+                        </FieldLabel>
+                        <Input
+                          value={value.denoiseStrength}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              denoiseStrength: parseNumeric(
+                                filterNumeric(event.target.value, true)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.denoiseStrength]}
+                        min={0.05}
+                        max={1}
+                        step={0.01}
+                        onValueChange={([denoiseStrength]) =>
+                          field.handleChange({
+                            ...value,
+                            denoiseStrength
+                          })
+                        }
+                      />
+                    </Field>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          );
+        }}
+      />
+    </div>
+  );
 
   const renderNumericParameterFields = ({
     prefix,
@@ -379,7 +781,54 @@ function GenerationParametersPanelBase({
             );
           }}
         />
+
+        {/* Batch Size */}
+        <form.Field
+          name={prefix === 'txt2img' ? 'txt2img.batchSize' : 'img2img.batchSize'}
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !!field.state.meta.errors.length;
+            return (
+              <Field className="col-span-2 space-y-2.5" data-invalid={isInvalid}>
+                <div className="flex items-center justify-between gap-2 px-0.5">
+                  <FieldLabel
+                    htmlFor={field.name}
+                    className="text-xs text-muted-foreground font-bold uppercase tracking-widest"
+                  >
+                    Batch Size
+                  </FieldLabel>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) =>
+                      field.handleChange(
+                        parseNumeric(filterNumeric(e.target.value, false))
+                      )
+                    }
+                    aria-invalid={isInvalid}
+                    className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50 focus-visible:ring-1"
+                  />
+                </div>
+                <FieldContent className="px-1.5">
+                  <Slider
+                    value={[field.state.value]}
+                    onValueChange={([v]) => field.handleChange(v)}
+                    min={1}
+                    max={100}
+                    step={1}
+                    className="py-1"
+                  />
+                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                </FieldContent>
+              </Field>
+            );
+          }}
+        />
       </div>
+
+      {prefix === 'txt2img' && renderRefineFields()}
 
       {/* Denoise Strength */}
       {showDenoise && prefix === 'img2img' && (
@@ -699,366 +1148,9 @@ function GenerationParametersPanelBase({
         />
       </div>
 
-      {/* Checkpoint & VAE Row */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-5 pt-2 border-t border-border/10">
-        <form.Field
-          name={prefix === 'txt2img' ? 'txt2img.model' : 'img2img.model'}
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel
-                  htmlFor={field.name}
-                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-                >
-                  Checkpoint
-                </FieldLabel>
-                <Select
-                  name={field.name}
-                  value={field.state.value}
-                  onValueChange={(value) => field.handleChange(value)}
-                >
-                  <SelectTrigger
-                    id={field.name}
-                    aria-invalid={isInvalid}
-                    className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
-                  >
-                    <SelectValue
-                      placeholder={
-                        modelCatalogLoading
-                          ? 'Loading checkpoints...'
-                          : 'Select model'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelOptions.map((item) => (
-                      <SelectItem key={item} value={item} className="text-xs">
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-              </Field>
-            );
-          }}
-        />
-
-        <form.Field
-          name={prefix === 'txt2img' ? 'txt2img.vae' : 'img2img.vae'}
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel
-                  htmlFor={field.name}
-                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-                >
-                  VAE
-                </FieldLabel>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex-1 min-w-0">
-                    <Select
-                      name={field.name}
-                      value={field.state.value}
-                      onValueChange={(value) => field.handleChange(value)}
-                    >
-                      <SelectTrigger
-                        id={field.name}
-                        aria-invalid={isInvalid}
-                        className="h-10 w-full text-xs px-3 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors font-semibold"
-                      >
-                        <SelectValue
-                          placeholder={
-                            modelCatalogLoading
-                              ? 'Loading VAEs...'
-                              : 'Select VAE'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vaeOptions.map((item) => (
-                          <SelectItem
-                            key={item}
-                            value={item}
-                            className="text-xs"
-                          >
-                            {item}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="size-10 shrink-0 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors shadow-sm"
-                    onClick={onRefreshModelCatalog}
-                    disabled={modelCatalogLoading || isGenerating}
-                    title="Refresh"
-                  >
-                    <RefreshCcwIcon
-                      className={`size-4 ${
-                        modelCatalogLoading ? 'animate-spin' : ''
-                      }`}
-                    />
-                  </Button>
-                </div>
-                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-              </Field>
-            );
-          }}
-        />
-      </div>
     </div>
   );
 
-  const renderRefineFields = () => (
-    <div className="space-y-3 pt-2 border-t border-border/10">
-      <form.Field
-        name="txt2img.refine"
-        children={(field) => {
-          const value = field.state.value;
-          const isModelMode = value.upscaleMode === 'model';
-          const isExpanded = value.enabled;
-
-          return (
-            <Accordion
-              type="single"
-              value={isExpanded ? 'refine' : ''}
-              onValueChange={(nextValue) => {
-                field.handleChange({
-                  ...value,
-                  enabled: nextValue === 'refine'
-                });
-              }}
-              collapsible
-              className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
-            >
-              <AccordionItem value="refine" className="border-none">
-                <div className="flex w-full items-center gap-3 py-3 pr-2">
-                  <AccordionTrigger className="flex-1 py-0 hover:no-underline">
-                    <div className="space-y-0.5 text-left">
-                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
-                        Refine (Hi-Res Fix)
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/70">
-                        Upscale and run a second denoise pass for cleaner details.
-                      </p>
-                    </div>
-                  </AccordionTrigger>
-                  <Switch
-                    checked={value.enabled}
-                    aria-label="Enable refine"
-                    onCheckedChange={(checked) => {
-                      field.handleChange({
-                        ...value,
-                        enabled: checked
-                      });
-                    }}
-                  />
-                </div>
-                <AccordionContent className="space-y-4 pb-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field>
-                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
-                        Upscale Type
-                      </FieldLabel>
-                      <Select
-                        value={value.upscaleMode}
-                        onValueChange={(upscaleMode) => {
-                          field.handleChange({
-                            ...value,
-                            upscaleMode: upscaleMode as 'latent' | 'model'
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="latent" className="text-xs">
-                            Latent Upscale
-                          </SelectItem>
-                          <SelectItem value="model" className="text-xs">
-                            Upscale Model
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    <Field>
-                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
-                        Upscale Method
-                      </FieldLabel>
-                      <Select
-                        value={value.upscaleMethod}
-                        onValueChange={(upscaleMethod) => {
-                          field.handleChange({
-                            ...value,
-                            upscaleMethod
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {REFINE_UPSCALE_METHOD_OPTIONS.map((method) => (
-                            <SelectItem key={method} value={method} className="text-xs">
-                              {method}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    {isModelMode && (
-                      <Field className="col-span-2">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
-                          Upscale Model
-                        </FieldLabel>
-                        <Select
-                          value={value.upscaleModel}
-                          onValueChange={(upscaleModel) => {
-                            field.handleChange({
-                              ...value,
-                              upscaleModel
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors">
-                            <SelectValue
-                              placeholder={
-                                modelCatalogLoading
-                                  ? 'Loading upscale models...'
-                                  : 'Select upscale model'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup className="overflow-y-auto max-h-[40vh]">
-                              {modelCatalog.upscaleModels.map((model) => (
-                                <SelectItem key={model} value={model} className="text-xs">
-                                  {model}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <Field className="space-y-2">
-                      <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Scale By
-                        </FieldLabel>
-                        <Input
-                          value={value.scaleBy}
-                          onChange={(event) =>
-                            field.handleChange({
-                              ...value,
-                              scaleBy: parseNumeric(
-                                filterNumeric(event.target.value, true)
-                              )
-                            })
-                          }
-                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
-                        />
-                      </div>
-                      <Slider
-                        value={[value.scaleBy]}
-                        min={1.05}
-                        max={4}
-                        step={0.05}
-                        onValueChange={([scaleBy]) =>
-                          field.handleChange({
-                            ...value,
-                            scaleBy
-                          })
-                        }
-                      />
-                    </Field>
-
-                    <Field className="space-y-2">
-                      <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Refine Steps
-                        </FieldLabel>
-                        <Input
-                          value={value.steps}
-                          onChange={(event) =>
-                            field.handleChange({
-                              ...value,
-                              steps: parseNumeric(
-                                filterNumeric(event.target.value, false)
-                              )
-                            })
-                          }
-                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
-                        />
-                      </div>
-                      <Slider
-                        value={[value.steps]}
-                        min={1}
-                        max={80}
-                        step={1}
-                        onValueChange={([steps]) =>
-                          field.handleChange({
-                            ...value,
-                            steps
-                          })
-                        }
-                      />
-                    </Field>
-
-                    <Field className="space-y-2">
-                      <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Refine Denoise
-                        </FieldLabel>
-                        <Input
-                          value={value.denoiseStrength}
-                          onChange={(event) =>
-                            field.handleChange({
-                              ...value,
-                              denoiseStrength: parseNumeric(
-                                filterNumeric(event.target.value, true)
-                              )
-                            })
-                          }
-                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
-                        />
-                      </div>
-                      <Slider
-                        value={[value.denoiseStrength]}
-                        min={0.05}
-                        max={1}
-                        step={0.01}
-                        onValueChange={([denoiseStrength]) =>
-                          field.handleChange({
-                            ...value,
-                            denoiseStrength
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          );
-        }}
-      />
-    </div>
-  );
   React.useEffect(() => {
     const sub = form.store.subscribe((state) => {
       pendingValuesRef.current = {
@@ -1128,6 +1220,7 @@ function GenerationParametersPanelBase({
         <form className="space-y-8 px-6 py-6 pb-12">
           {mode === 'txt2img' ? (
             <FieldGroup className="space-y-8">
+              {renderModelFields('txt2img')}
               <div className="space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
@@ -1227,11 +1320,11 @@ function GenerationParametersPanelBase({
                 </div>
 
                 {renderNumericParameterFields({ prefix: 'txt2img' })}
-                {renderRefineFields()}
               </div>
             </FieldGroup>
           ) : (
             <FieldGroup className="space-y-8">
+              {renderModelFields('img2img')}
               <div className="space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
