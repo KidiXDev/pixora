@@ -611,7 +611,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   payload.state === 'error' ||
                   payload.state === 'canceled' ||
                   payload.state === 'completed' ||
-                  nextItemImagePath.trim() === '';
+                  (nextItemImagePath || '').trim() === '';
                 const resolvedMessage =
                   shouldRefreshItemMessage && nextItemMessage !== ''
                     ? nextItemMessage

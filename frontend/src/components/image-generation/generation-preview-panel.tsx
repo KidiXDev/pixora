@@ -42,12 +42,12 @@ function buildImageURL(imagePath: string, cacheKey?: string): string {
   return `/image/?path=${encoded}&v=${encodeURIComponent(cacheKey)}`;
 }
 
-function formatDuration(start: string, end?: string): string {
-  if (!start) return '0.0s';
+function formatDuration(start: string, end?: string, precision = 1): string {
+  if (!start) return `0.${'0'.repeat(precision)}s`;
   const startTime = new Date(start).getTime();
   const endTime = end ? new Date(end).getTime() : Date.now();
   const diff = Math.max(0, (endTime - startTime) / 1000);
-  return diff.toFixed(1) + 's';
+  return diff.toFixed(precision) + 's';
 }
 
 function GenerationPreviewPanelBase({
@@ -258,8 +258,8 @@ function GenerationPreviewPanelBase({
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-[10px] text-white/50 font-bold uppercase tracking-wider w-full">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px]">Res</span>
-                          <span className="text-white/80 font-mono">
+                          <span className="text-white/30 text-[9px] leading-none">Res</span>
+                          <span className="text-white/80 font-mono leading-none">
                             {resolutionLabel(
                               latest.resolution.width,
                               latest.resolution.height
@@ -267,30 +267,30 @@ function GenerationPreviewPanelBase({
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px]">
+                          <span className="text-white/30 text-[9px] leading-none">
                             Steps
                           </span>
-                          <span className="text-white/80 font-mono">
+                          <span className="text-white/80 font-mono leading-none">
                             {latest.steps}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px]">CFG</span>
-                          <span className="text-white/80 font-mono">
+                          <span className="text-white/30 text-[9px] leading-none">CFG</span>
+                          <span className="text-white/80 font-mono leading-none">
                             {latest.cfgScale}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px]">Seed</span>
-                          <span className="text-white/80 font-mono">
+                          <span className="text-white/30 text-[9px] leading-none">Seed</span>
+                          <span className="text-white/80 font-mono leading-none">
                             {latest.seed ?? 'Random'}
                           </span>
                         </div>
 
                         {/* Time Elapsed / Generation Time */}
                         <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-white/30 text-[9px]">Time</span>
-                          <span className="font-mono text-primary">
+                          <span className="text-white/30 text-[9px] leading-none">Time</span>
+                          <span className="font-mono text-primary leading-none">
                             <ElapsedTime
                               start={latest.createdAtISO}
                               end={latest.completedAtISO}
@@ -417,21 +417,29 @@ const ElapsedTime = React.memo(function ElapsedTime({
   end?: string;
   isLive: boolean;
 }) {
-  const [, setTick] = useState(0);
+  const [elapsed, setElapsed] = useState(() => formatDuration(start, end, 2));
 
   useEffect(() => {
     if (!isLive) {
+      setElapsed(formatDuration(start, end, 2));
       return;
     }
 
-    const interval = window.setInterval(() => {
-      setTick((value) => value + 1);
-    }, 250);
+    let frameId: number;
+    const update = () => {
+      setElapsed(formatDuration(start, end, 2));
+      frameId = requestAnimationFrame(update);
+    };
 
-    return () => window.clearInterval(interval);
-  }, [isLive]);
+    frameId = requestAnimationFrame(update);
+    return () => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isLive, start, end]);
 
-  return <>{formatDuration(start, end)}</>;
+  return <>{elapsed}</>;
 });
 
 export const GenerationPreviewPanel = React.memo(GenerationPreviewPanelBase);
