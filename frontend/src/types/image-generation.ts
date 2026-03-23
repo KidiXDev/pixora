@@ -33,8 +33,14 @@ export interface Txt2ImgRefineParameters {
   denoiseStrength: number;
 }
 
+export interface Txt2ImgClipSkipParameters {
+  enabled: boolean;
+  stopAtLayer: number;
+}
+
 export interface Txt2ImgParameters extends BaseGenerationParameters {
   refine: Txt2ImgRefineParameters;
+  clipSkip: Txt2ImgClipSkipParameters;
 }
 
 export interface Img2ImgParameters extends BaseGenerationParameters {

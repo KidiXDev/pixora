@@ -1043,6 +1043,18 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             0.05,
             1
           )
+        },
+        clipSkip: {
+          ...state.txt2img.clipSkip,
+          ...(patch.clipSkip ?? {}),
+          enabled: patch.clipSkip?.enabled ?? state.txt2img.clipSkip.enabled,
+          stopAtLayer: clamp(
+            Math.round(
+              patch.clipSkip?.stopAtLayer ?? state.txt2img.clipSkip.stopAtLayer
+            ),
+            -24,
+            -1
+          )
         }
       };
 
@@ -1167,6 +1179,7 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             sampler: currentParams.sampler,
             scheduler: currentParams.scheduler,
             batchSize: 1,
+            clipSkip: (currentParams as Txt2ImgParameters).clipSkip,
             refine: (currentParams as Txt2ImgParameters).refine
           });
 

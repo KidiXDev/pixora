@@ -7,6 +7,7 @@ import {
   DEFAULT_REFINE_DENOISE_STRENGTH,
   DEFAULT_REFINE_SCALE_BY,
   DEFAULT_REFINE_STEPS,
+  DEFAULT_CLIP_SKIP_STOP_AT_LAYER,
   DEFAULT_RESOLUTION,
   DEFAULT_SAMPLER,
   DEFAULT_SCHEDULER,
@@ -56,6 +57,11 @@ export const txt2imgRefineSchema = z
     }
   });
 
+export const txt2imgClipSkipSchema = z.object({
+  enabled: z.boolean().default(false),
+  stopAtLayer: z.coerce.number().int().min(-24).max(-1).default(DEFAULT_CLIP_SKIP_STOP_AT_LAYER)
+});
+
 export const baseGenerationSchema = z.object({
   prompt: z.string().optional().default(DEFAULT_GENERATION_PROMPT),
   negativePrompt: z.string().optional().default(DEFAULT_NEGATIVE_PROMPT),
@@ -82,6 +88,10 @@ export const txt2imgSchema = baseGenerationSchema.extend({
     scaleBy: DEFAULT_REFINE_SCALE_BY,
     steps: DEFAULT_REFINE_STEPS,
     denoiseStrength: DEFAULT_REFINE_DENOISE_STRENGTH
+  }),
+  clipSkip: txt2imgClipSkipSchema.default({
+    enabled: false,
+    stopAtLayer: DEFAULT_CLIP_SKIP_STOP_AT_LAYER
   })
 });
 

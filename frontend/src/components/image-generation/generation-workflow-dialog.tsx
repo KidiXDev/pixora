@@ -31,6 +31,7 @@ interface GenerationWorkflowDialogProps {
   onRefresh: () => void;
   comfyEmbedURL: string;
   stagedComfyWorkflowPath: string;
+  stagedComfyWorkflowVersion: number;
   isComfyEmbedLoading: boolean;
   onReloadComfyEmbed: () => void;
   onLoadComfyWorkflow: () => void;
@@ -251,6 +252,7 @@ export function GenerationWorkflowDialog({
   onRefresh,
   comfyEmbedURL,
   stagedComfyWorkflowPath,
+  stagedComfyWorkflowVersion,
   isComfyEmbedLoading,
   onReloadComfyEmbed,
   onLoadComfyWorkflow
@@ -258,6 +260,7 @@ export function GenerationWorkflowDialog({
   const [activeTab, setActiveTab] = React.useState('graph');
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const hasAutoRequestedComfyEmbedRef = React.useRef(false);
+  const lastPostedWorkflowVersionRef = React.useRef(0);
   const payload = React.useMemo(() => {
     if (workflowJSON.trim() === '') {
       return null;
@@ -295,6 +298,20 @@ export function GenerationWorkflowDialog({
     }
   }, [open]);
 
+  const postWorkflowToComfy = React.useCallback((workflowPath: string) => {
+    if (workflowPath.trim() === '' || !iframeRef.current?.contentWindow) {
+      return;
+    }
+
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: 'pixora:load-workflow',
+        workflowPath
+      },
+      '*'
+    );
+  }, []);
+
   React.useEffect(() => {
     if (!open || activeTab !== 'comfyui') {
       return;
@@ -317,20 +334,25 @@ export function GenerationWorkflowDialog({
   ]);
 
   React.useEffect(() => {
-    if (
-      stagedComfyWorkflowPath &&
-      iframeRef.current?.contentWindow &&
-      activeTab === 'comfyui'
-    ) {
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: 'pixora:load-workflow',
-          workflowPath: stagedComfyWorkflowPath
-        },
-        '*'
-      );
+    if (!open || activeTab !== 'comfyui') {
+      return;
     }
-  }, [stagedComfyWorkflowPath, activeTab]);
+    if (!stagedComfyWorkflowPath || !iframeRef.current?.contentWindow) {
+      return;
+    }
+    if (stagedComfyWorkflowVersion <= lastPostedWorkflowVersionRef.current) {
+      return;
+    }
+
+    lastPostedWorkflowVersionRef.current = stagedComfyWorkflowVersion;
+    postWorkflowToComfy(stagedComfyWorkflowPath);
+  }, [
+    open,
+    activeTab,
+    stagedComfyWorkflowPath,
+    stagedComfyWorkflowVersion,
+    postWorkflowToComfy
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -626,6 +648,18 @@ export function GenerationWorkflowDialog({
                     src={comfyEmbedURL}
                     title="Embedded ComfyUI"
                     className="block h-full w-full border-0 bg-background"
+                    onLoad={() => {
+                      if (
+                        activeTab === 'comfyui' &&
+                        stagedComfyWorkflowPath &&
+                        stagedComfyWorkflowVersion >
+                          lastPostedWorkflowVersionRef.current
+                      ) {
+                        lastPostedWorkflowVersionRef.current =
+                          stagedComfyWorkflowVersion;
+                        postWorkflowToComfy(stagedComfyWorkflowPath);
+                      }
+                    }}
                   />
                 </div>
               ) : (

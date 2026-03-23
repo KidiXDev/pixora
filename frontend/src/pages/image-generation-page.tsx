@@ -39,6 +39,8 @@ export default function ImageGenerationPage() {
   const [workflowJSON, setWorkflowJSON] = useState('');
   const [comfyEmbedURL, setComfyEmbedURL] = useState('');
   const [stagedComfyWorkflowPath, setStagedComfyWorkflowPath] = useState('');
+  const [stagedComfyWorkflowVersion, setStagedComfyWorkflowVersion] =
+    useState(0);
   const lastComfyErrorRef = useRef('');
   const lastModelCatalogErrorRef = useRef('');
   const workflowPreviewRequestSeqRef = useRef(0);
@@ -207,6 +209,7 @@ export default function ImageGenerationPage() {
       sampler: currentTxt2Img.sampler,
       scheduler: currentTxt2Img.scheduler,
       batchSize: currentTxt2Img.batchSize,
+      clipSkip: currentTxt2Img.clipSkip,
       refine: currentTxt2Img.refine
     };
   }, []);
@@ -325,12 +328,24 @@ export default function ImageGenerationPage() {
         return;
       }
 
-      const embedURL = new URL(comfyUI.apiUrl);
-      embedURL.searchParams.set('pixoraWorkflow', stagedPath);
-      embedURL.searchParams.set('pixoraNonce', Date.now().toString());
-
       setStagedComfyWorkflowPath(stagedPath);
-      setComfyEmbedURL(embedURL.toString());
+      setStagedComfyWorkflowVersion((value) => value + 1);
+
+      let shouldResetEmbedURL = comfyEmbedURL.trim() === '';
+      if (!shouldResetEmbedURL) {
+        try {
+          const currentEmbedURL = new URL(comfyEmbedURL);
+          shouldResetEmbedURL = currentEmbedURL.searchParams.has('pixoraWorkflow');
+        } catch {
+          shouldResetEmbedURL = true;
+        }
+      }
+
+      if (shouldResetEmbedURL) {
+        const embedURL = new URL(comfyUI.apiUrl);
+        embedURL.searchParams.set('pixoraNonce', Date.now().toString());
+        setComfyEmbedURL(embedURL.toString());
+      }
     } catch (error) {
       if (workflowEmbedRequestSeqRef.current !== requestSeq) {
         return;
@@ -356,20 +371,7 @@ export default function ImageGenerationPage() {
       return;
     }
 
-    try {
-      const embedURL = new URL(comfyUI.apiUrl);
-      embedURL.searchParams.set('pixoraWorkflow', stagedComfyWorkflowPath);
-      embedURL.searchParams.set('pixoraNonce', Date.now().toString());
-      setComfyEmbedURL(embedURL.toString());
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to reload embedded ComfyUI.';
-      toast.error('Embedded ComfyUI failed', {
-        description: message
-      });
-    }
+    setStagedComfyWorkflowVersion((value) => value + 1);
   };
 
   const shouldShowSetupOnboarding =
@@ -558,6 +560,7 @@ export default function ImageGenerationPage() {
         isLoading={isWorkflowLoading}
         comfyEmbedURL={comfyEmbedURL}
         stagedComfyWorkflowPath={stagedComfyWorkflowPath}
+        stagedComfyWorkflowVersion={stagedComfyWorkflowVersion}
         isComfyEmbedLoading={isComfyEmbedLoading}
         onRefresh={() => {
           void loadWorkflowPreview();

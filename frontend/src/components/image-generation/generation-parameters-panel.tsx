@@ -124,7 +124,9 @@ function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
     a.refine.upscaleModel === b.refine.upscaleModel &&
     a.refine.scaleBy === b.refine.scaleBy &&
     a.refine.steps === b.refine.steps &&
-    a.refine.denoiseStrength === b.refine.denoiseStrength
+    a.refine.denoiseStrength === b.refine.denoiseStrength &&
+    a.clipSkip.enabled === b.clipSkip.enabled &&
+    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer
   );
 }
 
@@ -210,6 +212,7 @@ function GenerationParametersPanelBase({
   });
 
   const [isRefineExpanded, setIsRefineExpanded] = React.useState(false);
+  const [isClipSkipExpanded, setIsClipSkipExpanded] = React.useState(false);
   const storeSyncTimerRef = React.useRef<number | null>(null);
   const pendingValuesRef = React.useRef<FormValues>({
     txt2img,
@@ -686,6 +689,104 @@ function GenerationParametersPanelBase({
     </div>
   );
 
+  const renderClipSkipFields = () => (
+    <div className="space-y-3">
+      <form.Field
+        name="txt2img.clipSkip"
+        children={(field) => {
+          const value = field.state.value;
+          const isExpanded = isClipSkipExpanded;
+
+          return (
+            <Accordion
+              type="single"
+              value={isExpanded ? 'clip-skip' : ''}
+              onValueChange={(nextValue) => {
+                setIsClipSkipExpanded(nextValue === 'clip-skip');
+              }}
+              collapsible
+              className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
+            >
+              <AccordionItem value="clip-skip" className="border-none">
+                <div className="relative w-full py-3 pr-1">
+                  <AccordionTrigger className="w-full items-center py-1 pr-16 hover:no-underline">
+                    <div className="space-y-0.5 text-left">
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
+                        Clip Skip
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Shift CLIP encoding depth for style/control tweaks.
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <div
+                    className="absolute right-1 top-1/2 flex h-8 -translate-y-1/2 items-center border-l border-border/10 pl-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={value.enabled}
+                      aria-label="Enable clip skip"
+                      onCheckedChange={(checked) => {
+                        field.handleChange({
+                          ...value,
+                          enabled: checked,
+                          stopAtLayer: checked
+                            ? value.stopAtLayer || -1
+                            : value.stopAtLayer
+                        });
+                        if (checked) {
+                          setIsClipSkipExpanded(true);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <AccordionContent className="space-y-4 pb-4">
+                  <Field className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 px-0.5">
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                        Stop At Layer
+                      </FieldLabel>
+                      <Input
+                        value={value.stopAtLayer}
+                        onChange={(event) => {
+                          const raw = event.target.value.replace(/[^0-9-]/g, '');
+                          const normalized = raw.startsWith('-')
+                            ? `-${raw.slice(1).replace(/-/g, '')}`
+                            : raw.replace(/-/g, '');
+                          field.handleChange({
+                            ...value,
+                            stopAtLayer:
+                              normalized === '' || normalized === '-'
+                                ? value.stopAtLayer
+                                : parseNumeric(normalized)
+                          });
+                        }}
+                        className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                      />
+                    </div>
+                    <Slider
+                      value={[value.stopAtLayer]}
+                      min={-24}
+                      max={-1}
+                      step={1}
+                      onValueChange={([stopAtLayer]) =>
+                        field.handleChange({
+                          ...value,
+                          stopAtLayer
+                        })
+                      }
+                    />
+                  </Field>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          );
+        }}
+      />
+    </div>
+  );
+
   const renderNumericParameterFields = ({
     prefix,
     showDenoise
@@ -828,7 +929,12 @@ function GenerationParametersPanelBase({
         />
       </div>
 
-      {prefix === 'txt2img' && renderRefineFields()}
+      {prefix === 'txt2img' && (
+        <>
+          {renderRefineFields()}
+          {renderClipSkipFields()}
+        </>
+      )}
 
       {/* Denoise Strength */}
       {showDenoise && prefix === 'img2img' && (

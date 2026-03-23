@@ -6,6 +6,7 @@ export {
     AutocompleteConfig,
     ComfyUIBackendConfig,
     FolderConfig,
+    GenerationPanelClipSkip,
     GenerationPanelConfig,
     GenerationPanelHistoryItem,
     GenerationPanelImg2Img,

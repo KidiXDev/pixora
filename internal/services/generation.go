@@ -117,21 +117,27 @@ type QueueGenerationResponse struct {
 }
 
 type GenerationRequest struct {
-	RequestID      string                  `json:"requestId"`
-	Mode           string                  `json:"mode"`
-	Prompt         string                  `json:"prompt"`
-	NegativePrompt string                  `json:"negativePrompt"`
-	Seed           string                  `json:"seed"`
-	Steps          int                     `json:"steps"`
-	CFGScale       float64                 `json:"cfgScale"`
-	Width          int                     `json:"width"`
-	Height         int                     `json:"height"`
-	Model          string                  `json:"model"`
-	VAE            string                  `json:"vae"`
-	Sampler        string                  `json:"sampler"`
-	Scheduler      string                  `json:"scheduler"`
-	BatchSize      int                     `json:"batchSize"`
-	Refine         GenerationRefineRequest `json:"refine"`
+	RequestID      string                    `json:"requestId"`
+	Mode           string                    `json:"mode"`
+	Prompt         string                    `json:"prompt"`
+	NegativePrompt string                    `json:"negativePrompt"`
+	Seed           string                    `json:"seed"`
+	Steps          int                       `json:"steps"`
+	CFGScale       float64                   `json:"cfgScale"`
+	Width          int                       `json:"width"`
+	Height         int                       `json:"height"`
+	Model          string                    `json:"model"`
+	VAE            string                    `json:"vae"`
+	Sampler        string                    `json:"sampler"`
+	Scheduler      string                    `json:"scheduler"`
+	BatchSize      int                       `json:"batchSize"`
+	ClipSkip       GenerationClipSkipRequest `json:"clipSkip"`
+	Refine         GenerationRefineRequest   `json:"refine"`
+}
+
+type GenerationClipSkipRequest struct {
+	Enabled     bool `json:"enabled"`
+	StopAtLayer int  `json:"stopAtLayer"`
 }
 
 type GenerationRefineRequest struct {

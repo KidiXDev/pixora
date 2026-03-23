@@ -147,6 +147,9 @@ func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
 		req.BatchSize = 1
 	}
 	req.BatchSize = clampInt(req.BatchSize, 1, 100)
+	if req.ClipSkip.StopAtLayer > -1 || req.ClipSkip.StopAtLayer < -24 {
+		req.ClipSkip.StopAtLayer = -1
+	}
 	if req.Refine.ScaleBy <= 0 {
 		req.Refine.ScaleBy = 1.5
 	}
@@ -238,6 +241,27 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 		checkpointNode.Inputs["ckpt_name"] = strings.TrimSpace(req.Model)
 	}
 	graph[checkpointNodeID] = checkpointNode
+
+	clipInputLink := buildWorkflowLink(checkpointNodeID, 1)
+	if req.ClipSkip.Enabled {
+		clipSkipNodeID := nextWorkflowNodeID(graph)
+		graph[clipSkipNodeID] = comfyWorkflowNode{
+			ClassType: "CLIPSetLastLayer",
+			Inputs: map[string]any{
+				"stop_at_clip_layer": clampInt(req.ClipSkip.StopAtLayer, -24, -1),
+				"clip":               buildWorkflowLink(checkpointNodeID, 1),
+			},
+			Meta: map[string]any{
+				"title": "CLIP Set Last Layer",
+			},
+		}
+		clipInputLink = buildWorkflowLink(clipSkipNodeID, 0)
+	}
+
+	positiveNode.Inputs["clip"] = clipInputLink
+	negativeNode.Inputs["clip"] = clipInputLink
+	graph[positiveNodeID] = positiveNode
+	graph[negativeNodeID] = negativeNode
 
 	decodeNodeID, err := findNodeByTitle(graph, "VAE Decode", "VAEDecode")
 	if err != nil {

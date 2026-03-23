@@ -213,6 +213,31 @@ export class FolderConfig {
     }
 }
 
+export class GenerationPanelClipSkip {
+    "enabled": boolean;
+    "stopAtLayer": number;
+
+    /** Creates a new GenerationPanelClipSkip instance. */
+    constructor($$source: Partial<GenerationPanelClipSkip> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("stopAtLayer" in $$source)) {
+            this["stopAtLayer"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelClipSkip instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelClipSkip {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationPanelClipSkip($$parsedSource as Partial<GenerationPanelClipSkip>);
+    }
+}
+
 export class GenerationPanelConfig {
     "activeBackend": string;
     "mode": string;
@@ -479,6 +504,7 @@ export class GenerationPanelTxt2Img {
     "scheduler": string;
     "batchSize": number;
     "refine": GenerationPanelRefine;
+    "clipSkip": GenerationPanelClipSkip;
 
     /** Creates a new GenerationPanelTxt2Img instance. */
     constructor($$source: Partial<GenerationPanelTxt2Img> = {}) {
@@ -518,6 +544,9 @@ export class GenerationPanelTxt2Img {
         if (!("refine" in $$source)) {
             this["refine"] = (new GenerationPanelRefine());
         }
+        if (!("clipSkip" in $$source)) {
+            this["clipSkip"] = (new GenerationPanelClipSkip());
+        }
 
         Object.assign(this, $$source);
     }
@@ -528,12 +557,16 @@ export class GenerationPanelTxt2Img {
     static createFrom($$source: any = {}): GenerationPanelTxt2Img {
         const $$createField5_0 = $$createType13;
         const $$createField11_0 = $$createType14;
+        const $$createField12_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
         }
         if ("refine" in $$parsedSource) {
             $$parsedSource["refine"] = $$createField11_0($$parsedSource["refine"]);
+        }
+        if ("clipSkip" in $$parsedSource) {
+            $$parsedSource["clipSkip"] = $$createField12_0($$parsedSource["clipSkip"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
     }
@@ -680,8 +713,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType15;
-        const $$createField3_0 = $$createType15;
+        const $$createField1_0 = $$createType16;
+        const $$createField3_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -709,4 +742,5 @@ const $$createType11 = GenerationPanelHistoryItem.createFrom;
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = GenerationPanelResolution.createFrom;
 const $$createType14 = GenerationPanelRefine.createFrom;
-const $$createType15 = WindowBounds.createFrom;
+const $$createType15 = GenerationPanelClipSkip.createFrom;
+const $$createType16 = WindowBounds.createFrom;

@@ -139,6 +139,10 @@ export function sanitizePersistedState(
         defaultState.txt2img.refine.upscaleMethod
       ),
       upscaleModel: candidate.txt2img?.refine?.upscaleModel ?? defaultState.txt2img.refine.upscaleModel
+    },
+    clipSkip: {
+      ...defaultState.txt2img.clipSkip,
+      ...(candidate.txt2img?.clipSkip ?? {})
     }
   };
   const nextImg2Img: Img2ImgParameters = {
@@ -204,6 +208,15 @@ export function sanitizePersistedState(
       denoiseStrength: Number.isFinite(nextTxt2Img.refine.denoiseStrength)
         ? clamp(nextTxt2Img.refine.denoiseStrength, 0.05, 1)
         : defaultState.txt2img.refine.denoiseStrength
+    },
+    clipSkip: {
+      ...nextTxt2Img.clipSkip,
+      enabled: Boolean(nextTxt2Img.clipSkip.enabled),
+      stopAtLayer:
+        Number.isFinite(nextTxt2Img.clipSkip.stopAtLayer) &&
+        nextTxt2Img.clipSkip.stopAtLayer <= -1
+          ? clamp(Math.round(nextTxt2Img.clipSkip.stopAtLayer), -24, -1)
+          : defaultState.txt2img.clipSkip.stopAtLayer
     }
   };
   const normalizedImg2Img: Img2ImgParameters = {
@@ -291,7 +304,9 @@ export function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boole
     a.refine.upscaleModel === b.refine.upscaleModel &&
     a.refine.scaleBy === b.refine.scaleBy &&
     a.refine.steps === b.refine.steps &&
-    a.refine.denoiseStrength === b.refine.denoiseStrength
+    a.refine.denoiseStrength === b.refine.denoiseStrength &&
+    a.clipSkip.enabled === b.clipSkip.enabled &&
+    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer
   );
 }
 

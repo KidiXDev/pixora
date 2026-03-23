@@ -19,6 +19,7 @@ export {
     ComfyUIStatus,
     FolderBrowseResponse,
     FolderEntry,
+    GenerationClipSkipRequest,
     GenerationModelCatalog,
     GenerationQueueJob,
     GenerationRefineRequest,

@@ -381,6 +381,31 @@ export class FolderEntry {
     }
 }
 
+export class GenerationClipSkipRequest {
+    "enabled": boolean;
+    "stopAtLayer": number;
+
+    /** Creates a new GenerationClipSkipRequest instance. */
+    constructor($$source: Partial<GenerationClipSkipRequest> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("stopAtLayer" in $$source)) {
+            this["stopAtLayer"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationClipSkipRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationClipSkipRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationClipSkipRequest($$parsedSource as Partial<GenerationClipSkipRequest>);
+    }
+}
+
 export class GenerationModelCatalog {
     "samplers": string[];
     "schedulers": string[];
@@ -591,6 +616,7 @@ export class GenerationRequest {
     "sampler": string;
     "scheduler": string;
     "batchSize": number;
+    "clipSkip": GenerationClipSkipRequest;
     "refine": GenerationRefineRequest;
 
     /** Creates a new GenerationRequest instance. */
@@ -637,6 +663,9 @@ export class GenerationRequest {
         if (!("batchSize" in $$source)) {
             this["batchSize"] = 0;
         }
+        if (!("clipSkip" in $$source)) {
+            this["clipSkip"] = (new GenerationClipSkipRequest());
+        }
         if (!("refine" in $$source)) {
             this["refine"] = (new GenerationRefineRequest());
         }
@@ -649,9 +678,13 @@ export class GenerationRequest {
      */
     static createFrom($$source: any = {}): GenerationRequest {
         const $$createField14_0 = $$createType7;
+        const $$createField15_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("clipSkip" in $$parsedSource) {
+            $$parsedSource["clipSkip"] = $$createField14_0($$parsedSource["clipSkip"]);
+        }
         if ("refine" in $$parsedSource) {
-            $$parsedSource["refine"] = $$createField14_0($$parsedSource["refine"]);
+            $$parsedSource["refine"] = $$createField15_0($$parsedSource["refine"]);
         }
         return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
     }
@@ -874,4 +907,5 @@ const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = db$0.ImageRecord.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = GenerationRefineRequest.createFrom;
+const $$createType7 = GenerationClipSkipRequest.createFrom;
+const $$createType8 = GenerationRefineRequest.createFrom;

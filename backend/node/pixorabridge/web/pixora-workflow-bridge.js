@@ -2,8 +2,8 @@ import { app } from "../../scripts/app.js";
 
 const extensionName = "pixora.workflow-bridge";
 const workflowQueryKey = "pixoraWorkflow";
-const workflowStorageKey = "pixoraEmbeddedWorkflow";
 const workflowLoadedEvent = "pixora:workflow-loaded";
+let latestLoadRequestID = 0;
 
 async function fetchWorkflowFromUserdata(relativePath) {
   const response = await fetch(`/userdata/${relativePath}`, {
@@ -18,13 +18,18 @@ async function fetchWorkflowFromUserdata(relativePath) {
 }
 
 async function injectWorkflowIntoComfy(workflow) {
+  const apiPrompt =
+    workflow && typeof workflow === "object" && workflow.prompt
+      ? workflow.prompt
+      : workflow;
+
   if (typeof app.loadApiJson === "function") {
-    await app.loadApiJson(workflow);
+    await app.loadApiJson(apiPrompt);
     return true;
   }
 
   if (typeof app.loadGraphData === "function") {
-    await app.loadGraphData(workflow);
+    await app.loadGraphData(apiPrompt);
     return true;
   }
 
@@ -33,12 +38,7 @@ async function injectWorkflowIntoComfy(workflow) {
 
 function getWorkflowPathFromLocation() {
   const url = new URL(window.location.href);
-  const workflowPath = url.searchParams.get(workflowQueryKey);
-  if (workflowPath) {
-    window.sessionStorage.setItem(workflowStorageKey, workflowPath);
-  }
-
-  return workflowPath || window.sessionStorage.getItem(workflowStorageKey) || "";
+  return url.searchParams.get(workflowQueryKey) || "";
 }
 
 function announceWorkflowLoaded(workflowPath) {
@@ -49,8 +49,12 @@ function announceWorkflowLoaded(workflowPath) {
   );
 }
 
-async function tryLoadPixoraWorkflow(workflowPath, attempt = 0) {
+async function tryLoadPixoraWorkflow(workflowPath, requestID, attempt = 0) {
   try {
+    if (requestID !== latestLoadRequestID) {
+      return false;
+    }
+
     if (!workflowPath) {
       return false;
     }
@@ -65,7 +69,7 @@ async function tryLoadPixoraWorkflow(workflowPath, attempt = 0) {
     announceWorkflowLoaded(workflowPath);
     return true;
   } catch (error) {
-    if (attempt >= 20) {
+    if (attempt >= 20 && requestID === latestLoadRequestID) {
       console.error(`[${extensionName}]`, error);
     }
 
@@ -73,59 +77,62 @@ async function tryLoadPixoraWorkflow(workflowPath, attempt = 0) {
   }
 }
 
-function scheduleWorkflowReapply(workflowPath) {
-  const retryDelays = [0, 250, 750, 1500, 3000, 5000];
-
-  for (const delay of retryDelays) {
-    window.setTimeout(() => {
-      void tryLoadPixoraWorkflow(workflowPath);
-    }, delay);
+async function loadPixoraWorkflow(workflowPath, requestID, attempt = 0) {
+  if (requestID !== latestLoadRequestID) {
+    return;
   }
-}
 
-async function loadPixoraWorkflow(attempt = 0) {
-  const workflowPath = getWorkflowPathFromLocation();
   if (!workflowPath) {
     return;
   }
 
-  const loaded = await tryLoadPixoraWorkflow(workflowPath, attempt);
+  const loaded = await tryLoadPixoraWorkflow(workflowPath, requestID, attempt);
   if (loaded) {
-    scheduleWorkflowReapply(workflowPath);
     return;
   }
 
-  if (attempt < 20) {
+  if (attempt < 20 && requestID === latestLoadRequestID) {
     window.setTimeout(() => {
-      void loadPixoraWorkflow(attempt + 1);
+      void loadPixoraWorkflow(workflowPath, requestID, attempt + 1);
     }, 300);
     return;
   }
 
-  console.error(
-    `[${extensionName}] ComfyUI frontend API not available for workflow injection`,
-  );
+  if (requestID === latestLoadRequestID) {
+    console.error(
+      `[${extensionName}] ComfyUI frontend API not available for workflow injection`,
+    );
+  }
+}
+
+function startWorkflowLoad(workflowPath) {
+  latestLoadRequestID += 1;
+  const requestID = latestLoadRequestID;
+  void loadPixoraWorkflow(workflowPath, requestID, 0);
 }
 
 app.registerExtension({
   name: extensionName,
   async setup() {
     window.pixoraLoadWorkflow = async () => {
-      await loadPixoraWorkflow();
+      const workflowPath = getWorkflowPathFromLocation();
+      startWorkflowLoad(workflowPath);
     };
 
     window.addEventListener('message', (event) => {
       if (event.data?.type === 'pixora:load-workflow') {
         const workflowPath = event.data.workflowPath;
         if (workflowPath) {
-          window.sessionStorage.setItem(workflowStorageKey, workflowPath);
-          void tryLoadPixoraWorkflow(workflowPath);
+          startWorkflowLoad(workflowPath);
         }
       }
     });
 
     window.requestAnimationFrame(() => {
-      void loadPixoraWorkflow();
+      const workflowPath = getWorkflowPathFromLocation();
+      if (workflowPath) {
+        startWorkflowLoad(workflowPath);
+      }
     });
   },
 });

@@ -86,6 +86,11 @@ type GenerationPanelRefine struct {
 	DenoiseStrength float64 `json:"denoiseStrength"`
 }
 
+type GenerationPanelClipSkip struct {
+	Enabled     bool `json:"enabled"`
+	StopAtLayer int  `json:"stopAtLayer"`
+}
+
 type GenerationPanelTxt2Img struct {
 	Prompt         string                    `json:"prompt"`
 	NegativePrompt string                    `json:"negativePrompt"`
@@ -99,6 +104,7 @@ type GenerationPanelTxt2Img struct {
 	Scheduler      string                    `json:"scheduler"`
 	BatchSize      int                       `json:"batchSize"`
 	Refine         GenerationPanelRefine     `json:"refine"`
+	ClipSkip       GenerationPanelClipSkip   `json:"clipSkip"`
 }
 
 type GenerationPanelImg2Img struct {
@@ -130,12 +136,12 @@ type GenerationPanelHistoryItem struct {
 }
 
 type GenerationPanelConfig struct {
-	ActiveBackend string                       `json:"activeBackend"`
-	Mode          string                       `json:"mode"`
-	Txt2Img       GenerationPanelTxt2Img       `json:"txt2img"`
-	Img2Img       GenerationPanelImg2Img       `json:"img2img"`
-	History       []GenerationPanelHistoryItem `json:"history"`
-	GenerateForever bool                       `json:"generateForever"`
+	ActiveBackend   string                       `json:"activeBackend"`
+	Mode            string                       `json:"mode"`
+	Txt2Img         GenerationPanelTxt2Img       `json:"txt2img"`
+	Img2Img         GenerationPanelImg2Img       `json:"img2img"`
+	History         []GenerationPanelHistoryItem `json:"history"`
+	GenerateForever bool                         `json:"generateForever"`
 }
 
 type AppConfig struct {
@@ -407,6 +413,10 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.Generation.Txt2Img.BatchSize <= 0 {
 		m.config.Generation.Txt2Img.BatchSize = 1
+	}
+
+	if m.config.Generation.Txt2Img.ClipSkip.StopAtLayer < -24 || m.config.Generation.Txt2Img.ClipSkip.StopAtLayer > -1 {
+		m.config.Generation.Txt2Img.ClipSkip.StopAtLayer = -1
 	}
 
 	switch m.config.Generation.Txt2Img.Refine.UpscaleMode {
