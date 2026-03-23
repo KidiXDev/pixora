@@ -257,6 +257,7 @@ export function GenerationWorkflowDialog({
 }: GenerationWorkflowDialogProps) {
   const [activeTab, setActiveTab] = React.useState('graph');
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const hasAutoRequestedComfyEmbedRef = React.useRef(false);
   const payload = React.useMemo(() => {
     if (workflowJSON.trim() === '') {
       return null;
@@ -290,14 +291,30 @@ export function GenerationWorkflowDialog({
   React.useEffect(() => {
     if (open) {
       setActiveTab('graph');
+      hasAutoRequestedComfyEmbedRef.current = false;
     }
   }, [open]);
 
   React.useEffect(() => {
-    if (activeTab === 'comfyui' && comfyEmbedURL === '' && !isComfyEmbedLoading) {
-      onLoadComfyWorkflow();
+    if (!open || activeTab !== 'comfyui') {
+      return;
     }
-  }, [activeTab, comfyEmbedURL, isComfyEmbedLoading, onLoadComfyWorkflow]);
+    if (comfyEmbedURL !== '' || isComfyEmbedLoading) {
+      return;
+    }
+    if (hasAutoRequestedComfyEmbedRef.current) {
+      return;
+    }
+
+    hasAutoRequestedComfyEmbedRef.current = true;
+    onLoadComfyWorkflow();
+  }, [
+    open,
+    activeTab,
+    comfyEmbedURL,
+    isComfyEmbedLoading,
+    onLoadComfyWorkflow
+  ]);
 
   React.useEffect(() => {
     if (

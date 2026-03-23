@@ -598,10 +598,15 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                 const item = state.history[targetIndex];
                 const nextItemIsGenerating =
                   payload.state === 'queued' || payload.state === 'running';
+                const incomingPreviewPath = payload.previewPath?.trim() || '';
                 const nextItemImagePath =
-                  nextItemIsGenerating && payload.previewPath
-                    ? payload.previewPath
-                    : item.imagePath;
+                  nextItemIsGenerating
+                    ? incomingPreviewPath.startsWith('/preview/live/')
+                      ? incomingPreviewPath
+                      : item.imagePath
+                    : incomingPreviewPath !== ''
+                      ? incomingPreviewPath
+                      : item.imagePath;
                 const shouldRefreshItemMessage =
                   payload.state === 'error' ||
                   payload.state === 'canceled' ||

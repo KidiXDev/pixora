@@ -41,6 +41,8 @@ export default function ImageGenerationPage() {
   const [stagedComfyWorkflowPath, setStagedComfyWorkflowPath] = useState('');
   const lastComfyErrorRef = useRef('');
   const lastModelCatalogErrorRef = useRef('');
+  const workflowPreviewRequestSeqRef = useRef(0);
+  const workflowEmbedRequestSeqRef = useRef(0);
   const {
     mode,
     comfyUI,
@@ -248,6 +250,9 @@ export default function ImageGenerationPage() {
       return;
     }
 
+    workflowPreviewRequestSeqRef.current += 1;
+    const requestSeq = workflowPreviewRequestSeqRef.current;
+
     setIsWorkflowLoading(true);
     try {
       const payload = await callGenerationService(
@@ -255,16 +260,26 @@ export default function ImageGenerationPage() {
         buildWorkflowRequest()
       );
 
+      if (workflowPreviewRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+
       setWorkflowJSON(typeof payload === 'string' ? payload : '');
       setIsWorkflowOpen(true);
     } catch (error) {
+      if (workflowPreviewRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : 'Failed to build workflow.';
       toast.error('Workflow preview failed', {
         description: message
       });
     } finally {
-      setIsWorkflowLoading(false);
+      if (workflowPreviewRequestSeqRef.current === requestSeq) {
+        setIsWorkflowLoading(false);
+      }
     }
   };
 
@@ -291,6 +306,9 @@ export default function ImageGenerationPage() {
       return;
     }
 
+    workflowEmbedRequestSeqRef.current += 1;
+    const requestSeq = workflowEmbedRequestSeqRef.current;
+
     setIsComfyEmbedLoading(true);
     try {
       const payload = await callGenerationService(
@@ -302,14 +320,21 @@ export default function ImageGenerationPage() {
         throw new Error('Embedded workflow path was empty.');
       }
 
+      if (workflowEmbedRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+
       const embedURL = new URL(comfyUI.apiUrl);
       embedURL.searchParams.set('pixoraWorkflow', stagedPath);
+      embedURL.searchParams.set('pixoraNonce', Date.now().toString());
 
       setStagedComfyWorkflowPath(stagedPath);
-      if (comfyEmbedURL === '') {
-        setComfyEmbedURL(embedURL.toString());
-      }
+      setComfyEmbedURL(embedURL.toString());
     } catch (error) {
+      if (workflowEmbedRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+
       const message =
         error instanceof Error
           ? error.message
@@ -318,7 +343,9 @@ export default function ImageGenerationPage() {
         description: message
       });
     } finally {
-      setIsComfyEmbedLoading(false);
+      if (workflowEmbedRequestSeqRef.current === requestSeq) {
+        setIsComfyEmbedLoading(false);
+      }
     }
   };
 
