@@ -80,6 +80,7 @@ const REFINE_UPSCALE_METHOD_OPTIONS = [
   'bislerp',
   'lanczos'
 ] as const;
+const STORE_SYNC_DEBOUNCE_MS = 80;
 
 interface GenerationParametersPanelProps {
   mode: ImageGenerationMode;
@@ -206,6 +207,46 @@ function GenerationParametersPanelBase({
       }) as FormValidateOrFn<FormValues>
     }
   });
+  const storeSyncTimerRef = React.useRef<number | null>(null);
+  const pendingValuesRef = React.useRef<FormValues>({
+    txt2img,
+    img2img
+  });
+  const lastSyncedValuesRef = React.useRef<FormValues>({
+    txt2img,
+    img2img
+  });
+
+  const flushFormChangesToStore = React.useCallback(() => {
+    if (storeSyncTimerRef.current !== null) {
+      window.clearTimeout(storeSyncTimerRef.current);
+      storeSyncTimerRef.current = null;
+    }
+
+    const pendingValues = pendingValuesRef.current;
+    const lastSyncedValues = lastSyncedValuesRef.current;
+    let nextSyncedValues = lastSyncedValues;
+
+    if (!isSameTxt2Img(lastSyncedValues.txt2img, pendingValues.txt2img)) {
+      onTxt2ImgChange(pendingValues.txt2img);
+      nextSyncedValues = {
+        ...nextSyncedValues,
+        txt2img: pendingValues.txt2img
+      };
+    }
+
+    if (!isSameImg2Img(lastSyncedValues.img2img, pendingValues.img2img)) {
+      onImg2ImgChange(pendingValues.img2img);
+      nextSyncedValues = {
+        ...nextSyncedValues,
+        img2img: pendingValues.img2img
+      };
+    }
+
+    if (nextSyncedValues !== lastSyncedValues) {
+      lastSyncedValuesRef.current = nextSyncedValues;
+    }
+  }, [onTxt2ImgChange, onImg2ImgChange]);
 
   const handleFormatPrompts = () => {
     if (mode === 'txt2img') {
@@ -799,8 +840,8 @@ function GenerationParametersPanelBase({
               className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
             >
               <AccordionItem value="refine" className="border-none">
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex w-full items-center justify-between pr-2">
+                <div className="flex w-full items-center gap-3 py-3 pr-2">
+                  <AccordionTrigger className="flex-1 py-0 hover:no-underline">
                     <div className="space-y-0.5 text-left">
                       <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
                         Refine (Hi-Res Fix)
@@ -809,18 +850,18 @@ function GenerationParametersPanelBase({
                         Upscale and run a second denoise pass for cleaner details.
                       </p>
                     </div>
-                    <Switch
-                      checked={value.enabled}
-                      onCheckedChange={(checked) => {
-                        field.handleChange({
-                          ...value,
-                          enabled: checked
-                        });
-                      }}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </div>
-                </AccordionTrigger>
+                  </AccordionTrigger>
+                  <Switch
+                    checked={value.enabled}
+                    aria-label="Enable refine"
+                    onCheckedChange={(checked) => {
+                      field.handleChange({
+                        ...value,
+                        enabled: checked
+                      });
+                    }}
+                  />
+                </div>
                 <AccordionContent className="space-y-4 pb-4">
                   <div className="grid grid-cols-2 gap-4">
                     <Field>
@@ -1020,11 +1061,41 @@ function GenerationParametersPanelBase({
   );
   React.useEffect(() => {
     const sub = form.store.subscribe((state) => {
-      onTxt2ImgChange(state.values.txt2img);
-      onImg2ImgChange(state.values.img2img);
+      pendingValuesRef.current = {
+        txt2img: state.values.txt2img,
+        img2img: state.values.img2img
+      };
+
+      if (storeSyncTimerRef.current !== null) {
+        window.clearTimeout(storeSyncTimerRef.current);
+      }
+
+      storeSyncTimerRef.current = window.setTimeout(
+        flushFormChangesToStore,
+        STORE_SYNC_DEBOUNCE_MS
+      );
     });
-    return () => sub.unsubscribe();
-  }, [form.store, onTxt2ImgChange, onImg2ImgChange]);
+
+    return () => {
+      sub.unsubscribe();
+      if (storeSyncTimerRef.current !== null) {
+        window.clearTimeout(storeSyncTimerRef.current);
+        storeSyncTimerRef.current = null;
+      }
+    };
+  }, [form.store, flushFormChangesToStore]);
+  React.useEffect(() => {
+    lastSyncedValuesRef.current = {
+      txt2img,
+      img2img
+    };
+    if (storeSyncTimerRef.current === null) {
+      pendingValuesRef.current = {
+        txt2img,
+        img2img
+      };
+    }
+  }, [txt2img, img2img]);
   React.useEffect(() => {
     const currentTxt2Img = form.getFieldValue('txt2img');
     const currentImg2Img = form.getFieldValue('img2img');

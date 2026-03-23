@@ -602,8 +602,15 @@ export const useImageGenerationStore = create<ImageGenerationState>(
                   nextItemIsGenerating && payload.previewPath
                     ? payload.previewPath
                     : item.imagePath;
+                const shouldRefreshItemMessage =
+                  payload.state === 'error' ||
+                  payload.state === 'canceled' ||
+                  payload.state === 'completed' ||
+                  nextItemImagePath.trim() === '';
                 const resolvedMessage =
-                  nextItemMessage !== '' ? nextItemMessage : item.message;
+                  shouldRefreshItemMessage && nextItemMessage !== ''
+                    ? nextItemMessage
+                    : item.message;
                 const nextPromptID = payload.promptId || item.promptId;
 
                 if (
