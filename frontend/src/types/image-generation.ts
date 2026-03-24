@@ -11,6 +11,8 @@ export interface BaseGenerationParameters {
   prompt: string;
   negativePrompt: string;
   seed: string;
+  variationSeed: string;
+  variationSeedStrength: number;
   steps: number;
   cfgScale: number;
   resolution: GenerationResolution;

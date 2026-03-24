@@ -1012,6 +1012,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         },
         steps: clamp(Math.round(patch.steps ?? state.txt2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.txt2img.cfgScale, 0, 30),
+        variationSeedStrength: clamp(
+          patch.variationSeedStrength ?? state.txt2img.variationSeedStrength,
+          0,
+          1
+        ),
         batchSize: clamp(
           Math.round(patch.batchSize ?? state.txt2img.batchSize),
           1,
@@ -1083,6 +1088,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
         },
         steps: clamp(Math.round(patch.steps ?? state.img2img.steps), 1, 200),
         cfgScale: clamp(patch.cfgScale ?? state.img2img.cfgScale, 0, 30),
+        variationSeedStrength: clamp(
+          patch.variationSeedStrength ?? state.img2img.variationSeedStrength,
+          0,
+          1
+        ),
         batchSize: clamp(
           Math.round(patch.batchSize ?? state.img2img.batchSize),
           1,
@@ -1170,6 +1180,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             prompt: currentParams.prompt,
             negativePrompt: currentParams.negativePrompt,
             seed: currentParams.seed,
+            variationSeed: currentParams.variationSeed,
+            variationSeedStrength: currentParams.variationSeedStrength,
             steps: currentParams.steps,
             cfgScale: currentParams.cfgScale,
             width: currentParams.resolution.width,

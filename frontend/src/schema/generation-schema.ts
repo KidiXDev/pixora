@@ -66,6 +66,8 @@ export const baseGenerationSchema = z.object({
   prompt: z.string().optional().default(DEFAULT_GENERATION_PROMPT),
   negativePrompt: z.string().optional().default(DEFAULT_NEGATIVE_PROMPT),
   seed: z.string().optional().default(''),
+  variationSeed: z.string().optional().default(''),
+  variationSeedStrength: z.coerce.number().min(0).max(1).default(0.35),
   steps: z.coerce.number().min(1).max(150).default(DEFAULT_STEPS),
   cfgScale: z.coerce.number().min(1).max(30).default(DEFAULT_CFG_SCALE),
   resolution: resolutionSchema.default(DEFAULT_RESOLUTION),

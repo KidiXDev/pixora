@@ -126,6 +126,7 @@ export function sanitizePersistedState(
       candidate.txt2img?.sampler,
       defaultState.txt2img.sampler
     ),
+    variationSeed: candidate.txt2img?.variationSeed ?? defaultState.txt2img.variationSeed,
     vae: fallbackIfBlank(candidate.txt2img?.vae, defaultState.txt2img.vae),
     scheduler: fallbackIfBlank(
       candidate.txt2img?.scheduler,
@@ -164,6 +165,7 @@ export function sanitizePersistedState(
       candidate.img2img?.sampler,
       defaultState.img2img.sampler
     ),
+    variationSeed: candidate.img2img?.variationSeed ?? defaultState.img2img.variationSeed,
     vae: fallbackIfBlank(candidate.img2img?.vae, defaultState.img2img.vae),
     scheduler: fallbackIfBlank(
       candidate.img2img?.scheduler,
@@ -185,6 +187,9 @@ export function sanitizePersistedState(
       Number.isFinite(nextTxt2Img.cfgScale) && nextTxt2Img.cfgScale > 0
         ? clamp(nextTxt2Img.cfgScale, 0.1, 30)
         : defaultState.txt2img.cfgScale,
+    variationSeedStrength: Number.isFinite(nextTxt2Img.variationSeedStrength)
+      ? clamp(nextTxt2Img.variationSeedStrength, 0, 1)
+      : defaultState.txt2img.variationSeedStrength,
     batchSize:
       Number.isFinite(nextTxt2Img.batchSize) && nextTxt2Img.batchSize > 0
         ? clamp(Math.round(nextTxt2Img.batchSize), 1, 100)
@@ -233,6 +238,9 @@ export function sanitizePersistedState(
       Number.isFinite(nextImg2Img.cfgScale) && nextImg2Img.cfgScale > 0
         ? clamp(nextImg2Img.cfgScale, 0.1, 30)
         : defaultState.img2img.cfgScale,
+    variationSeedStrength: Number.isFinite(nextImg2Img.variationSeedStrength)
+      ? clamp(nextImg2Img.variationSeedStrength, 0, 1)
+      : defaultState.img2img.variationSeedStrength,
     batchSize:
       Number.isFinite(nextImg2Img.batchSize) && nextImg2Img.batchSize > 0
         ? clamp(Math.round(nextImg2Img.batchSize), 1, 100)
@@ -290,6 +298,8 @@ export function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boole
     a.prompt === b.prompt &&
     a.negativePrompt === b.negativePrompt &&
     a.seed === b.seed &&
+    a.variationSeed === b.variationSeed &&
+    a.variationSeedStrength === b.variationSeedStrength &&
     a.steps === b.steps &&
     a.cfgScale === b.cfgScale &&
     isSameResolution(a.resolution, b.resolution) &&
@@ -315,6 +325,8 @@ export function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boole
     a.prompt === b.prompt &&
     a.negativePrompt === b.negativePrompt &&
     a.seed === b.seed &&
+    a.variationSeed === b.variationSeed &&
+    a.variationSeedStrength === b.variationSeedStrength &&
     a.steps === b.steps &&
     a.cfgScale === b.cfgScale &&
     isSameResolution(a.resolution, b.resolution) &&

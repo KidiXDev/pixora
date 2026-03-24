@@ -282,7 +282,7 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 			if metadata.Model == "" {
 				metadata.Model = asString(inputs["ckpt_name"])
 			}
-		case "KSampler", "KSamplerAdvanced":
+		case "KSampler", "KSamplerAdvanced", "PixoraKSamplerWithVariation":
 			if metadata.Sampler == "" {
 				if sampler := asString(inputs["sampler_name"]); sampler != "" {
 					metadata.Sampler = sampler

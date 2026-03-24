@@ -352,6 +352,8 @@ export class GenerationPanelImg2Img {
     "prompt": string;
     "negativePrompt": string;
     "seed": string;
+    "variationSeed": string;
+    "variationSeedStrength": number;
     "steps": number;
     "cfgScale": number;
     "resolution": GenerationPanelResolution;
@@ -373,6 +375,12 @@ export class GenerationPanelImg2Img {
         }
         if (!("seed" in $$source)) {
             this["seed"] = "";
+        }
+        if (!("variationSeed" in $$source)) {
+            this["variationSeed"] = "";
+        }
+        if (!("variationSeedStrength" in $$source)) {
+            this["variationSeedStrength"] = 0;
         }
         if (!("steps" in $$source)) {
             this["steps"] = 0;
@@ -412,10 +420,10 @@ export class GenerationPanelImg2Img {
      * Creates a new GenerationPanelImg2Img instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelImg2Img {
-        const $$createField5_0 = $$createType13;
+        const $$createField7_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
-            $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+            $$parsedSource["resolution"] = $$createField7_0($$parsedSource["resolution"]);
         }
         return new GenerationPanelImg2Img($$parsedSource as Partial<GenerationPanelImg2Img>);
     }
@@ -495,6 +503,8 @@ export class GenerationPanelTxt2Img {
     "prompt": string;
     "negativePrompt": string;
     "seed": string;
+    "variationSeed": string;
+    "variationSeedStrength": number;
     "steps": number;
     "cfgScale": number;
     "resolution": GenerationPanelResolution;
@@ -516,6 +526,12 @@ export class GenerationPanelTxt2Img {
         }
         if (!("seed" in $$source)) {
             this["seed"] = "";
+        }
+        if (!("variationSeed" in $$source)) {
+            this["variationSeed"] = "";
+        }
+        if (!("variationSeedStrength" in $$source)) {
+            this["variationSeedStrength"] = 0;
         }
         if (!("steps" in $$source)) {
             this["steps"] = 0;
@@ -555,18 +571,18 @@ export class GenerationPanelTxt2Img {
      * Creates a new GenerationPanelTxt2Img instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationPanelTxt2Img {
-        const $$createField5_0 = $$createType13;
-        const $$createField11_0 = $$createType14;
-        const $$createField12_0 = $$createType15;
+        const $$createField7_0 = $$createType13;
+        const $$createField13_0 = $$createType14;
+        const $$createField14_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
-            $$parsedSource["resolution"] = $$createField5_0($$parsedSource["resolution"]);
+            $$parsedSource["resolution"] = $$createField7_0($$parsedSource["resolution"]);
         }
         if ("refine" in $$parsedSource) {
-            $$parsedSource["refine"] = $$createField11_0($$parsedSource["refine"]);
+            $$parsedSource["refine"] = $$createField13_0($$parsedSource["refine"]);
         }
         if ("clipSkip" in $$parsedSource) {
-            $$parsedSource["clipSkip"] = $$createField12_0($$parsedSource["clipSkip"]);
+            $$parsedSource["clipSkip"] = $$createField14_0($$parsedSource["clipSkip"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
     }

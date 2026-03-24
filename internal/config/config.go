@@ -92,35 +92,39 @@ type GenerationPanelClipSkip struct {
 }
 
 type GenerationPanelTxt2Img struct {
-	Prompt         string                    `json:"prompt"`
-	NegativePrompt string                    `json:"negativePrompt"`
-	Seed           string                    `json:"seed"`
-	Steps          int                       `json:"steps"`
-	CFGScale       float64                   `json:"cfgScale"`
-	Resolution     GenerationPanelResolution `json:"resolution"`
-	Model          string                    `json:"model"`
-	VAE            string                    `json:"vae"`
-	Sampler        string                    `json:"sampler"`
-	Scheduler      string                    `json:"scheduler"`
-	BatchSize      int                       `json:"batchSize"`
-	Refine         GenerationPanelRefine     `json:"refine"`
-	ClipSkip       GenerationPanelClipSkip   `json:"clipSkip"`
+	Prompt                string                    `json:"prompt"`
+	NegativePrompt        string                    `json:"negativePrompt"`
+	Seed                  string                    `json:"seed"`
+	VariationSeed         string                    `json:"variationSeed"`
+	VariationSeedStrength float64                   `json:"variationSeedStrength"`
+	Steps                 int                       `json:"steps"`
+	CFGScale              float64                   `json:"cfgScale"`
+	Resolution            GenerationPanelResolution `json:"resolution"`
+	Model                 string                    `json:"model"`
+	VAE                   string                    `json:"vae"`
+	Sampler               string                    `json:"sampler"`
+	Scheduler             string                    `json:"scheduler"`
+	BatchSize             int                       `json:"batchSize"`
+	Refine                GenerationPanelRefine     `json:"refine"`
+	ClipSkip              GenerationPanelClipSkip   `json:"clipSkip"`
 }
 
 type GenerationPanelImg2Img struct {
-	Prompt          string                    `json:"prompt"`
-	NegativePrompt  string                    `json:"negativePrompt"`
-	Seed            string                    `json:"seed"`
-	Steps           int                       `json:"steps"`
-	CFGScale        float64                   `json:"cfgScale"`
-	Resolution      GenerationPanelResolution `json:"resolution"`
-	Model           string                    `json:"model"`
-	VAE             string                    `json:"vae"`
-	Sampler         string                    `json:"sampler"`
-	Scheduler       string                    `json:"scheduler"`
-	SourceImagePath string                    `json:"sourceImagePath"`
-	BatchSize       int                       `json:"batchSize"`
-	DenoiseStrength float64                   `json:"denoiseStrength"`
+	Prompt                string                    `json:"prompt"`
+	NegativePrompt        string                    `json:"negativePrompt"`
+	Seed                  string                    `json:"seed"`
+	VariationSeed         string                    `json:"variationSeed"`
+	VariationSeedStrength float64                   `json:"variationSeedStrength"`
+	Steps                 int                       `json:"steps"`
+	CFGScale              float64                   `json:"cfgScale"`
+	Resolution            GenerationPanelResolution `json:"resolution"`
+	Model                 string                    `json:"model"`
+	VAE                   string                    `json:"vae"`
+	Sampler               string                    `json:"sampler"`
+	Scheduler             string                    `json:"scheduler"`
+	SourceImagePath       string                    `json:"sourceImagePath"`
+	BatchSize             int                       `json:"batchSize"`
+	DenoiseStrength       float64                   `json:"denoiseStrength"`
 }
 
 type GenerationPanelHistoryItem struct {
@@ -403,6 +407,10 @@ func (m *Manager) ensureDefaultsLocked() {
 		m.config.Generation.Txt2Img.CFGScale = 7
 	}
 
+	if m.config.Generation.Txt2Img.VariationSeedStrength < 0 || m.config.Generation.Txt2Img.VariationSeedStrength > 1 {
+		m.config.Generation.Txt2Img.VariationSeedStrength = 0.35
+	}
+
 	if m.config.Generation.Txt2Img.Resolution.Width <= 0 {
 		m.config.Generation.Txt2Img.Resolution.Width = 1024
 	}
@@ -449,6 +457,10 @@ func (m *Manager) ensureDefaultsLocked() {
 
 	if m.config.Generation.Img2Img.CFGScale <= 0 {
 		m.config.Generation.Img2Img.CFGScale = m.config.Generation.Txt2Img.CFGScale
+	}
+
+	if m.config.Generation.Img2Img.VariationSeedStrength < 0 || m.config.Generation.Img2Img.VariationSeedStrength > 1 {
+		m.config.Generation.Img2Img.VariationSeedStrength = m.config.Generation.Txt2Img.VariationSeedStrength
 	}
 
 	if m.config.Generation.Img2Img.Resolution.Width <= 0 {

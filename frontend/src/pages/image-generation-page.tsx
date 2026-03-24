@@ -200,6 +200,8 @@ export default function ImageGenerationPage() {
       prompt: currentTxt2Img.prompt,
       negativePrompt: currentTxt2Img.negativePrompt,
       seed: currentTxt2Img.seed,
+      variationSeed: currentTxt2Img.variationSeed,
+      variationSeedStrength: currentTxt2Img.variationSeedStrength,
       steps: currentTxt2Img.steps,
       cfgScale: currentTxt2Img.cfgScale,
       width: currentTxt2Img.resolution.width,

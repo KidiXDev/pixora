@@ -607,6 +607,8 @@ export class GenerationRequest {
     "prompt": string;
     "negativePrompt": string;
     "seed": string;
+    "variationSeed": string;
+    "variationSeedStrength": number;
     "steps": number;
     "cfgScale": number;
     "width": number;
@@ -635,6 +637,12 @@ export class GenerationRequest {
         }
         if (!("seed" in $$source)) {
             this["seed"] = "";
+        }
+        if (!("variationSeed" in $$source)) {
+            this["variationSeed"] = "";
+        }
+        if (!("variationSeedStrength" in $$source)) {
+            this["variationSeedStrength"] = 0;
         }
         if (!("steps" in $$source)) {
             this["steps"] = 0;
@@ -677,14 +685,14 @@ export class GenerationRequest {
      * Creates a new GenerationRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): GenerationRequest {
-        const $$createField14_0 = $$createType7;
-        const $$createField15_0 = $$createType8;
+        const $$createField16_0 = $$createType7;
+        const $$createField17_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("clipSkip" in $$parsedSource) {
-            $$parsedSource["clipSkip"] = $$createField14_0($$parsedSource["clipSkip"]);
+            $$parsedSource["clipSkip"] = $$createField16_0($$parsedSource["clipSkip"]);
         }
         if ("refine" in $$parsedSource) {
-            $$parsedSource["refine"] = $$createField15_0($$parsedSource["refine"]);
+            $$parsedSource["refine"] = $$createField17_0($$parsedSource["refine"]);
         }
         return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
     }

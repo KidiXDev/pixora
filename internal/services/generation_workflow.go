@@ -1,8 +1,11 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"pixora/internal/config"
@@ -94,8 +97,8 @@ func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req Ge
 		return nil, "", err
 	}
 
-	resolvedSeed := resolveGenerationSeed(req.Seed)
-	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeed, outputDir); err != nil {
+	resolvedSeeds := resolveGenerationSeeds(req.Seed, req.VariationSeed, req.VariationSeedStrength)
+	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeeds, outputDir); err != nil {
 		return nil, "", err
 	}
 
@@ -103,7 +106,7 @@ func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req Ge
 		Mode:         mode,
 		Prompt:       workflow,
 		OutputDir:    outputDir,
-		ResolvedSeed: resolvedSeed,
+		ResolvedSeed: strconv.FormatInt(resolvedSeeds.BaseSeed, 10),
 	}, runtimeRoot, nil
 }
 
@@ -162,6 +165,7 @@ func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
 		req.Refine.DenoiseStrength = 0.35
 	}
 	req.Refine.DenoiseStrength = clampFloat(req.Refine.DenoiseStrength, 0.05, 1)
+	req.VariationSeedStrength = clampFloat(req.VariationSeedStrength, 0, 1)
 
 	return req
 }
@@ -184,7 +188,7 @@ func loadWorkflowTemplate(path string) (map[string]comfyWorkflowNode, error) {
 	return graph, nil
 }
 
-func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationRequest, seed string, outputDir string) error {
+func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationRequest, seeds generationSeedConfig, outputDir string) error {
 	positiveNodeID, err := findNodeByTitle(graph, "Positive", "CLIPTextEncode")
 	if err != nil {
 		return err
@@ -206,14 +210,20 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 		return err
 	}
 	ksamplerNode := graph[ksamplerNodeID]
-	seedValue, parseErr := strconv.ParseInt(seed, 10, 64)
-	if parseErr != nil {
-		seedValue = time.Now().UnixNano()
-	}
+	seedValue := seeds.BaseSeed
 	ksamplerNode.Inputs["seed"] = seedValue
 	ksamplerNode.Inputs["steps"] = clampInt(req.Steps, 1, 200)
 	ksamplerNode.Inputs["cfg"] = clampFloat(req.CFGScale, 1, 30)
 	ksamplerNode.Inputs["denoise"] = 1
+	if seeds.UseVariation {
+		ksamplerNode.ClassType = "PixoraKSamplerWithVariation"
+		ksamplerNode.Inputs["variation_seed"] = seeds.VariationSeed
+		ksamplerNode.Inputs["variation_strength"] = seeds.VariationStrength
+	} else {
+		ksamplerNode.ClassType = "KSampler"
+		delete(ksamplerNode.Inputs, "variation_seed")
+		delete(ksamplerNode.Inputs, "variation_strength")
+	}
 	if strings.TrimSpace(req.Sampler) != "" {
 		ksamplerNode.Inputs["sampler_name"] = strings.TrimSpace(req.Sampler)
 	}
@@ -481,17 +491,92 @@ func resolveGenerationOutputDirPath(cfg config.ComfyUIBackendConfig, mode string
 	return filepath.Join(baseOutput, subDir), nil
 }
 
-func resolveGenerationSeed(raw string) string {
+type generationSeedConfig struct {
+	BaseSeed          int64
+	UseVariation      bool
+	VariationSeed     int64
+	VariationStrength float64
+}
+
+func resolveGenerationSeeds(raw string, variationRaw string, variationStrength float64) generationSeedConfig {
+	baseSeed, _ := resolveInputSeed(raw, false)
+	strength := clampFloat(variationStrength, 0, 1)
+	if strength <= 0 {
+		return generationSeedConfig{BaseSeed: baseSeed}
+	}
+
+	variationSeed, hasVariationSeed := resolveInputSeed(variationRaw, true)
+	if !hasVariationSeed {
+		return generationSeedConfig{BaseSeed: baseSeed}
+	}
+
+	return generationSeedConfig{
+		BaseSeed:          baseSeed,
+		UseVariation:      true,
+		VariationSeed:     variationSeed,
+		VariationStrength: strength,
+	}
+}
+
+func parseGenerationSeed(raw string) (int64, bool) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return strconv.FormatInt(time.Now().UnixNano(), 10)
+		return 0, false
 	}
 
-	if _, err := strconv.ParseInt(trimmed, 10, 64); err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 10)
+	parsed, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil {
+		return 0, false
 	}
 
-	return trimmed
+	return parsed, true
+}
+
+func resolveInputSeed(raw string, allowRandomSentinel bool) (int64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		if allowRandomSentinel {
+			return 0, false
+		}
+		return generateRandomSeed(), true
+	}
+
+	if allowRandomSentinel && trimmed == "-1" {
+		return generateRandomSeed(), true
+	}
+
+	parsed, ok := parseGenerationSeed(trimmed)
+	if !ok {
+		return generateRandomSeed(), true
+	}
+
+	if parsed < 0 {
+		return generateRandomSeed(), true
+	}
+
+	return parsed, true
+}
+
+func generateRandomSeed() int64 {
+	var buffer [8]byte
+	if _, err := rand.Read(buffer[:]); err == nil {
+		seed := binary.LittleEndian.Uint64(buffer[:]) & uint64(math.MaxInt64)
+		if seed == 0 {
+			seed = 1
+		}
+		return int64(seed)
+	}
+
+	fallback := uint64(time.Now().UnixNano())
+	fallback ^= fallback << 13
+	fallback ^= fallback >> 7
+	fallback ^= fallback << 17
+	fallback &= uint64(math.MaxInt64)
+	if fallback == 0 {
+		fallback = 1
+	}
+
+	return int64(fallback)
 }
 
 func clampInt(value int, min int, max int) int {

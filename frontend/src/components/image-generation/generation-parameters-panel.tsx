@@ -27,6 +27,11 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from '@/components/ui/tooltip';
+import {
   DEFAULT_PROMPT_FORMAT_OPTIONS,
   formatPromptText,
   type PromptFormatOptions
@@ -41,7 +46,11 @@ import {
   Txt2ImgParameters
 } from '@/types/image-generation';
 import { useForm, type FormValidateOrFn } from '@tanstack/react-form';
-import { BrushCleaningIcon, RefreshCcwIcon } from 'lucide-react';
+import {
+  BrushCleaningIcon,
+  CircleHelpIcon,
+  RefreshCcwIcon
+} from 'lucide-react';
 import * as React from 'react';
 import { z } from 'zod';
 
@@ -80,6 +89,7 @@ const REFINE_LATENT_UPSCALE_METHOD_OPTIONS = [
   'bislerp'
 ] as const;
 const STORE_SYNC_DEBOUNCE_MS = 80;
+const PROMPT_TOKEN_SOFT_LIMIT = 75;
 
 interface GenerationParametersPanelProps {
   mode: ImageGenerationMode;
@@ -110,6 +120,8 @@ function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
     a.prompt === b.prompt &&
     a.negativePrompt === b.negativePrompt &&
     a.seed === b.seed &&
+    a.variationSeed === b.variationSeed &&
+    a.variationSeedStrength === b.variationSeedStrength &&
     a.steps === b.steps &&
     a.cfgScale === b.cfgScale &&
     isSameResolution(a.resolution, b.resolution) &&
@@ -135,6 +147,8 @@ function isSameImg2Img(a: Img2ImgParameters, b: Img2ImgParameters): boolean {
     a.prompt === b.prompt &&
     a.negativePrompt === b.negativePrompt &&
     a.seed === b.seed &&
+    a.variationSeed === b.variationSeed &&
+    a.variationSeedStrength === b.variationSeedStrength &&
     a.steps === b.steps &&
     a.cfgScale === b.cfgScale &&
     isSameResolution(a.resolution, b.resolution) &&
@@ -159,6 +173,60 @@ function GenerationParametersPanelBase({
   onTxt2ImgChange,
   onImg2ImgChange
 }: GenerationParametersPanelProps) {
+  const renderParamHelp = (description: string) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label="Parameter information"
+        >
+          <CircleHelpIcon className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        className="max-w-xs text-[11px] leading-relaxed"
+      >
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  );
+
+  const renderFieldLabelWithHelp = (
+    htmlFor: string,
+    label: string,
+    description: string,
+    className = 'text-xs text-muted-foreground font-bold uppercase tracking-widest'
+  ) => (
+    <div className="flex items-center gap-1.5 px-0.5">
+      <FieldLabel htmlFor={htmlFor} className={className}>
+        {label}
+      </FieldLabel>
+      {renderParamHelp(description)}
+    </div>
+  );
+
+  const renderPromptTokenCounter = (value: string) => {
+    const tokenCount = estimatePromptTokenCount(value);
+    const overSoftLimit = tokenCount > PROMPT_TOKEN_SOFT_LIMIT;
+
+    return (
+      <div className="mt-1 flex items-center justify-end px-1">
+        <span
+          className={cn(
+            'text-[10px] font-mono uppercase tracking-wide text-muted-foreground/70',
+            overSoftLimit && 'text-amber-500'
+          )}
+        >
+          Tokens {tokenCount}
+          {overSoftLimit ? ' (high)' : ''}
+        </span>
+      </div>
+    );
+  };
+
   const promptFormatConfig = useConfigStore(
     (state) => state.config?.promptFormat
   );
@@ -366,9 +434,7 @@ function GenerationParametersPanelBase({
                     >
                       <SelectValue
                         placeholder={
-                          modelCatalogLoading
-                            ? 'Loading VAEs...'
-                            : 'Select VAE'
+                          modelCatalogLoading ? 'Loading VAEs...' : 'Select VAE'
                         }
                       />
                     </SelectTrigger>
@@ -431,18 +497,19 @@ function GenerationParametersPanelBase({
             >
               <AccordionItem value="refine" className="border-none">
                 <div className="relative w-full py-3 pr-1">
-                  <AccordionTrigger className="w-full items-center py-1 pr-16 hover:no-underline">
+                  <AccordionTrigger className="w-full items-center py-1 pr-2 hover:no-underline">
                     <div className="space-y-0.5 text-left">
                       <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
                         Refine (Hi-Res Fix)
                       </p>
                       <p className="text-[11px] text-muted-foreground/70">
-                        Upscale and run a second denoise pass for cleaner details.
+                        Upscale and run a second denoise pass for cleaner
+                        details.
                       </p>
                     </div>
                   </AccordionTrigger>
                   <div
-                    className="absolute right-1 top-1/2 flex h-8 -translate-y-1/2 items-center border-l border-border/10 pl-4"
+                    className="absolute right-10 top-1/2 flex h-8 -translate-y-1/2 items-center border-r border-border/10 pr-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Switch
@@ -542,10 +609,12 @@ function GenerationParametersPanelBase({
                       </Select>
                     </Field>
                     <Field className="col-span-2">
-                      <FieldLabel className={cn(
-                        "text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5 transition-opacity",
-                        !isModelMode && "opacity-40"
-                      )}>
+                      <FieldLabel
+                        className={cn(
+                          'text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5 transition-opacity',
+                          !isModelMode && 'opacity-40'
+                        )}
+                      >
                         Upscale Model
                       </FieldLabel>
                       <Select
@@ -558,10 +627,13 @@ function GenerationParametersPanelBase({
                           });
                         }}
                       >
-                        <SelectTrigger className={cn(
-                          "h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-all",
-                          !isModelMode && "opacity-50 cursor-not-allowed grayscale-[0.5]"
-                        )}>
+                        <SelectTrigger
+                          className={cn(
+                            'h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-all',
+                            !isModelMode &&
+                              'opacity-50 cursor-not-allowed grayscale-[0.5]'
+                          )}
+                        >
                           <SelectValue
                             placeholder={
                               modelCatalogLoading
@@ -573,7 +645,11 @@ function GenerationParametersPanelBase({
                         <SelectContent>
                           <SelectGroup className="overflow-y-auto max-h-[40vh]">
                             {modelCatalog.upscaleModels.map((model) => (
-                              <SelectItem key={model} value={model} className="text-xs">
+                              <SelectItem
+                                key={model}
+                                value={model}
+                                className="text-xs"
+                              >
                                 {model}
                               </SelectItem>
                             ))}
@@ -709,7 +785,7 @@ function GenerationParametersPanelBase({
             >
               <AccordionItem value="clip-skip" className="border-none">
                 <div className="relative w-full py-3 pr-1">
-                  <AccordionTrigger className="w-full items-center py-1 pr-16 hover:no-underline">
+                  <AccordionTrigger className="w-full items-center py-1 pr-2 hover:no-underline">
                     <div className="space-y-0.5 text-left">
                       <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
                         Clip Skip
@@ -720,7 +796,7 @@ function GenerationParametersPanelBase({
                     </div>
                   </AccordionTrigger>
                   <div
-                    className="absolute right-1 top-1/2 flex h-8 -translate-y-1/2 items-center border-l border-border/10 pl-4"
+                    className="absolute right-10 top-1/2 flex h-8 -translate-y-1/2 items-center border-r border-border/10 pr-4"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Switch
@@ -750,7 +826,10 @@ function GenerationParametersPanelBase({
                       <Input
                         value={value.stopAtLayer}
                         onChange={(event) => {
-                          const raw = event.target.value.replace(/[^0-9-]/g, '');
+                          const raw = event.target.value.replace(
+                            /[^0-9-]/g,
+                            ''
+                          );
                           const normalized = raw.startsWith('-')
                             ? `-${raw.slice(1).replace(/-/g, '')}`
                             : raw.replace(/-/g, '');
@@ -802,12 +881,11 @@ function GenerationParametersPanelBase({
             return (
               <Field className="space-y-2.5" data-invalid={isInvalid}>
                 <div className="flex items-center justify-between gap-2 px-0.5">
-                  <FieldLabel
-                    htmlFor={field.name}
-                    className="text-xs text-muted-foreground font-bold uppercase tracking-widest"
-                  >
-                    Steps
-                  </FieldLabel>
+                  {renderFieldLabelWithHelp(
+                    field.name,
+                    'Steps',
+                    'Number of denoising iterations. Higher values can increase detail but also take longer.'
+                  )}
                   <Input
                     id={field.name}
                     name={field.name}
@@ -847,12 +925,11 @@ function GenerationParametersPanelBase({
             return (
               <Field className="space-y-2.5" data-invalid={isInvalid}>
                 <div className="flex items-center justify-between gap-2 px-0.5">
-                  <FieldLabel
-                    htmlFor={field.name}
-                    className="text-xs text-muted-foreground font-bold uppercase tracking-widest"
-                  >
-                    CFG Scale
-                  </FieldLabel>
+                  {renderFieldLabelWithHelp(
+                    field.name,
+                    'CFG Scale',
+                    'Prompt guidance strength. Lower values allow more model freedom; higher values follow prompt more strictly.'
+                  )}
                   <Input
                     id={field.name}
                     name={field.name}
@@ -885,19 +962,23 @@ function GenerationParametersPanelBase({
 
         {/* Batch Size */}
         <form.Field
-          name={prefix === 'txt2img' ? 'txt2img.batchSize' : 'img2img.batchSize'}
+          name={
+            prefix === 'txt2img' ? 'txt2img.batchSize' : 'img2img.batchSize'
+          }
           children={(field) => {
             const isInvalid =
               field.state.meta.isTouched && !!field.state.meta.errors.length;
             return (
-              <Field className="col-span-2 space-y-2.5" data-invalid={isInvalid}>
+              <Field
+                className="col-span-2 space-y-2.5"
+                data-invalid={isInvalid}
+              >
                 <div className="flex items-center justify-between gap-2 px-0.5">
-                  <FieldLabel
-                    htmlFor={field.name}
-                    className="text-xs text-muted-foreground font-bold uppercase tracking-widest"
-                  >
-                    Batch Size
-                  </FieldLabel>
+                  {renderFieldLabelWithHelp(
+                    field.name,
+                    'Batch Size',
+                    'How many images to queue per run. Larger batches increase total generation time and resource usage.'
+                  )}
                   <Input
                     id={field.name}
                     name={field.name}
@@ -929,6 +1010,248 @@ function GenerationParametersPanelBase({
         />
       </div>
 
+      <Accordion
+        type="single"
+        defaultValue="sampling-core"
+        collapsible
+        className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
+      >
+        <AccordionItem value="sampling-core" className="border-none">
+          <AccordionTrigger className="w-full items-center py-4 pr-2 hover:no-underline">
+            <div className="space-y-0.5 text-left">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
+                Sampling Seeds
+              </p>
+              <p className="text-[11px] text-muted-foreground/70">
+                Control reproducibility and controlled variation behavior.
+              </p>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pb-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+              <form.Field
+                name={
+                  prefix === 'txt2img' ? 'txt2img.sampler' : 'img2img.sampler'
+                }
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched &&
+                    !!field.state.meta.errors.length;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      {renderFieldLabelWithHelp(
+                        field.name,
+                        'Sampler',
+                        'Sampling algorithm used for denoising. Different samplers can trade speed for detail and texture style.'
+                      )}
+                      <Select
+                        name={field.name}
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value)}
+                      >
+                        <SelectTrigger
+                          id={field.name}
+                          aria-invalid={isInvalid}
+                          className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
+                        >
+                          <SelectValue placeholder="Select sampler" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                            {samplerOptions.map((item) => (
+                              <SelectItem
+                                key={item}
+                                value={item}
+                                className="text-xs"
+                              >
+                                {item}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
+              />
+
+              <form.Field
+                name={
+                  prefix === 'txt2img'
+                    ? 'txt2img.scheduler'
+                    : 'img2img.scheduler'
+                }
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched &&
+                    !!field.state.meta.errors.length;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      {renderFieldLabelWithHelp(
+                        field.name,
+                        'Scheduler',
+                        'Noise schedule strategy paired with sampler. This changes the denoising trajectory and final image character.'
+                      )}
+                      <Select
+                        name={field.name}
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value)}
+                      >
+                        <SelectTrigger
+                          id={field.name}
+                          aria-invalid={isInvalid}
+                          className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
+                        >
+                          <SelectValue placeholder="Select scheduler" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup className="overflow-y-auto max-h-[40vh]">
+                            {schedulerOptions.map((item) => (
+                              <SelectItem
+                                key={item}
+                                value={item}
+                                className="text-xs"
+                              >
+                                {item}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
+              />
+
+              <form.Field
+                name={prefix === 'txt2img' ? 'txt2img.seed' : 'img2img.seed'}
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched &&
+                    !!field.state.meta.errors.length;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      {renderFieldLabelWithHelp(
+                        field.name,
+                        'Seed',
+                        'Base randomization seed. Keep the same seed for reproducibility, or leave empty to use a secure random seed.'
+                      )}
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        aria-invalid={isInvalid}
+                        placeholder="Random/Empty"
+                        className="h-9 text-xs px-3 font-mono bg-muted/10 border-border/30 focus-visible:ring-1"
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
+              />
+
+              <form.Field
+                name={
+                  prefix === 'txt2img'
+                    ? 'txt2img.variationSeed'
+                    : 'img2img.variationSeed'
+                }
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched &&
+                    !!field.state.meta.errors.length;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      {renderFieldLabelWithHelp(
+                        field.name,
+                        'Variation Seed',
+                        'Optional secondary seed for controlled variations. Use -1 to randomize variation seed on each run while keeping your base seed.'
+                      )}
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        aria-invalid={isInvalid}
+                        placeholder="Optional"
+                        className="h-9 text-xs px-3 font-mono bg-muted/10 border-border/30 focus-visible:ring-1"
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
+              />
+
+              <form.Field
+                name={
+                  prefix === 'txt2img'
+                    ? 'txt2img.variationSeedStrength'
+                    : 'img2img.variationSeedStrength'
+                }
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched &&
+                    !!field.state.meta.errors.length;
+                  return (
+                    <Field
+                      className="col-span-2 space-y-2.5"
+                      data-invalid={isInvalid}
+                    >
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        {renderFieldLabelWithHelp(
+                          field.name,
+                          'Variation Strength',
+                          'Controls how strongly variation seed influences final seed. 0 uses base seed only, 1 uses full variation mix.'
+                        )}
+                        <Input
+                          id={field.name}
+                          name={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) =>
+                            field.handleChange(
+                              parseNumeric(filterNumeric(e.target.value, true))
+                            )
+                          }
+                          aria-invalid={isInvalid}
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50 focus-visible:ring-1"
+                        />
+                      </div>
+                      <FieldContent className="px-1.5">
+                        <Slider
+                          value={[field.state.value]}
+                          onValueChange={([v]) => field.handleChange(v)}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          className="py-1"
+                        />
+                        {isInvalid && (
+                          <FieldError errors={field.state.meta.errors} />
+                        )}
+                      </FieldContent>
+                    </Field>
+                  );
+                }}
+              />
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+
       {prefix === 'txt2img' && (
         <>
           {renderRefineFields()}
@@ -946,12 +1269,11 @@ function GenerationParametersPanelBase({
             return (
               <Field className="space-y-2.5" data-invalid={isInvalid}>
                 <div className="flex items-center justify-between gap-2 px-0.5">
-                  <FieldLabel
-                    htmlFor={field.name}
-                    className="text-xs text-muted-foreground font-bold uppercase tracking-widest"
-                  >
-                    Denoise Strength
-                  </FieldLabel>
+                  {renderFieldLabelWithHelp(
+                    field.name,
+                    'Denoise Strength',
+                    'For img2img, controls how much to preserve from source image. Lower keeps structure, higher allows stronger changes.'
+                  )}
                   <Input
                     id={field.name}
                     name={field.name}
@@ -1137,123 +1459,6 @@ function GenerationParametersPanelBase({
           }}
         />
       </FieldGroup>
-
-      {/* Sampler & Seed Row */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-        <form.Field
-          name={prefix === 'txt2img' ? 'txt2img.sampler' : 'img2img.sampler'}
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel
-                  htmlFor={field.name}
-                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-                >
-                  Sampler
-                </FieldLabel>
-                <Select
-                  name={field.name}
-                  value={field.state.value}
-                  onValueChange={(value) => field.handleChange(value)}
-                >
-                  <SelectTrigger
-                    id={field.name}
-                    aria-invalid={isInvalid}
-                    className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
-                  >
-                    <SelectValue placeholder="Select sampler" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup className="overflow-y-auto max-h-[40vh]">
-                      {samplerOptions.map((item) => (
-                        <SelectItem key={item} value={item} className="text-xs">
-                          {item}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-              </Field>
-            );
-          }}
-        />
-
-        <form.Field
-          name={
-            prefix === 'txt2img' ? 'txt2img.scheduler' : 'img2img.scheduler'
-          }
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel
-                  htmlFor={field.name}
-                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-                >
-                  Scheduler
-                </FieldLabel>
-                <Select
-                  name={field.name}
-                  value={field.state.value}
-                  onValueChange={(value) => field.handleChange(value)}
-                >
-                  <SelectTrigger
-                    id={field.name}
-                    aria-invalid={isInvalid}
-                    className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
-                  >
-                    <SelectValue placeholder="Select scheduler" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup className="overflow-y-auto max-h-[40vh]">
-                      {schedulerOptions.map((item) => (
-                        <SelectItem key={item} value={item} className="text-xs">
-                          {item}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-              </Field>
-            );
-          }}
-        />
-
-        <form.Field
-          name={prefix === 'txt2img' ? 'txt2img.seed' : 'img2img.seed'}
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field className=" col-span-2" data-invalid={isInvalid}>
-                <FieldLabel
-                  htmlFor={field.name}
-                  className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5"
-                >
-                  Seed
-                </FieldLabel>
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  aria-invalid={isInvalid}
-                  placeholder="Random/Empty"
-                  className="h-9 text-xs px-3 font-mono bg-muted/10 border-border/30 focus-visible:ring-1"
-                />
-                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-              </Field>
-            );
-          }}
-        />
-      </div>
-
     </div>
   );
 
@@ -1371,6 +1576,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-32 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
+                          {renderPromptTokenCounter(field.state.value)}
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1405,6 +1611,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
+                          {renderPromptTokenCounter(field.state.value)}
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1515,6 +1722,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-28 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
+                          {renderPromptTokenCounter(field.state.value)}
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1547,6 +1755,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
+                          {renderPromptTokenCounter(field.state.value)}
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1573,4 +1782,22 @@ export const GenerationParametersPanel = React.memo(
   GenerationParametersPanelBase
 );
 
+function estimatePromptTokenCount(input: string): number {
+  const trimmed = input.trim();
+  if (trimmed === '') {
+    return 0;
+  }
 
+  const normalized = trimmed
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[()\[\]{}]/g, ' ')
+    .replace(/:+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normalized === '') {
+    return 0;
+  }
+
+  return normalized.split(/[\s,]+/).filter((token) => token.length > 0).length;
+}

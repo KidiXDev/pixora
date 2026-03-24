@@ -25,6 +25,8 @@ export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   prompt: DEFAULT_GENERATION_PROMPT,
   negativePrompt: DEFAULT_NEGATIVE_PROMPT,
   seed: '',
+  variationSeed: '',
+  variationSeedStrength: 0.35,
   steps: DEFAULT_STEPS,
   cfgScale: DEFAULT_CFG_SCALE,
   resolution: { ...DEFAULT_RESOLUTION },

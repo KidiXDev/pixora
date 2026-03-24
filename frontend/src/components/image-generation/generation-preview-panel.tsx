@@ -1,19 +1,22 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { GeneratedPreviewItem } from '@/types/image-generation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  EllipsisVertical,
   GitBranch,
   Image as ImageIcon,
   Square,
-  WandSparkles,
-  X,
-  EllipsisVertical
+  WandSparkles
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface GenerationPreviewPanelProps {
   history: ReadonlyArray<GeneratedPreviewItem>;
@@ -122,6 +125,7 @@ function GenerationPreviewPanelBase({
                   if (isGenerating) {
                     onInterrupt();
                   } else {
+                    onGenerateForeverChange(false);
                     onGenerate();
                   }
                 }}
@@ -153,7 +157,11 @@ function GenerationPreviewPanelBase({
                   <PopoverTrigger asChild>
                     <Button
                       size="icon"
-                      className="h-10 w-10 rounded-r-lg rounded-l-none border-l border-white/10 bg-primary hover:bg-primary/90 text-white shadow-primary/20 flex items-center justify-center p-0 transition-colors"
+                      className={cn(
+                        'h-10 w-10 rounded-r-lg rounded-l-none border-l border-white/10 bg-primary hover:bg-primary/90 text-white shadow-primary/20 flex items-center justify-center p-0 transition-colors',
+                        generateForever &&
+                          'bg-primary/40 text-primary-foreground shadow-inner'
+                      )}
                     >
                       <EllipsisVertical className="size-4" />
                     </Button>
@@ -161,23 +169,37 @@ function GenerationPreviewPanelBase({
                   <PopoverContent
                     side="bottom"
                     align="end"
-                    className="w-48 p-2 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-50 mt-1"
+                    className="w-56 p-2 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-50 mt-1"
                   >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className={cn(
-                        'w-full justify-start px-2.5 text-xs font-semibold',
-                        generateForever &&
-                          'text-primary bg-primary/10 hover:bg-primary/15'
+                    <div className="space-y-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full justify-start px-2.5 h-9 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-colors gap-2"
+                        onClick={() => {
+                          onGenerateForeverChange(true);
+                          onGenerate();
+                          setIsGenerateForeverMenuOpen(false);
+                        }}
+                      >
+                        Generate Forever
+                      </Button>
+
+                      {generateForever && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-full justify-start px-2.5 h-9 text-xs font-semibold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors gap-2"
+                          onClick={() => {
+                            onGenerateForeverChange(false);
+                            setIsGenerateForeverMenuOpen(false);
+                          }}
+                        >
+                          <Square className="size-3.5 fill-current" />
+                          Disable Forever Mode
+                        </Button>
                       )}
-                      onClick={() => {
-                        onGenerateForeverChange(!generateForever);
-                        setIsGenerateForeverMenuOpen(false);
-                      }}
-                    >
-                      Generate Forever
-                    </Button>
+                    </div>
                   </PopoverContent>
                 </Popover>
               )}
@@ -306,7 +328,9 @@ function GenerationPreviewPanelBase({
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex flex-wrap items-center gap-y-2 gap-x-5 text-[10px] text-white/50 font-bold uppercase tracking-wider w-full">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px] leading-none">Res</span>
+                          <span className="text-white/30 text-[9px] leading-none">
+                            Res
+                          </span>
                           <span className="text-white/80 font-mono leading-none">
                             {resolutionLabel(
                               latest.resolution.width,
@@ -323,13 +347,17 @@ function GenerationPreviewPanelBase({
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px] leading-none">CFG</span>
+                          <span className="text-white/30 text-[9px] leading-none">
+                            CFG
+                          </span>
                           <span className="text-white/80 font-mono leading-none">
                             {latest.cfgScale}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-white/30 text-[9px] leading-none">Seed</span>
+                          <span className="text-white/30 text-[9px] leading-none">
+                            Seed
+                          </span>
                           <span className="text-white/80 font-mono leading-none">
                             {latest.seed ?? 'Random'}
                           </span>
@@ -337,7 +365,9 @@ function GenerationPreviewPanelBase({
 
                         {/* Time Elapsed / Generation Time */}
                         <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-white/30 text-[9px] leading-none">Time</span>
+                          <span className="text-white/30 text-[9px] leading-none">
+                            Time
+                          </span>
                           <span className="font-mono text-primary leading-none">
                             <ElapsedTime
                               start={latest.createdAtISO}
@@ -380,7 +410,7 @@ function GenerationPreviewPanelBase({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onWheel={handleWheel}
-                className="fixed inset-0 z-100 bg-black/95 backdrop-blur-2xl flex items-center justify-center cursor-default"
+                className="fixed inset-0 z-100 bg-black/10 backdrop-blur-2xl flex items-center justify-center cursor-default"
                 onClick={() => setIsFullPreviewOpen(false)}
               >
                 <div className="absolute inset-0 z-0 overflow-hidden flex items-center justify-center p-12">
@@ -421,15 +451,6 @@ function GenerationPreviewPanelBase({
                     )}
                   </motion.div>
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-8 right-8 text-white/50 hover:text-white hover:bg-white/10 z-50 rounded-full border border-white/10 size-12 shadow-2xl"
-                  onClick={() => setIsFullPreviewOpen(false)}
-                >
-                  <X className="size-6" />
-                </Button>
 
                 {/* Quick Info Overlay */}
                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center justify-center gap-6 text-[10px] text-white/40 font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md py-3 px-8 rounded-full border border-white/5 z-50 shadow-2xl">
