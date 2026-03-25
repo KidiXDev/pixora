@@ -81,6 +81,7 @@ function PromptAutocompleteTextareaBase({
   const debounceRef = React.useRef<number | null>(null);
   const caretFrameRef = React.useRef<number | null>(null);
   const requestIdRef = React.useRef(0);
+  const ignoreCollapsedSelectClearRef = React.useRef(false);
 
   const [isFocused, setIsFocused] = React.useState(false);
   const [cursorIndex, setCursorIndex] = React.useState(0);
@@ -123,9 +124,21 @@ function PromptAutocompleteTextareaBase({
 
     // Keep fallback position stable before first measurement, while using viewport
     // anchored coordinates for the portal popover.
-    setPosition({
-      left: Math.max(8, horizontalOffset),
-      top: Math.max(8, caret.top + 6)
+    const nextLeft = Math.max(8, horizontalOffset);
+    const nextTop = Math.max(8, caret.top + 6);
+
+    setPosition((current) => {
+      if (
+        Math.abs(current.left - nextLeft) < 0.5 &&
+        Math.abs(current.top - nextTop) < 0.5
+      ) {
+        return current;
+      }
+
+      return {
+        left: nextLeft,
+        top: nextTop
+      };
     });
   }, []);
 
@@ -140,21 +153,7 @@ function PromptAutocompleteTextareaBase({
     });
   }, [recalcCaretPosition]);
 
-  React.useEffect(() => {
-    const textarea = textareaRef.current;
-    const hasSelection =
-      textarea && textarea.selectionStart !== textarea.selectionEnd;
-
-    if (!isFocused || hasSelection) {
-      setSuggestions([]);
-      return;
-    }
-
-    if (tokenRange.value.trim() === '') {
-      setSuggestions([]);
-      return;
-    }
-
+  const requestSuggestions = React.useCallback((query: string) => {
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current);
     }
@@ -164,7 +163,7 @@ function PromptAutocompleteTextareaBase({
       requestIdRef.current = requestId;
 
       void GetAutocompleteSuggestions({
-        input: tokenRange.value,
+        input: query,
         limit: 20
       })
         .then((result) => {
@@ -184,18 +183,21 @@ function PromptAutocompleteTextareaBase({
           setSuggestions([]);
         });
     }, 90);
+  }, []);
 
+  React.useEffect(() => {
     return () => {
       if (debounceRef.current !== null) {
         window.clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
+      requestIdRef.current += 1;
     };
-  }, [isFocused, tokenRange.value]);
+  }, []);
 
   React.useEffect(() => {
     scheduleCaretRecalc();
-  }, [cursorIndex, value, suggestions.length, scheduleCaretRecalc]);
+  }, [cursorIndex, value, scheduleCaretRecalc]);
 
   React.useEffect(() => {
     const handleWindowResize = () => scheduleCaretRecalc();
@@ -210,12 +212,18 @@ function PromptAutocompleteTextareaBase({
 
   const applySuggestion = React.useCallback(
     (suggestion: PromptAutocompleteSuggestion) => {
+      const insertionText = buildInsertionText(
+        value,
+        tokenRange.start,
+        suggestion.insertText
+      );
+
       const nextText =
         value.slice(0, tokenRange.start) +
-        suggestion.insertText +
+        insertionText +
         value.slice(tokenRange.end);
 
-      const nextCursor = tokenRange.start + suggestion.insertText.length;
+      const nextCursor = tokenRange.start + insertionText.length;
       onChange(nextText);
       setSuggestions([]);
       setActiveIndex(0);
@@ -244,26 +252,47 @@ function PromptAutocompleteTextareaBase({
         onFocus={(event) => {
           setIsFocused(true);
           setSuggestions([]);
+          setActiveIndex(0);
           const nextCursor = event.currentTarget.selectionStart ?? value.length;
           setCursorIndex(nextCursor);
           scheduleCaretRecalc();
         }}
         onBlur={() => {
           setIsFocused(false);
+          setSuggestions([]);
+          setActiveIndex(0);
           onBlur();
         }}
         onSelect={(event) => {
           const { selectionStart, selectionEnd } = event.currentTarget;
           const nextCursor = selectionStart ?? 0;
+          const hasSelection = (selectionEnd ?? 0) !== nextCursor;
           setCursorIndex(nextCursor);
 
-          if ((selectionEnd ?? 0) !== nextCursor) {
+          if (!hasSelection && ignoreCollapsedSelectClearRef.current) {
+            ignoreCollapsedSelectClearRef.current = false;
+          } else {
             setSuggestions([]);
+            setActiveIndex(0);
           }
+
           scheduleCaretRecalc();
         }}
         onScroll={scheduleCaretRecalc}
         onKeyDown={(event) => {
+          const isTypingKey =
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            (event.key.length === 1 ||
+              event.key === 'Backspace' ||
+              event.key === 'Delete' ||
+              event.key === 'Enter');
+
+          if (isTypingKey) {
+            ignoreCollapsedSelectClearRef.current = true;
+          }
+
           if (!isOpen) {
             return;
           }
@@ -299,11 +328,21 @@ function PromptAutocompleteTextareaBase({
           }
         }}
         onChange={(event) => {
+          ignoreCollapsedSelectClearRef.current = true;
           const nextValue = event.target.value;
           onChange(nextValue);
           const nextCursor =
             event.currentTarget.selectionStart ?? nextValue.length;
           setCursorIndex(nextCursor);
+
+          const nextToken = getTokenRange(nextValue, nextCursor).value;
+          if (!isFocused || nextToken === '') {
+            setSuggestions([]);
+            setActiveIndex(0);
+          } else {
+            requestSuggestions(nextToken);
+          }
+
           scheduleCaretRecalc();
         }}
         placeholder={placeholder}
@@ -402,6 +441,28 @@ function getTokenRange(value: string, cursorIndex: number): TokenRange {
     end,
     value: value.slice(start, end).trim()
   };
+}
+
+function buildInsertionText(
+  value: string,
+  tokenStart: number,
+  insertText: string
+): string {
+  let left = tokenStart - 1;
+  while (left >= 0) {
+    const char = value[left];
+    if (char === ' ' || char === '\t') {
+      left--;
+      continue;
+    }
+    break;
+  }
+
+  if (left >= 0 && value[left] === ',') {
+    return ` ${insertText.trimStart()}`;
+  }
+
+  return insertText;
 }
 
 function getCaretPosition(

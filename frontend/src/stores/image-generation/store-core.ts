@@ -114,14 +114,10 @@ export function sanitizePersistedState(
       ...defaultState.txt2img.resolution,
       ...(candidate.txt2img?.resolution ?? {})
     },
-    prompt: fallbackIfBlank(
-      candidate.txt2img?.prompt,
-      defaultState.txt2img.prompt
-    ),
-    negativePrompt: fallbackIfBlank(
-      candidate.txt2img?.negativePrompt,
-      defaultState.txt2img.negativePrompt
-    ),
+    prompt: candidate.txt2img?.prompt ?? defaultState.txt2img.prompt,
+    negativePrompt:
+      candidate.txt2img?.negativePrompt ??
+      defaultState.txt2img.negativePrompt,
     sampler: fallbackIfBlank(
       candidate.txt2img?.sampler,
       defaultState.txt2img.sampler
@@ -153,14 +149,10 @@ export function sanitizePersistedState(
       ...defaultState.img2img.resolution,
       ...(candidate.img2img?.resolution ?? {})
     },
-    prompt: fallbackIfBlank(
-      candidate.img2img?.prompt,
-      defaultState.img2img.prompt
-    ),
-    negativePrompt: fallbackIfBlank(
-      candidate.img2img?.negativePrompt,
-      defaultState.img2img.negativePrompt
-    ),
+    prompt: candidate.img2img?.prompt ?? defaultState.img2img.prompt,
+    negativePrompt:
+      candidate.img2img?.negativePrompt ??
+      defaultState.img2img.negativePrompt,
     sampler: fallbackIfBlank(
       candidate.img2img?.sampler,
       defaultState.img2img.sampler

@@ -19,7 +19,7 @@ export const DEFAULT_BATCH_SIZE = 1;
 export const DEFAULT_REFINE_STEPS = 14;
 export const DEFAULT_REFINE_SCALE_BY = 1.5;
 export const DEFAULT_REFINE_DENOISE_STRENGTH = 0.35;
-export const DEFAULT_CLIP_SKIP_STOP_AT_LAYER = -1;
+export const DEFAULT_CLIP_SKIP_STOP_AT_LAYER = -2;
 
 export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   prompt: DEFAULT_GENERATION_PROMPT,
@@ -55,4 +55,3 @@ export const defaultImg2ImgParameters: Img2ImgParameters = {
   sourceImagePath: '',
   denoiseStrength: DEFAULT_DENOISE_STRENGTH
 };
-

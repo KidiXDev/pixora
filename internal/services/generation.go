@@ -501,40 +501,83 @@ func listModelFiles(root string, allowedExtensions map[string]struct{}) []string
 		return []string{}
 	}
 
-	if _, err := os.Stat(root); err != nil {
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
 		return []string{}
 	}
 
 	files := make([]string, 0)
+	visited := make(map[string]struct{})
 
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
+	var walk func(scanPath string, relativePrefix string)
+	walk = func(scanPath string, relativePrefix string) {
+		directoryKey, keyErr := resolveDirectoryKey(scanPath)
+		if keyErr != nil {
+			return
 		}
 
-		if entry.IsDir() {
-			return nil
+		if _, seen := visited[directoryKey]; seen {
+			return
+		}
+		visited[directoryKey] = struct{}{}
+
+		entries, readErr := os.ReadDir(scanPath)
+		if readErr != nil {
+			return
 		}
 
-		name := strings.TrimSpace(entry.Name())
-		if name == "" || strings.HasPrefix(name, ".") {
-			return nil
-		}
+		for _, entry := range entries {
+			name := strings.TrimSpace(entry.Name())
+			if name == "" || strings.HasPrefix(name, ".") {
+				continue
+			}
 
-		if !hasAllowedExtension(name, allowedExtensions) {
-			return nil
-		}
+			fullPath := filepath.Join(scanPath, name)
+			relativePath := name
+			if relativePrefix != "" {
+				relativePath = filepath.Join(relativePrefix, name)
+			}
 
-		relPath, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
+			if entry.IsDir() {
+				walk(fullPath, relativePath)
+				continue
+			}
 
-		files = append(files, filepath.ToSlash(relPath))
-		return nil
-	})
+			resolvedInfo, statErr := os.Stat(fullPath)
+			if statErr != nil {
+				continue
+			}
+
+			if resolvedInfo.IsDir() {
+				walk(fullPath, relativePath)
+				continue
+			}
+
+			if !hasAllowedExtension(name, allowedExtensions) {
+				continue
+			}
+
+			files = append(files, filepath.ToSlash(relativePath))
+		}
+	}
+
+	walk(root, "")
 
 	return uniqueAndSorted(files)
+}
+
+func resolveDirectoryKey(path string) (string, error) {
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolvedPath = path
+	}
+
+	absPath, err := filepath.Abs(resolvedPath)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.ToLower(filepath.Clean(absPath)), nil
 }
 
 func hasAllowedExtension(fileName string, allowedExtensions map[string]struct{}) bool {

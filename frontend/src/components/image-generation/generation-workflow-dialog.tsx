@@ -113,6 +113,34 @@ function formatWorkflowValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function highlightJSON(json: string) {
+  if (!json) return '';
+
+  const escaped = json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return escaped.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    (match) => {
+      let cls = 'text-amber-300'; // number
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'text-rose-400 font-medium'; // key
+        } else {
+          cls = 'text-emerald-400'; // string
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'text-sky-400'; // boolean
+      } else if (/null/.test(match)) {
+        cls = 'text-zinc-500'; // null
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+}
+
 function formatNodeTitle(nodeID: string, node: WorkflowNode): string {
   const metaTitle = node._meta?.title;
   if (typeof metaTitle === 'string' && metaTitle.trim() !== '') {
@@ -272,6 +300,17 @@ export function GenerationWorkflowDialog({
       return null;
     }
   }, [workflowJSON]);
+
+
+  const formattedJSON = React.useMemo(() => {
+    if (!workflowJSON || workflowJSON.trim() === '') return '';
+    try {
+      return JSON.stringify(JSON.parse(workflowJSON), null, 2);
+    } catch {
+      return workflowJSON;
+    }
+  }, [workflowJSON]);
+
 
   const { columns, nodes } = React.useMemo(
     () => buildNodeModels(payload),
@@ -583,14 +622,49 @@ export function GenerationWorkflowDialog({
           >
             <ScrollArea className="flex-1 min-h-0">
               <div className="px-6 py-6">
-                <div className="mb-3 text-xs text-muted-foreground">
-                  {payload?.outputDir
-                    ? `Output directory: ${payload.outputDir}`
-                    : ''}
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">Workflow Definition</p>
+                    <p className="text-xs text-muted-foreground">
+                      The exact API payload that will be sent to the generation
+                      service.
+                    </p>
+                  </div>
+                  {payload?.outputDir ? (
+                    <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2 text-[11px]">
+                      <span className="font-bold uppercase tracking-wider text-muted-foreground">
+                        Output Dir
+                      </span>
+                      <div className="mt-1 font-mono text-foreground/80 break-all">
+                        {payload.outputDir}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-                <pre className="whitespace-pre-wrap wrap-break-word rounded-2xl border border-border/60 bg-zinc-950 p-4 text-xs leading-6 text-zinc-100">
-                  <code>{workflowJSON || 'Workflow preview unavailable.'}</code>
-                </pre>
+
+                <div className="relative group">
+                  <div className="absolute right-4 top-4 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleCopy}
+                      className="h-8 gap-2 bg-zinc-900/80 hover:bg-zinc-800 backdrop-blur-md border border-zinc-700/50"
+                    >
+                      <Copy className="size-3.5" />
+                      Copy JSON
+                    </Button>
+                  </div>
+                  <pre className="block w-full whitespace-pre-wrap break-all rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-[13px] font-mono leading-relaxed text-zinc-300 shadow-2xl selection:bg-primary/20">
+                    <code
+                      className="block w-full"
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          highlightJSON(formattedJSON) ||
+                          '<span class="text-zinc-500">No workflow JSON available.</span>'
+                      }}
+                    />
+                  </pre>
+                </div>
               </div>
             </ScrollArea>
           </TabsContent>

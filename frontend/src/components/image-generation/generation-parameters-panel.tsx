@@ -1,4 +1,5 @@
 import { PromptAutocompleteTextarea } from '@/components/image-generation/prompt-autocomplete-textarea';
+import { PromptTokenCounter } from '@/components/image-generation/prompt-token-counter';
 import {
   Accordion,
   AccordionContent,
@@ -89,7 +90,6 @@ const REFINE_LATENT_UPSCALE_METHOD_OPTIONS = [
   'bislerp'
 ] as const;
 const STORE_SYNC_DEBOUNCE_MS = 80;
-const PROMPT_TOKEN_SOFT_LIMIT = 75;
 
 interface GenerationParametersPanelProps {
   mode: ImageGenerationMode;
@@ -207,25 +207,6 @@ function GenerationParametersPanelBase({
       {renderParamHelp(description)}
     </div>
   );
-
-  const renderPromptTokenCounter = (value: string) => {
-    const tokenCount = estimatePromptTokenCount(value);
-    const overSoftLimit = tokenCount > PROMPT_TOKEN_SOFT_LIMIT;
-
-    return (
-      <div className="mt-1 flex items-center justify-end px-1">
-        <span
-          className={cn(
-            'text-[10px] font-mono uppercase tracking-wide text-muted-foreground/70',
-            overSoftLimit && 'text-amber-500'
-          )}
-        >
-          Tokens {tokenCount}
-          {overSoftLimit ? ' (high)' : ''}
-        </span>
-      </div>
-    );
-  };
 
   const promptFormatConfig = useConfigStore(
     (state) => state.config?.promptFormat
@@ -476,6 +457,7 @@ function GenerationParametersPanelBase({
       />
     </div>
   );
+
   const renderRefineFields = () => (
     <div className="space-y-3 pt-2 border-t border-border/10">
       <form.Field
@@ -530,9 +512,11 @@ function GenerationParametersPanelBase({
                 <AccordionContent className="space-y-4 pb-4">
                   <div className="grid grid-cols-2 gap-4">
                     <Field>
-                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
-                        Upscale Type
-                      </FieldLabel>
+                      {renderFieldLabelWithHelp(
+                        'refine-upscale-mode',
+                        'Upscale Type',
+                        'Choose between Latent Upscale or using a dedicated AI Upscale Model.'
+                      )}
                       <Select
                         value={value.upscaleMode}
                         onValueChange={(upscaleMode) => {
@@ -550,7 +534,10 @@ function GenerationParametersPanelBase({
                           });
                         }}
                       >
-                        <SelectTrigger className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors">
+                        <SelectTrigger
+                          id="refine-upscale-mode"
+                          className="h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors"
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -565,9 +552,11 @@ function GenerationParametersPanelBase({
                     </Field>
 
                     <Field>
-                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
-                        Upscale Method
-                      </FieldLabel>
+                      {renderFieldLabelWithHelp(
+                        'refine-upscale-method',
+                        'Upscale Method',
+                        'Interpolation method used for upscaling.'
+                      )}
                       <Select
                         key={value.upscaleMode}
                         value={value.upscaleMethod}
@@ -580,6 +569,7 @@ function GenerationParametersPanelBase({
                         }}
                       >
                         <SelectTrigger
+                          id="refine-upscale-method"
                           className={cn(
                             'h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-colors',
                             isModelMode && 'opacity-50 cursor-not-allowed'
@@ -609,14 +599,15 @@ function GenerationParametersPanelBase({
                       </Select>
                     </Field>
                     <Field className="col-span-2">
-                      <FieldLabel
-                        className={cn(
+                      {renderFieldLabelWithHelp(
+                        'refine-upscale-model',
+                        'Upscale Model',
+                        'The specific AI model used for upscaling the image before the refinement pass.',
+                        cn(
                           'text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5 transition-opacity',
                           !isModelMode && 'opacity-40'
-                        )}
-                      >
-                        Upscale Model
-                      </FieldLabel>
+                        )
+                      )}
                       <Select
                         value={value.upscaleModel}
                         disabled={!isModelMode}
@@ -628,6 +619,7 @@ function GenerationParametersPanelBase({
                         }}
                       >
                         <SelectTrigger
+                          id="refine-upscale-model"
                           className={cn(
                             'h-9 w-full text-xs px-3 bg-muted/20 border-border/40 hover:bg-muted/30 transition-all',
                             !isModelMode &&
@@ -662,10 +654,13 @@ function GenerationParametersPanelBase({
                   <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/10">
                     <Field className="space-y-2">
                       <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Scale By
-                        </FieldLabel>
+                        {renderFieldLabelWithHelp(
+                          'refine-scale-by',
+                          'Scale By',
+                          'Multiplier for the final resolution. 2.0x will double the dimensions of the initial image.'
+                        )}
                         <Input
+                          id="refine-scale-by"
                           value={value.scaleBy}
                           onChange={(event) =>
                             field.handleChange({
@@ -694,10 +689,13 @@ function GenerationParametersPanelBase({
 
                     <Field className="space-y-2">
                       <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Refine Steps
-                        </FieldLabel>
+                        {renderFieldLabelWithHelp(
+                          'refine-steps',
+                          'Refine Steps',
+                          'Number of denoising iterations for the second pass. Higher values add more detail but take longer.'
+                        )}
                         <Input
+                          id="refine-steps"
                           value={value.steps}
                           onChange={(event) =>
                             field.handleChange({
@@ -726,10 +724,13 @@ function GenerationParametersPanelBase({
 
                     <Field className="space-y-2 col-span-2">
                       <div className="flex items-center justify-between gap-2 px-0.5">
-                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                          Refine Denoise
-                        </FieldLabel>
+                        {renderFieldLabelWithHelp(
+                          'refine-denoise',
+                          'Refine Denoise',
+                          'Controls how strongly the refine step alters the image. Higher values make bigger changes, while lower values preserve the original result.'
+                        )}
                         <Input
+                          id="refine-denoise"
                           value={value.denoiseStrength}
                           onChange={(event) =>
                             field.handleChange({
@@ -870,7 +871,7 @@ function GenerationParametersPanelBase({
     prefix,
     showDenoise
   }: RenderNumericParameterFieldsOptions) => (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-x-6 gap-y-5">
         {/* Steps */}
         <form.Field
@@ -1140,7 +1141,7 @@ function GenerationParametersPanelBase({
                       {renderFieldLabelWithHelp(
                         field.name,
                         'Seed',
-                        'Base randomization seed. Keep the same seed for reproducibility, or leave empty to use a secure random seed.'
+                        'Base randomization seed. Keep the same seed for reproducibility, or leave empty to use a random seed.'
                       )}
                       <Input
                         id={field.name}
@@ -1214,7 +1215,7 @@ function GenerationParametersPanelBase({
                         {renderFieldLabelWithHelp(
                           field.name,
                           'Variation Strength',
-                          'Controls how strongly variation seed influences final seed. 0 uses base seed only, 1 uses full variation mix.'
+                          'Controls how strongly variation seed influences final seed.'
                         )}
                         <Input
                           id={field.name}
@@ -1251,59 +1252,6 @@ function GenerationParametersPanelBase({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
-
-      {prefix === 'txt2img' && (
-        <>
-          {renderRefineFields()}
-          {renderClipSkipFields()}
-        </>
-      )}
-
-      {/* Denoise Strength */}
-      {showDenoise && prefix === 'img2img' && (
-        <form.Field
-          name="img2img.denoiseStrength"
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !!field.state.meta.errors.length;
-            return (
-              <Field className="space-y-2.5" data-invalid={isInvalid}>
-                <div className="flex items-center justify-between gap-2 px-0.5">
-                  {renderFieldLabelWithHelp(
-                    field.name,
-                    'Denoise Strength',
-                    'For img2img, controls how much to preserve from source image. Lower keeps structure, higher allows stronger changes.'
-                  )}
-                  <Input
-                    id={field.name}
-                    name={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) =>
-                      field.handleChange(
-                        parseNumeric(filterNumeric(e.target.value, true))
-                      )
-                    }
-                    aria-invalid={isInvalid}
-                    className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50 focus-visible:ring-1"
-                  />
-                </div>
-                <FieldContent className="px-1.5">
-                  <Slider
-                    value={[field.state.value]}
-                    onValueChange={([v]) => field.handleChange(v)}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    className="py-1"
-                  />
-                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                </FieldContent>
-              </Field>
-            );
-          }}
-        />
-      )}
 
       {/* Resolution Row */}
       <FieldGroup className="grid grid-cols-2 gap-x-6 gap-y-5 pt-2 border-t border-border/10">
@@ -1459,6 +1407,59 @@ function GenerationParametersPanelBase({
           }}
         />
       </FieldGroup>
+
+      {prefix === 'txt2img' && (
+        <div className="space-y-6">
+          {renderRefineFields()}
+          {renderClipSkipFields()}
+        </div>
+      )}
+
+      {/* Denoise Strength */}
+      {showDenoise && prefix === 'img2img' && (
+        <form.Field
+          name="img2img.denoiseStrength"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !!field.state.meta.errors.length;
+            return (
+              <Field className="space-y-2.5" data-invalid={isInvalid}>
+                <div className="flex items-center justify-between gap-2 px-0.5">
+                  {renderFieldLabelWithHelp(
+                    field.name,
+                    'Denoise Strength',
+                    'For img2img, controls how much to preserve from source image. Lower keeps structure, higher allows stronger changes.'
+                  )}
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) =>
+                      field.handleChange(
+                        parseNumeric(filterNumeric(e.target.value, true))
+                      )
+                    }
+                    aria-invalid={isInvalid}
+                    className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50 focus-visible:ring-1"
+                  />
+                </div>
+                <FieldContent className="px-1.5">
+                  <Slider
+                    value={[field.state.value]}
+                    onValueChange={([v]) => field.handleChange(v)}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    className="py-1"
+                  />
+                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                </FieldContent>
+              </Field>
+            );
+          }}
+        />
+      )}
     </div>
   );
 
@@ -1530,33 +1531,9 @@ function GenerationParametersPanelBase({
       <ScrollArea className="flex-1 min-h-0 mr-1">
         <form className="space-y-8 px-6 py-6 pb-12">
           {mode === 'txt2img' ? (
-            <FieldGroup className="space-y-8">
+            <FieldGroup>
               {renderModelFields('txt2img')}
               <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
-                      Prompting
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-                      Describe the desired style, composition, and lighting.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5 gap-1.5 transition-colors"
-                    onClick={handleFormatPrompts}
-                    title="Format Prompts"
-                  >
-                    <BrushCleaningIcon className="size-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-tight">
-                      Format
-                    </span>
-                  </Button>
-                </div>
-
                 <form.Field
                   name="txt2img.prompt"
                   children={(field) => {
@@ -1565,6 +1542,27 @@ function GenerationParametersPanelBase({
                       !!field.state.meta.errors.length;
                     return (
                       <Field data-invalid={isInvalid} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <FieldLabel
+                            htmlFor={field.name}
+                            className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                          >
+                            Positive Prompt
+                          </FieldLabel>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5 gap-1.5 transition-colors"
+                            onClick={handleFormatPrompts}
+                            title="Format Prompts"
+                          >
+                            <BrushCleaningIcon className="size-3.5" />
+                            <span className="text-[10px] font-bold uppercase tracking-tight">
+                              Format
+                            </span>
+                          </Button>
+                        </div>
                         <FieldContent>
                           <PromptAutocompleteTextarea
                             id={field.name}
@@ -1576,7 +1574,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-32 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
-                          {renderPromptTokenCounter(field.state.value)}
+                          <PromptTokenCounter value={field.state.value} />
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1596,7 +1594,7 @@ function GenerationParametersPanelBase({
                       <Field data-invalid={isInvalid} className="space-y-2">
                         <FieldLabel
                           htmlFor={field.name}
-                          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
+                          className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 ml-0.5"
                         >
                           Negative Prompt
                         </FieldLabel>
@@ -1611,7 +1609,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
-                          {renderPromptTokenCounter(field.state.value)}
+                          <PromptTokenCounter value={field.state.value} />
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1722,7 +1720,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-28 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
-                          {renderPromptTokenCounter(field.state.value)}
+                          <PromptTokenCounter value={field.state.value} />
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1755,7 +1753,7 @@ function GenerationParametersPanelBase({
                             ariaInvalid={isInvalid}
                             className="min-h-20 bg-muted/5 border-border/40 focus:border-primary/50 transition-colors duration-300"
                           />
-                          {renderPromptTokenCounter(field.state.value)}
+                          <PromptTokenCounter value={field.state.value} />
                           {isInvalid && (
                             <FieldError errors={field.state.meta.errors} />
                           )}
@@ -1781,23 +1779,3 @@ function GenerationParametersPanelBase({
 export const GenerationParametersPanel = React.memo(
   GenerationParametersPanelBase
 );
-
-function estimatePromptTokenCount(input: string): number {
-  const trimmed = input.trim();
-  if (trimmed === '') {
-    return 0;
-  }
-
-  const normalized = trimmed
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/[()\[\]{}]/g, ' ')
-    .replace(/:+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (normalized === '') {
-    return 0;
-  }
-
-  return normalized.split(/[\s,]+/).filter((token) => token.length > 0).length;
-}
