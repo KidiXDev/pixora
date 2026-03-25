@@ -37,6 +37,8 @@ export function mapBackendConfigToComfyUI(
 ): ComfyUIConfig {
   const host = backend.host.trim() || current.host || DEFAULT_COMFYUI_HOST;
   const port = normalizeComfyPort(backend.port || current.port);
+  const crossAttentionMethod =
+    backend.crossAttentionMethod === 'sage' ? 'sage' : 'pytorch';
 
   return {
     ...current,
@@ -45,6 +47,7 @@ export function mapBackendConfigToComfyUI(
     mainScriptPath: backend.mainScriptPath,
     modelPathsYAML: backend.modelPathsYAML,
     args: backend.args,
+    crossAttentionMethod,
     outputDir: backend.outputDir,
     host,
     port,
@@ -59,6 +62,7 @@ export function toBackendComfyConfig(input: ComfyUIConfig): ComfyUIBackendConfig
     pythonPath: input.pythonPath,
     mainScriptPath: input.mainScriptPath,
     args: input.args,
+    crossAttentionMethod: input.crossAttentionMethod,
     outputDir: input.outputDir,
     modelPathsYAML: input.modelPathsYAML,
     host: input.host,
@@ -188,6 +192,16 @@ export function applyCatalogDefaults(
     catalog.upscaleModels,
     ''
   );
+  const nextTxt2ImgSAMModel = pickOption(
+    txt2img.faceDetailer.samModel,
+    catalog.samModels,
+    ''
+  );
+  const nextTxt2ImgBboxModel = pickOption(
+    txt2img.faceDetailer.bboxModel,
+    catalog.bboxModels,
+    ''
+  );
 
   return {
     txt2img: {
@@ -199,6 +213,11 @@ export function applyCatalogDefaults(
       refine: {
         ...txt2img.refine,
         upscaleModel: nextTxt2ImgRefineUpscaleModel
+      },
+      faceDetailer: {
+        ...txt2img.faceDetailer,
+        samModel: nextTxt2ImgSAMModel,
+        bboxModel: nextTxt2ImgBboxModel
       }
     },
     img2img: {

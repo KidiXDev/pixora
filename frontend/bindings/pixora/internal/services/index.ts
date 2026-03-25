@@ -20,6 +20,7 @@ export {
     FolderBrowseResponse,
     FolderEntry,
     GenerationClipSkipRequest,
+    GenerationFaceDetailerRequest,
     GenerationModelCatalog,
     GenerationQueueJob,
     GenerationRefineRequest,

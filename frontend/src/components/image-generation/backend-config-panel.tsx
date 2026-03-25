@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { ComfyUIConfig, ComfyUIStatus } from '@/types/image-generation';
 import {
@@ -193,6 +194,34 @@ export function BackendConfigPanel({
             />
             <p className="text-[10px] text-muted-foreground mt-1 px-1">
               Custom CLI arguments passed to the ComfyUI process on startup.
+            </p>
+          </div>
+
+          <div className="space-y-1.5 px-1">
+            <Label className="text-xs font-medium opacity-80">
+              Cross Attention Method
+            </Label>
+            <RadioGroup
+              className="gap-2 rounded-md border border-border/60 bg-background/50 p-3"
+              value={comfyUI.crossAttentionMethod}
+              onValueChange={(value) =>
+                onComfyUIChange({
+                  crossAttentionMethod:
+                    value === 'sage' ? 'sage' : 'pytorch'
+                })
+              }
+            >
+              <label className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs">
+                <RadioGroupItem value="pytorch" id="cross-attn-pytorch" />
+                <span>PyTorch</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs">
+                <RadioGroupItem value="sage" id="cross-attn-sage" />
+                <span>Sage</span>
+              </label>
+            </RadioGroup>
+            <p className="text-[10px] text-muted-foreground mt-1 px-1">
+              Choose one method. Pixora will map it to the launch argument.
             </p>
           </div>
 

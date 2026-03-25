@@ -151,6 +151,24 @@ const defaultComfySetupSteps: ComfyUISetupStep[] = [
     message: ''
   },
   {
+    id: 'install_python_dependencies',
+    label: 'Install Embedded Python Dependencies',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'install_comfyui_manager',
+    label: 'Install ComfyUI Manager',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'download_default_models',
+    label: 'Download Default Models',
+    status: 'pending',
+    message: ''
+  },
+  {
     id: 'complete',
     label: 'Installation Complete',
     status: 'pending',
@@ -288,6 +306,8 @@ function mapModelCatalog(
     diffusionModels: string[];
     unets: string[];
     schedulers: string[];
+    bboxModels: string[];
+    samModels: string[];
   } | null
 ): GenerationModelCatalog {
   if (!input) {
@@ -304,7 +324,9 @@ function mapModelCatalog(
     textEncoders: input.textEncoders,
     diffusionModels: input.diffusionModels,
     unets: input.unets,
-    schedulers: input.schedulers
+    schedulers: input.schedulers,
+    bboxModels: input.bboxModels ?? [],
+    samModels: input.samModels ?? []
   };
 }
 
@@ -987,6 +1009,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             ...merged,
             host,
             port,
+            crossAttentionMethod:
+              merged.crossAttentionMethod === 'sage' ? 'sage' : 'pytorch',
             apiUrl: buildComfyApiURL(host, port),
             localPath: merged.mainScriptPath || merged.localPath
           };
@@ -1060,6 +1084,137 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             -24,
             -1
           )
+        },
+        faceDetailer: {
+          ...state.txt2img.faceDetailer,
+          ...(patch.faceDetailer ?? {}),
+          enabled:
+            patch.faceDetailer?.enabled ?? state.txt2img.faceDetailer.enabled,
+          guideSize: clamp(
+            Math.round(
+              patch.faceDetailer?.guideSize ?? state.txt2img.faceDetailer.guideSize
+            ),
+            64,
+            4096
+          ),
+          guideSizeFor:
+            patch.faceDetailer?.guideSizeFor ??
+            state.txt2img.faceDetailer.guideSizeFor,
+          maxSize: clamp(
+            Math.round(
+              patch.faceDetailer?.maxSize ?? state.txt2img.faceDetailer.maxSize
+            ),
+            64,
+            4096
+          ),
+          denoise: clamp(
+            patch.faceDetailer?.denoise ?? state.txt2img.faceDetailer.denoise,
+            0.0001,
+            1
+          ),
+          feather: clamp(
+            Math.round(
+              patch.faceDetailer?.feather ?? state.txt2img.faceDetailer.feather
+            ),
+            0,
+            100
+          ),
+          noiseMask:
+            patch.faceDetailer?.noiseMask ??
+            state.txt2img.faceDetailer.noiseMask,
+          forceInpaint:
+            patch.faceDetailer?.forceInpaint ??
+            state.txt2img.faceDetailer.forceInpaint,
+          inpaintModel:
+            patch.faceDetailer?.inpaintModel ??
+            state.txt2img.faceDetailer.inpaintModel,
+          noiseMaskFeather: clamp(
+            Math.round(
+              patch.faceDetailer?.noiseMaskFeather ??
+                state.txt2img.faceDetailer.noiseMaskFeather
+            ),
+            0,
+            100
+          ),
+          bboxThreshold: clamp(
+            patch.faceDetailer?.bboxThreshold ??
+              state.txt2img.faceDetailer.bboxThreshold,
+            0,
+            1
+          ),
+          bboxDilation: clamp(
+            Math.round(
+              patch.faceDetailer?.bboxDilation ??
+                state.txt2img.faceDetailer.bboxDilation
+            ),
+            -512,
+            512
+          ),
+          bboxCropFactor: clamp(
+            patch.faceDetailer?.bboxCropFactor ??
+              state.txt2img.faceDetailer.bboxCropFactor,
+            1,
+            10
+          ),
+          bboxModel:
+            patch.faceDetailer?.bboxModel ??
+            state.txt2img.faceDetailer.bboxModel,
+          samModel:
+            patch.faceDetailer?.samModel ?? state.txt2img.faceDetailer.samModel,
+          samDetectionHint:
+            patch.faceDetailer?.samDetectionHint ??
+            state.txt2img.faceDetailer.samDetectionHint,
+          samDilation: clamp(
+            Math.round(
+              patch.faceDetailer?.samDilation ??
+                state.txt2img.faceDetailer.samDilation
+            ),
+            -512,
+            512
+          ),
+          samThreshold: clamp(
+            patch.faceDetailer?.samThreshold ??
+              state.txt2img.faceDetailer.samThreshold,
+            0,
+            1
+          ),
+          samBboxExpansion: clamp(
+            Math.round(
+              patch.faceDetailer?.samBboxExpansion ??
+                state.txt2img.faceDetailer.samBboxExpansion
+            ),
+            0,
+            1000
+          ),
+          samMaskHintThreshold: clamp(
+            patch.faceDetailer?.samMaskHintThreshold ??
+              state.txt2img.faceDetailer.samMaskHintThreshold,
+            0,
+            1
+          ),
+          samMaskHintUseNegative:
+            patch.faceDetailer?.samMaskHintUseNegative ??
+            state.txt2img.faceDetailer.samMaskHintUseNegative,
+          dropSize: clamp(
+            Math.round(
+              patch.faceDetailer?.dropSize ?? state.txt2img.faceDetailer.dropSize
+            ),
+            1,
+            4096
+          ),
+          cycle: clamp(
+            Math.round(
+              patch.faceDetailer?.cycle ?? state.txt2img.faceDetailer.cycle
+            ),
+            1,
+            10
+          ),
+          tiledEncode:
+            patch.faceDetailer?.tiledEncode ??
+            state.txt2img.faceDetailer.tiledEncode,
+          tiledDecode:
+            patch.faceDetailer?.tiledDecode ??
+            state.txt2img.faceDetailer.tiledDecode
         }
       };
 
@@ -1192,7 +1347,8 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             scheduler: currentParams.scheduler,
             batchSize: 1,
             clipSkip: (currentParams as Txt2ImgParameters).clipSkip,
-            refine: (currentParams as Txt2ImgParameters).refine
+            refine: (currentParams as Txt2ImgParameters).refine,
+            faceDetailer: (currentParams as Txt2ImgParameters).faceDetailer
           });
 
           const resolvedPromptID = queued?.jobId || pendingPromptID;

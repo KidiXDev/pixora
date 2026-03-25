@@ -44,6 +44,44 @@ const (
 	comfyInstallExtractedFolder = "ComfyUI_windows_portable"
 )
 
+var comfyEmbeddedPythonPackages = []string{
+	"ultralytics",
+	"opencv-python",
+	"segment-anything",
+	"spandrel",
+	"sageattention",
+	"triton-windows",
+}
+
+type comfyDefaultModelSpec struct {
+	StepLabel string
+	URL       string
+	Subdir    string
+	FileName  string
+	AltNames  []string
+}
+
+var comfyDefaultModelSpecs = []comfyDefaultModelSpec{
+	{
+		StepLabel: "SAM ViT-B",
+		URL:       "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
+		Subdir:    "sams",
+		FileName:  "sam_vit_b_01ec64.pth",
+	},
+	{
+		StepLabel: "Face YOLOv8n v2",
+		URL:       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n_v2.pt?download=true",
+		Subdir:    "bbox",
+		FileName:  "face_yolov8n_v2.pt",
+	},
+	{
+		StepLabel: "Face YOLOv8n",
+		URL:       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt?download=true",
+		Subdir:    "bbox",
+		FileName:  "face_yolov8n.pt",
+	},
+}
+
 type ComfyUISetupStep struct {
 	ID      string `json:"id"`
 	Label   string `json:"label"`
@@ -117,6 +155,9 @@ func defaultComfySetupSteps() []ComfyUISetupStep {
 		{ID: "finalize_install_dir", Label: "Finalize Installation Folder", Status: comfySetupStepPending},
 		{ID: "prepare_model_paths", Label: "Prepare Model Paths", Status: comfySetupStepPending},
 		{ID: "copy_custom_nodes", Label: "Copy Custom Nodes", Status: comfySetupStepPending},
+		{ID: "install_python_dependencies", Label: "Install Embedded Python Dependencies", Status: comfySetupStepPending},
+		{ID: "install_comfyui_manager", Label: "Install ComfyUI Manager", Status: comfySetupStepPending},
+		{ID: "download_default_models", Label: "Download Default Models", Status: comfySetupStepPending},
 		{ID: "complete", Label: "Installation Complete", Status: comfySetupStepPending},
 	}
 }
@@ -169,7 +210,7 @@ func (m *ComfyUIManager) GetSetupStatus() ComfyUISetupStatus {
 
 func (m *ComfyUIManager) refreshSetupStatus() ComfyUISetupStatus {
 	m.mu.RLock()
-	if m.setup.State == comfySetupStateInstalling {
+	if m.setup.State == comfySetupStateInstalling || (m.setup.State == comfySetupStateError && strings.TrimSpace(m.setup.CurrentStepID) != "") {
 		snapshot := cloneComfySetupStatus(m.setup)
 		m.mu.RUnlock()
 		return snapshot
@@ -244,6 +285,17 @@ func (m *ComfyUIManager) evaluateSetupStatus() ComfyUISetupStatus {
 	}
 
 	if hasComfyRuntime(workspaceRoot) {
+		if !hasPixoraComfyIntegration(workspaceRoot) {
+			status.State = comfySetupStateError
+			status.IsInstalled = true
+			status.IsReady = false
+			status.RequiresOnboarding = true
+			status.ErrorKind = comfySetupErrorIncompleteInstall
+			status.StatusMessage = "ComfyUI installation needs repair."
+			status.LastError = "Pixora detected an incomplete ComfyUI integration (dependencies/custom nodes/models may be missing). Retry setup to repair it."
+			return status
+		}
+
 		status.State = comfySetupStateReady
 		status.IsInstalled = true
 		status.IsReady = true
@@ -441,6 +493,39 @@ func (m *ComfyUIManager) InstallComfyUI() error {
 		return m.completeSetupWithError("copy_custom_nodes", setupErr)
 	}
 	m.setSetupStepCompleted("copy_custom_nodes", "Custom nodes copied successfully.")
+
+	m.setSetupStepRunning("install_python_dependencies", "Installing embedded Python dependencies for Pixora custom nodes...")
+	if err := m.installEmbeddedPythonDependencies(workspaceRoot); err != nil {
+		setupErr := newComfySetupError(
+			comfySetupErrorIncompleteInstall,
+			"Pixora could not install embedded Python dependencies.",
+			err,
+		)
+		return m.completeSetupWithError("install_python_dependencies", setupErr)
+	}
+	m.setSetupStepCompleted("install_python_dependencies", "Embedded Python dependencies installed.")
+
+	m.setSetupStepRunning("install_comfyui_manager", "Installing ComfyUI Manager custom node...")
+	if err := m.installComfyUIManager(workspaceRoot); err != nil {
+		setupErr := newComfySetupError(
+			comfySetupErrorIncompleteInstall,
+			"Pixora could not install ComfyUI Manager.",
+			err,
+		)
+		return m.completeSetupWithError("install_comfyui_manager", setupErr)
+	}
+	m.setSetupStepCompleted("install_comfyui_manager", "ComfyUI Manager installed.")
+
+	m.setSetupStepRunning("download_default_models", "Downloading required default models...")
+	if err := m.downloadDefaultModels(workspaceRoot); err != nil {
+		setupErr := newComfySetupError(
+			comfySetupErrorDownloadFailure,
+			"Pixora could not download required default models.",
+			err,
+		)
+		return m.completeSetupWithError("download_default_models", setupErr)
+	}
+	m.setSetupStepCompleted("download_default_models", "Default models are ready.")
 
 	m.setSetupStepRunning("complete", "Finishing installation...")
 	if !hasComfyRuntime(workspaceRoot) {
@@ -751,7 +836,8 @@ func downloadFile(url string, destination string, onProgress func(received int64
 
 func (m *ComfyUIManager) updateDownloadProgress(received int64, total int64, speed float64) {
 	m.mu.Lock()
-	if m.setup.CurrentStepID != "download_archive" || m.setup.State != comfySetupStateInstalling {
+	stepID := m.setup.CurrentStepID
+	if m.setup.State != comfySetupStateInstalling || (stepID != "download_archive" && stepID != "download_default_models") {
 		m.mu.Unlock()
 		return
 	}
@@ -787,15 +873,20 @@ func (m *ComfyUIManager) updateDownloadProgress(received int64, total int64, spe
 		sizePart = fmt.Sprintf("%s / %s", formatByteSize(received), formatByteSize(total))
 	}
 
-	message := fmt.Sprintf("Downloading ComfyUI archive... %s at %s/s", sizePart, formatByteSize(int64(speed)))
+	prefix := "Downloading ComfyUI archive"
+	if stepID == "download_default_models" {
+		prefix = firstNonEmpty(strings.TrimSuffix(strings.TrimSpace(m.setup.CurrentStepMessage), "..."), "Downloading default model")
+	}
+
+	message := fmt.Sprintf("%s... %s at %s/s", prefix, sizePart, formatByteSize(int64(speed)))
 	if total > 0 {
-		message = fmt.Sprintf("Downloading ComfyUI archive... %.1f%% (%s) at %s/s", progress, sizePart, formatByteSize(int64(speed)))
+		message = fmt.Sprintf("%s... %.1f%% (%s) at %s/s", prefix, progress, sizePart, formatByteSize(int64(speed)))
 	}
 
 	m.setup.CurrentStepMessage = message
 	m.setup.StatusMessage = message
 	for i := range m.setup.Steps {
-		if m.setup.Steps[i].ID != "download_archive" {
+		if m.setup.Steps[i].ID != stepID {
 			continue
 		}
 		m.setup.Steps[i].Message = message
@@ -1036,6 +1127,7 @@ func (m *ComfyUIManager) failSetupStep(stepID string, errorKind string, message 
 
 func (m *ComfyUIManager) completeSetupWithError(stepID string, err error) error {
 	kind, userMessage := decodeComfySetupError(err)
+	m.appendLog("error", "setup", fmt.Sprintf("[%s] %v", stepID, err))
 	m.failSetupStep(stepID, kind, userMessage)
 	return fmt.Errorf("%s", userMessage)
 }
@@ -1065,4 +1157,159 @@ func (m *ComfyUIManager) completeSetupSuccess() {
 func decodeSetupMessage(err error) string {
 	_, userMessage := decodeComfySetupError(err)
 	return userMessage
+}
+
+func (m *ComfyUIManager) runEmbeddedPythonCommand(workspaceRoot string, commandLabel string, args ...string) error {
+	pythonPath := filepath.Join(workspaceRoot, "backend", "comfy", "python_embeded", "python.exe")
+	if _, err := os.Stat(pythonPath); err != nil {
+		return fmt.Errorf("embedded python executable not found: %w", err)
+	}
+
+	cmd := exec.Command(pythonPath, args...)
+	cmd.Dir = workspaceRoot
+	configureComfyProcess(cmd)
+	m.appendLog("info", "setup", fmt.Sprintf("running command (%s): %s %s", commandLabel, pythonPath, strings.Join(args, " ")))
+	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	if output != "" {
+		m.appendLog("info", "setup", output)
+	}
+	if err != nil {
+		m.appendLog("error", "setup", fmt.Sprintf("command failed (%s): %v", commandLabel, err))
+		if output != "" {
+			return fmt.Errorf("%s failed: %w (output: %s)", commandLabel, err, output)
+		}
+		return fmt.Errorf("%s failed: %w", commandLabel, err)
+	}
+
+	return nil
+}
+
+func hasPixoraComfyIntegration(workspaceRoot string) bool {
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return false
+	}
+
+	modelsRoot := filepath.Join(workspaceRoot, "data", "sd")
+	checks := []string{
+		filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes", "pixorabridge"),
+		filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes", "comfyui-manager"),
+		filepath.Join(modelsRoot, "sams", "sam_vit_b_01ec64.pth"),
+		filepath.Join(modelsRoot, "bbox", "face_yolov8n_v2.pt"),
+		filepath.Join(modelsRoot, "bbox", "face_yolov8n.pt"),
+	}
+
+	for _, path := range checks {
+		if _, err := os.Stat(path); err != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *ComfyUIManager) installEmbeddedPythonDependencies(workspaceRoot string) error {
+	pixoraBridgeDir := filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes", "pixorabridge")
+	if _, err := os.Stat(pixoraBridgeDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("pixorabridge custom node not found at %s", pixoraBridgeDir)
+		}
+		return fmt.Errorf("inspect pixorabridge custom node: %w", err)
+	}
+
+	if err := m.runEmbeddedPythonCommand(workspaceRoot, "ensure pip", "-m", "ensurepip", "--upgrade"); err != nil {
+		errMsg := strings.ToLower(err.Error())
+		if strings.Contains(errMsg, "no module named ensurepip") {
+			m.appendLog("warn", "setup", "embedded python does not include ensurepip; continuing with existing pip")
+		} else {
+			return err
+		}
+	}
+	if err := m.runEmbeddedPythonCommand(workspaceRoot, "upgrade pip", "-m", "pip", "install", "--upgrade", "pip"); err != nil {
+		return err
+	}
+
+	requirementsPath := filepath.Join(pixoraBridgeDir, "requirements.txt")
+	if _, err := os.Stat(requirementsPath); err == nil {
+		if err := m.runEmbeddedPythonCommand(workspaceRoot, "install pixorabridge requirements", "-m", "pip", "install", "-r", requirementsPath); err != nil {
+			return err
+		}
+	}
+
+	pipArgs := append([]string{"-m", "pip", "install"}, comfyEmbeddedPythonPackages...)
+	if err := m.runEmbeddedPythonCommand(workspaceRoot, "install pixora dependencies", pipArgs...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *ComfyUIManager) installComfyUIManager(workspaceRoot string) error {
+	customNodesDir := filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes")
+	if err := os.MkdirAll(customNodesDir, 0755); err != nil {
+		return fmt.Errorf("create custom_nodes directory: %w", err)
+	}
+
+	if _, err := exec.LookPath("git"); err != nil {
+		return fmt.Errorf("git executable is required to install ComfyUI-Manager: %w", err)
+	}
+
+	managerDir := filepath.Join(customNodesDir, "comfyui-manager")
+	if _, err := os.Stat(managerDir); err == nil {
+		pullCmd := exec.Command("git", "-C", managerDir, "pull", "--ff-only")
+		configureComfyProcess(pullCmd)
+		pullOutput, pullErr := pullCmd.CombinedOutput()
+		if pullErr != nil {
+			return fmt.Errorf("update comfyui-manager: %w (output: %s)", pullErr, strings.TrimSpace(string(pullOutput)))
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		cloneCmd := exec.Command("git", "clone", "https://github.com/ltdrdata/ComfyUI-Manager", "comfyui-manager")
+		cloneCmd.Dir = customNodesDir
+		configureComfyProcess(cloneCmd)
+		cloneOutput, cloneErr := cloneCmd.CombinedOutput()
+		if cloneErr != nil {
+			return fmt.Errorf("clone comfyui-manager: %w (output: %s)", cloneErr, strings.TrimSpace(string(cloneOutput)))
+		}
+	} else {
+		return fmt.Errorf("inspect comfyui-manager directory: %w", err)
+	}
+
+	managerRequirements := filepath.Join(managerDir, "requirements.txt")
+	if _, err := os.Stat(managerRequirements); err == nil {
+		if err := m.runEmbeddedPythonCommand(workspaceRoot, "install comfyui-manager requirements", "-m", "pip", "install", "-r", managerRequirements); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *ComfyUIManager) downloadDefaultModels(workspaceRoot string) error {
+	modelsRoot := resolvePreferredModelsRoot(workspaceRoot)
+	for _, spec := range comfyDefaultModelSpecs {
+		dirPath := filepath.Join(modelsRoot, spec.Subdir)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			return fmt.Errorf("create default model directory %s: %w", dirPath, err)
+		}
+
+		targetPath := filepath.Join(dirPath, spec.FileName)
+		if _, err := os.Stat(targetPath); err == nil {
+			m.setSetupStepRunning("download_default_models", fmt.Sprintf("%s already exists. Skipping.", spec.StepLabel))
+			continue
+		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect default model file %s: %w", targetPath, err)
+		}
+
+		m.setSetupStepRunning("download_default_models", fmt.Sprintf("Downloading %s...", spec.StepLabel))
+		if err := downloadFile(spec.URL, targetPath, func(received int64, total int64, speed float64) {
+			m.updateDownloadProgress(received, total, speed)
+		}); err != nil {
+			_ = os.Remove(targetPath)
+			return fmt.Errorf("download %s: %w", spec.StepLabel, err)
+		}
+
+		m.updateDownloadProgress(0, 0, 0)
+	}
+
+	return nil
 }

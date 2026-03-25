@@ -753,7 +753,7 @@ export default function SettingsPage() {
                         ) : null}
                         {autocompleteSources.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
-                            No CSV files found in data/completion.
+                            No CSV files found in the active completion folder.
                           </p>
                         ) : null}
                       </div>

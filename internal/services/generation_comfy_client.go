@@ -53,6 +53,7 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 
 	cfg := s.config.GetComfyUIConfig()
 	baseURL := buildComfyBaseURL(cfg)
+	reconcileWorkflowCheckpointForComfy(baseURL, workflow)
 	clientID := fmt.Sprintf("pixora-%d", time.Now().UnixNano())
 	promptID, err := postComfyPrompt(baseURL, workflow, clientID)
 	if err != nil {
@@ -155,6 +156,228 @@ func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req 
 	s.emitGenerationResult(*result)
 
 	return result, nil
+}
+
+func reconcileWorkflowCheckpointForComfy(baseURL string, workflow map[string]comfyWorkflowNode) {
+	if len(workflow) == 0 {
+		return
+	}
+
+	checkpointNodeID := ""
+	checkpointValue := ""
+	for nodeID, node := range workflow {
+		if !strings.EqualFold(strings.TrimSpace(node.ClassType), "CheckpointLoaderSimple") {
+			continue
+		}
+
+		rawInput, exists := node.Inputs["ckpt_name"]
+		if !exists {
+			continue
+		}
+
+		name, ok := rawInput.(string)
+		if !ok {
+			continue
+		}
+
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+
+		checkpointNodeID = nodeID
+		checkpointValue = trimmed
+		break
+	}
+
+	if checkpointNodeID == "" || checkpointValue == "" {
+		return
+	}
+
+	options, err := fetchComfyCheckpointOptions(baseURL)
+	if err != nil || len(options) == 0 {
+		return
+	}
+
+	resolved, changed := resolveComfyCheckpointName(checkpointValue, options)
+	if !changed {
+		return
+	}
+
+	node := workflow[checkpointNodeID]
+	node.Inputs["ckpt_name"] = resolved
+	workflow[checkpointNodeID] = node
+
+	log.Printf("generation: remapped checkpoint name for Comfy validation: %q -> %q", checkpointValue, resolved)
+}
+
+func fetchComfyCheckpointOptions(baseURL string) ([]string, error) {
+	endpoints := []string{
+		fmt.Sprintf("%s/object_info/CheckpointLoaderSimple", baseURL),
+		fmt.Sprintf("%s/object_info", baseURL),
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, endpoint := range endpoints {
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			continue
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if readErr != nil {
+			continue
+		}
+
+		if resp.StatusCode >= 300 {
+			continue
+		}
+
+		var payload map[string]any
+		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+			continue
+		}
+
+		if options := extractComfyCheckpointOptions(payload); len(options) > 0 {
+			return options, nil
+		}
+	}
+
+	return nil, fmt.Errorf("checkpoint options unavailable")
+}
+
+func extractComfyCheckpointOptions(payload map[string]any) []string {
+	if len(payload) == 0 {
+		return nil
+	}
+
+	if options := extractComfyCheckpointOptionsFromNode(payload); len(options) > 0 {
+		return options
+	}
+
+	nodeValue, ok := payload["CheckpointLoaderSimple"]
+	if !ok {
+		return nil
+	}
+
+	nodeDef, ok := nodeValue.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return extractComfyCheckpointOptionsFromNode(nodeDef)
+}
+
+func extractComfyCheckpointOptionsFromNode(nodeDef map[string]any) []string {
+	inputValue, ok := nodeDef["input"]
+	if !ok {
+		return nil
+	}
+
+	input, ok := inputValue.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	requiredValue, ok := input["required"]
+	if !ok {
+		return nil
+	}
+
+	required, ok := requiredValue.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	ckptValue, ok := required["ckpt_name"]
+	if !ok {
+		return nil
+	}
+
+	ckptArray, ok := ckptValue.([]any)
+	if !ok || len(ckptArray) == 0 {
+		return nil
+	}
+
+	rawChoices, ok := ckptArray[0].([]any)
+	if !ok {
+		return nil
+	}
+
+	choices := make([]string, 0, len(rawChoices))
+	for _, item := range rawChoices {
+		name, ok := item.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		choices = append(choices, trimmed)
+	}
+
+	return uniqueAndSorted(choices)
+}
+
+func resolveComfyCheckpointName(requested string, options []string) (string, bool) {
+	trimmedRequested := strings.TrimSpace(requested)
+	if trimmedRequested == "" || len(options) == 0 {
+		return trimmedRequested, false
+	}
+
+	requestedNormalized := normalizeComfyCheckpointToken(trimmedRequested)
+
+	for _, option := range options {
+		if normalizeComfyCheckpointToken(option) == requestedNormalized {
+			if option == trimmedRequested {
+				return trimmedRequested, false
+			}
+			return option, true
+		}
+	}
+
+	baseName := strings.ToLower(strings.TrimSpace(filepath.Base(trimmedRequested)))
+	if baseName == "" {
+		return trimmedRequested, false
+	}
+
+	matches := make([]string, 0, 2)
+	for _, option := range options {
+		if strings.EqualFold(strings.TrimSpace(filepath.Base(option)), baseName) {
+			matches = append(matches, option)
+		}
+	}
+
+	if len(matches) == 1 {
+		resolved := matches[0]
+		if resolved == trimmedRequested {
+			return trimmedRequested, false
+		}
+		return resolved, true
+	}
+
+	return trimmedRequested, false
+}
+
+func normalizeComfyCheckpointToken(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	normalized := strings.ToLower(filepath.ToSlash(trimmed))
+	for strings.Contains(normalized, "//") {
+		normalized = strings.ReplaceAll(normalized, "//", "/")
+	}
+
+	return strings.Trim(normalized, "/")
 }
 
 func interruptComfyGeneration(baseURL string, promptID string) error {

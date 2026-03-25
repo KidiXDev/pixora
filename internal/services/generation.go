@@ -67,6 +67,7 @@ var textEncoderExtensions = map[string]struct{}{
 type GenerationModelCatalog struct {
 	Samplers        []string `json:"samplers"`
 	Schedulers      []string `json:"schedulers"`
+	BboxModels      []string `json:"bboxModels"`
 	Checkpoints     []string `json:"checkpoints"`
 	VAEs            []string `json:"vaes"`
 	Loras           []string `json:"loras"`
@@ -75,6 +76,7 @@ type GenerationModelCatalog struct {
 	TextEncoders    []string `json:"textEncoders"`
 	DiffusionModels []string `json:"diffusionModels"`
 	Unets           []string `json:"unets"`
+	SamModels       []string `json:"samModels"`
 }
 
 type GenerationService struct {
@@ -117,24 +119,25 @@ type QueueGenerationResponse struct {
 }
 
 type GenerationRequest struct {
-	RequestID             string                    `json:"requestId"`
-	Mode                  string                    `json:"mode"`
-	Prompt                string                    `json:"prompt"`
-	NegativePrompt        string                    `json:"negativePrompt"`
-	Seed                  string                    `json:"seed"`
-	VariationSeed         string                    `json:"variationSeed"`
-	VariationSeedStrength float64                   `json:"variationSeedStrength"`
-	Steps                 int                       `json:"steps"`
-	CFGScale              float64                   `json:"cfgScale"`
-	Width                 int                       `json:"width"`
-	Height                int                       `json:"height"`
-	Model                 string                    `json:"model"`
-	VAE                   string                    `json:"vae"`
-	Sampler               string                    `json:"sampler"`
-	Scheduler             string                    `json:"scheduler"`
-	BatchSize             int                       `json:"batchSize"`
-	ClipSkip              GenerationClipSkipRequest `json:"clipSkip"`
-	Refine                GenerationRefineRequest   `json:"refine"`
+	RequestID             string                        `json:"requestId"`
+	Mode                  string                        `json:"mode"`
+	Prompt                string                        `json:"prompt"`
+	NegativePrompt        string                        `json:"negativePrompt"`
+	Seed                  string                        `json:"seed"`
+	VariationSeed         string                        `json:"variationSeed"`
+	VariationSeedStrength float64                       `json:"variationSeedStrength"`
+	Steps                 int                           `json:"steps"`
+	CFGScale              float64                       `json:"cfgScale"`
+	Width                 int                           `json:"width"`
+	Height                int                           `json:"height"`
+	Model                 string                        `json:"model"`
+	VAE                   string                        `json:"vae"`
+	Sampler               string                        `json:"sampler"`
+	Scheduler             string                        `json:"scheduler"`
+	BatchSize             int                           `json:"batchSize"`
+	ClipSkip              GenerationClipSkipRequest     `json:"clipSkip"`
+	Refine                GenerationRefineRequest       `json:"refine"`
+	FaceDetailer          GenerationFaceDetailerRequest `json:"faceDetailer"`
 }
 
 type GenerationClipSkipRequest struct {
@@ -150,6 +153,34 @@ type GenerationRefineRequest struct {
 	ScaleBy         float64 `json:"scaleBy"`
 	Steps           int     `json:"steps"`
 	DenoiseStrength float64 `json:"denoiseStrength"`
+}
+
+type GenerationFaceDetailerRequest struct {
+	Enabled                bool    `json:"enabled"`
+	GuideSize              int     `json:"guideSize"`
+	GuideSizeFor           bool    `json:"guideSizeFor"`
+	MaxSize                int     `json:"maxSize"`
+	Denoise                float64 `json:"denoise"`
+	Feather                int     `json:"feather"`
+	NoiseMask              bool    `json:"noiseMask"`
+	ForceInpaint           bool    `json:"forceInpaint"`
+	InpaintModel           bool    `json:"inpaintModel"`
+	NoiseMaskFeather       int     `json:"noiseMaskFeather"`
+	BboxThreshold          float64 `json:"bboxThreshold"`
+	BboxDilation           int     `json:"bboxDilation"`
+	BboxCropFactor         float64 `json:"bboxCropFactor"`
+	BboxModel              string  `json:"bboxModel"`
+	SAMModel               string  `json:"samModel"`
+	SAMDetectionHint       string  `json:"samDetectionHint"`
+	SAMDilation            int     `json:"samDilation"`
+	SAMThreshold           float64 `json:"samThreshold"`
+	SAMBboxExpansion       int     `json:"samBboxExpansion"`
+	SAMMaskHintThreshold   float64 `json:"samMaskHintThreshold"`
+	SAMMaskHintUseNegative string  `json:"samMaskHintUseNegative"`
+	DropSize               int     `json:"dropSize"`
+	Cycle                  int     `json:"cycle"`
+	TiledEncode            bool    `json:"tiledEncode"`
+	TiledDecode            bool    `json:"tiledDecode"`
 }
 
 type GenerationStatus struct {
@@ -260,6 +291,8 @@ func (s *GenerationService) GetModelCatalog() (*GenerationModelCatalog, error) {
 	catalog := &GenerationModelCatalog{
 		Samplers:        defaultSamplers(),
 		Schedulers:      defaultSchedulers(),
+		BboxModels:      listModelFiles(filepath.Join(modelsRoot, "bbox"), map[string]struct{}{".pt": {}, ".onnx": {}}),
+		SamModels:       listModelFiles(filepath.Join(modelsRoot, "sams"), map[string]struct{}{".pth": {}}),
 		Checkpoints:     listCheckpointModelFiles(modelsRoot),
 		VAEs:            listModelFiles(filepath.Join(modelsRoot, "vae"), checkpointLikeExtensions),
 		Loras:           listModelFiles(filepath.Join(modelsRoot, "loras"), checkpointLikeExtensions),
@@ -329,6 +362,7 @@ func scoreModelsRoot(root string) int {
 	total += len(listModelFiles(filepath.Join(root, "clip"), textEncoderExtensions))
 	total += len(listModelFiles(filepath.Join(root, "diffusion_models"), checkpointLikeExtensions))
 	total += len(listModelFiles(filepath.Join(root, "unet"), checkpointLikeExtensions))
+	total += len(listModelFiles(filepath.Join(root, "sams"), map[string]struct{}{".pth": {}}))
 	return total
 }
 
@@ -347,7 +381,7 @@ func (s *GenerationService) GetAutocompleteSources() ([]string, error) {
 		return nil, err
 	}
 
-	return listCompletionCSVFiles(completionRoot), nil
+	return listCompletionCSVFiles(completionRoot)
 }
 
 func (s *GenerationService) GetAutocompleteSuggestions(query AutocompleteQuery) ([]AutocompleteSuggestion, error) {
@@ -511,7 +545,7 @@ func listModelFiles(root string, allowedExtensions map[string]struct{}) []string
 
 	var walk func(scanPath string, relativePrefix string)
 	walk = func(scanPath string, relativePrefix string) {
-		directoryKey, keyErr := resolveDirectoryKey(scanPath)
+		resolvedScanPath, directoryKey, keyErr := resolveDirectoryScanPath(scanPath)
 		if keyErr != nil {
 			return
 		}
@@ -521,7 +555,7 @@ func listModelFiles(root string, allowedExtensions map[string]struct{}) []string
 		}
 		visited[directoryKey] = struct{}{}
 
-		entries, readErr := os.ReadDir(scanPath)
+		entries, readErr := os.ReadDir(resolvedScanPath)
 		if readErr != nil {
 			return
 		}
@@ -532,7 +566,7 @@ func listModelFiles(root string, allowedExtensions map[string]struct{}) []string
 				continue
 			}
 
-			fullPath := filepath.Join(scanPath, name)
+			fullPath := filepath.Join(resolvedScanPath, name)
 			relativePath := name
 			if relativePrefix != "" {
 				relativePath = filepath.Join(relativePrefix, name)
@@ -564,6 +598,20 @@ func listModelFiles(root string, allowedExtensions map[string]struct{}) []string
 	walk(root, "")
 
 	return uniqueAndSorted(files)
+}
+
+func resolveDirectoryScanPath(path string) (string, string, error) {
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolvedPath = path
+	}
+
+	directoryKey, keyErr := resolveDirectoryKey(resolvedPath)
+	if keyErr != nil {
+		return "", "", keyErr
+	}
+
+	return resolvedPath, directoryKey, nil
 }
 
 func resolveDirectoryKey(path string) (string, error) {
@@ -621,7 +669,10 @@ func uniqueAndSorted(items []string) []string {
 }
 
 func (s *GenerationService) resolveAutocompleteSource(completionRoot string, sourceName string) (string, error) {
-	sources := listCompletionCSVFiles(completionRoot)
+	sources, err := listCompletionCSVFiles(completionRoot)
+	if err != nil {
+		return "", err
+	}
 
 	if len(sources) == 0 {
 		return "", fmt.Errorf("no CSV completion source found in %s", completionRoot)
@@ -652,45 +703,53 @@ func (s *GenerationService) resolveAutocompleteSource(completionRoot string, sou
 }
 
 func resolveGenerationCompletionRoot(cfg config.ComfyUIBackendConfig) (string, error) {
-	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve runtime root: %w", err)
+	candidates := make([]string, 0, 3)
+	seen := make(map[string]struct{}, 3)
+
+	appendCandidate := func(path string) {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			return
+		}
+		normalized := filepath.Clean(trimmed)
+		if _, ok := seen[normalized]; ok {
+			return
+		}
+		seen[normalized] = struct{}{}
+		candidates = append(candidates, normalized)
 	}
 
-	candidates := []string{
-		filepath.Join(runtimeRoot, "data", "completion"),
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		appendCandidate(filepath.Join(exeDir, "data", "completion"))
 	}
 
-	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
-		candidates = append(candidates, filepath.Join(cwd, "data", "completion"))
+	configuredRoot := strings.TrimSpace(cfg.RootDir)
+	if configuredRoot != "" {
+		root := configuredRoot
+		if !filepath.IsAbs(root) {
+			if cwd, err := os.Getwd(); err == nil {
+				root = filepath.Join(cwd, root)
+			}
+		}
+		appendCandidate(filepath.Join(root, "data", "completion"))
 	}
 
-	bestPath := ""
-	bestScore := -1
-	for _, candidate := range uniqueAndSorted(candidates) {
+	for _, candidate := range candidates {
 		info, statErr := os.Stat(candidate)
 		if statErr != nil || !info.IsDir() {
 			continue
 		}
-
-		score := countCompletionCSVFiles(candidate)
-		if score > bestScore {
-			bestScore = score
-			bestPath = candidate
-		}
-	}
-
-	if bestPath != "" {
-		return bestPath, nil
+		return candidate, nil
 	}
 
 	return "", fmt.Errorf("read completion directory: %w", os.ErrNotExist)
 }
 
-func listCompletionCSVFiles(completionRoot string) []string {
+func listCompletionCSVFiles(completionRoot string) ([]string, error) {
 	entries, err := os.ReadDir(completionRoot)
 	if err != nil {
-		return []string{}
+		return nil, fmt.Errorf("read completion directory: %w", err)
 	}
 
 	files := make([]string, 0, len(entries))
@@ -709,11 +768,15 @@ func listCompletionCSVFiles(completionRoot string) []string {
 		}
 	}
 
-	return uniqueAndSorted(files)
+	return uniqueAndSorted(files), nil
 }
 
 func countCompletionCSVFiles(completionRoot string) int {
-	return len(listCompletionCSVFiles(completionRoot))
+	files, err := listCompletionCSVFiles(completionRoot)
+	if err != nil {
+		return 0
+	}
+	return len(files)
 }
 
 func (s *GenerationService) loadCompletionEntries(sourcePath string) ([]completionEntry, error) {

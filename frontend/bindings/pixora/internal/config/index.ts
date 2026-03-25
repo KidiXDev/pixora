@@ -8,6 +8,7 @@ export {
     FolderConfig,
     GenerationPanelClipSkip,
     GenerationPanelConfig,
+    GenerationPanelFaceDetailer,
     GenerationPanelHistoryItem,
     GenerationPanelImg2Img,
     GenerationPanelRefine,

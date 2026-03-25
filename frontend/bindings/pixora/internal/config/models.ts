@@ -140,6 +140,7 @@ export class ComfyUIBackendConfig {
     "pythonPath": string;
     "mainScriptPath": string;
     "args": string;
+    "crossAttentionMethod": string;
     "outputDir": string;
     "modelPathsYAML": string;
     "host": string;
@@ -158,6 +159,9 @@ export class ComfyUIBackendConfig {
         }
         if (!("args" in $$source)) {
             this["args"] = "";
+        }
+        if (!("crossAttentionMethod" in $$source)) {
+            this["crossAttentionMethod"] = "";
         }
         if (!("outputDir" in $$source)) {
             this["outputDir"] = "";
@@ -288,6 +292,123 @@ export class GenerationPanelConfig {
             $$parsedSource["history"] = $$createField4_0($$parsedSource["history"]);
         }
         return new GenerationPanelConfig($$parsedSource as Partial<GenerationPanelConfig>);
+    }
+}
+
+export class GenerationPanelFaceDetailer {
+    "enabled": boolean;
+    "guideSize": number;
+    "guideSizeFor": boolean;
+    "maxSize": number;
+    "denoise": number;
+    "feather": number;
+    "noiseMask": boolean;
+    "forceInpaint": boolean;
+    "inpaintModel": boolean;
+    "noiseMaskFeather": number;
+    "bboxThreshold": number;
+    "bboxDilation": number;
+    "bboxCropFactor": number;
+    "bboxModel": string;
+    "samModel": string;
+    "samDetectionHint": string;
+    "samDilation": number;
+    "samThreshold": number;
+    "samBboxExpansion": number;
+    "samMaskHintThreshold": number;
+    "samMaskHintUseNegative": string;
+    "dropSize": number;
+    "cycle": number;
+    "tiledEncode": boolean;
+    "tiledDecode": boolean;
+
+    /** Creates a new GenerationPanelFaceDetailer instance. */
+    constructor($$source: Partial<GenerationPanelFaceDetailer> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("guideSize" in $$source)) {
+            this["guideSize"] = 0;
+        }
+        if (!("guideSizeFor" in $$source)) {
+            this["guideSizeFor"] = false;
+        }
+        if (!("maxSize" in $$source)) {
+            this["maxSize"] = 0;
+        }
+        if (!("denoise" in $$source)) {
+            this["denoise"] = 0;
+        }
+        if (!("feather" in $$source)) {
+            this["feather"] = 0;
+        }
+        if (!("noiseMask" in $$source)) {
+            this["noiseMask"] = false;
+        }
+        if (!("forceInpaint" in $$source)) {
+            this["forceInpaint"] = false;
+        }
+        if (!("inpaintModel" in $$source)) {
+            this["inpaintModel"] = false;
+        }
+        if (!("noiseMaskFeather" in $$source)) {
+            this["noiseMaskFeather"] = 0;
+        }
+        if (!("bboxThreshold" in $$source)) {
+            this["bboxThreshold"] = 0;
+        }
+        if (!("bboxDilation" in $$source)) {
+            this["bboxDilation"] = 0;
+        }
+        if (!("bboxCropFactor" in $$source)) {
+            this["bboxCropFactor"] = 0;
+        }
+        if (!("bboxModel" in $$source)) {
+            this["bboxModel"] = "";
+        }
+        if (!("samModel" in $$source)) {
+            this["samModel"] = "";
+        }
+        if (!("samDetectionHint" in $$source)) {
+            this["samDetectionHint"] = "";
+        }
+        if (!("samDilation" in $$source)) {
+            this["samDilation"] = 0;
+        }
+        if (!("samThreshold" in $$source)) {
+            this["samThreshold"] = 0;
+        }
+        if (!("samBboxExpansion" in $$source)) {
+            this["samBboxExpansion"] = 0;
+        }
+        if (!("samMaskHintThreshold" in $$source)) {
+            this["samMaskHintThreshold"] = 0;
+        }
+        if (!("samMaskHintUseNegative" in $$source)) {
+            this["samMaskHintUseNegative"] = "";
+        }
+        if (!("dropSize" in $$source)) {
+            this["dropSize"] = 0;
+        }
+        if (!("cycle" in $$source)) {
+            this["cycle"] = 0;
+        }
+        if (!("tiledEncode" in $$source)) {
+            this["tiledEncode"] = false;
+        }
+        if (!("tiledDecode" in $$source)) {
+            this["tiledDecode"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationPanelFaceDetailer instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationPanelFaceDetailer {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationPanelFaceDetailer($$parsedSource as Partial<GenerationPanelFaceDetailer>);
     }
 }
 
@@ -515,6 +636,7 @@ export class GenerationPanelTxt2Img {
     "batchSize": number;
     "refine": GenerationPanelRefine;
     "clipSkip": GenerationPanelClipSkip;
+    "faceDetailer": GenerationPanelFaceDetailer;
 
     /** Creates a new GenerationPanelTxt2Img instance. */
     constructor($$source: Partial<GenerationPanelTxt2Img> = {}) {
@@ -563,6 +685,9 @@ export class GenerationPanelTxt2Img {
         if (!("clipSkip" in $$source)) {
             this["clipSkip"] = (new GenerationPanelClipSkip());
         }
+        if (!("faceDetailer" in $$source)) {
+            this["faceDetailer"] = (new GenerationPanelFaceDetailer());
+        }
 
         Object.assign(this, $$source);
     }
@@ -574,6 +699,7 @@ export class GenerationPanelTxt2Img {
         const $$createField7_0 = $$createType13;
         const $$createField13_0 = $$createType14;
         const $$createField14_0 = $$createType15;
+        const $$createField15_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resolution" in $$parsedSource) {
             $$parsedSource["resolution"] = $$createField7_0($$parsedSource["resolution"]);
@@ -583,6 +709,9 @@ export class GenerationPanelTxt2Img {
         }
         if ("clipSkip" in $$parsedSource) {
             $$parsedSource["clipSkip"] = $$createField14_0($$parsedSource["clipSkip"]);
+        }
+        if ("faceDetailer" in $$parsedSource) {
+            $$parsedSource["faceDetailer"] = $$createField15_0($$parsedSource["faceDetailer"]);
         }
         return new GenerationPanelTxt2Img($$parsedSource as Partial<GenerationPanelTxt2Img>);
     }
@@ -729,8 +858,8 @@ export class WindowConfig {
      * Creates a new WindowConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): WindowConfig {
-        const $$createField1_0 = $$createType16;
-        const $$createField3_0 = $$createType16;
+        const $$createField1_0 = $$createType17;
+        const $$createField3_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("bounds" in $$parsedSource) {
             $$parsedSource["bounds"] = $$createField1_0($$parsedSource["bounds"]);
@@ -759,4 +888,5 @@ const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = GenerationPanelResolution.createFrom;
 const $$createType14 = GenerationPanelRefine.createFrom;
 const $$createType15 = GenerationPanelClipSkip.createFrom;
-const $$createType16 = WindowBounds.createFrom;
+const $$createType16 = GenerationPanelFaceDetailer.createFrom;
+const $$createType17 = WindowBounds.createFrom;

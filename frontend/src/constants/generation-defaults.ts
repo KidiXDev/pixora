@@ -47,6 +47,33 @@ export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   clipSkip: {
     enabled: false,
     stopAtLayer: DEFAULT_CLIP_SKIP_STOP_AT_LAYER
+  },
+  faceDetailer: {
+    enabled: false,
+    guideSize: 512,
+    guideSizeFor: true,
+    maxSize: 1024,
+    denoise: 0.5,
+    feather: 5,
+    noiseMask: true,
+    forceInpaint: true,
+    inpaintModel: false,
+    noiseMaskFeather: 20,
+    bboxThreshold: 0.5,
+    bboxDilation: 10,
+    bboxCropFactor: 3,
+    bboxModel: 'bbox/face_yolov8m.pt',
+    samModel: '',
+    samDetectionHint: 'none',
+    samDilation: 0,
+    samThreshold: 0.93,
+    samBboxExpansion: 0,
+    samMaskHintThreshold: 0.7,
+    samMaskHintUseNegative: 'False',
+    dropSize: 10,
+    cycle: 1,
+    tiledEncode: false,
+    tiledDecode: false
   }
 };
 

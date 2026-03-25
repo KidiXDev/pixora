@@ -212,7 +212,8 @@ export default function ImageGenerationPage() {
       scheduler: currentTxt2Img.scheduler,
       batchSize: currentTxt2Img.batchSize,
       clipSkip: currentTxt2Img.clipSkip,
-      refine: currentTxt2Img.refine
+      refine: currentTxt2Img.refine,
+      faceDetailer: currentTxt2Img.faceDetailer
     };
   }, []);
 
@@ -230,6 +231,20 @@ export default function ImageGenerationPage() {
         break;
       } catch (error) {
         lastError = error;
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : '';
+        const isUnknownMethod =
+          message.includes('unknown bound method name') ||
+          message.includes('method not found');
+
+        if (!isUnknownMethod) {
+          break;
+        }
       }
     }
 
@@ -381,6 +396,7 @@ export default function ImageGenerationPage() {
     (!comfySetup.isReady ||
       comfySetup.requiresOnboarding ||
       comfySetup.state === 'installing' ||
+      comfySetup.state === 'error' ||
       comfySetup.permissionProblem);
 
   const handleInstallComfyUI = useCallback(async () => {
@@ -443,6 +459,7 @@ export default function ImageGenerationPage() {
             onRefresh={() => {
               void refreshComfySetup();
             }}
+            onViewLogs={() => setIsLogsOpen(true)}
           />
         </main>
 
@@ -473,7 +490,7 @@ export default function ImageGenerationPage() {
         />
 
         <ComfyUISetupDialog
-          open={isComfySetupInstalling}
+          open={isComfySetupInstalling || comfySetup.state === 'error'}
           onOpenChange={() => {
             // The setup dialog is controlled by installer state and only appears while installing.
           }}
@@ -482,6 +499,9 @@ export default function ImageGenerationPage() {
           isInstalling={isComfySetupInstalling}
           onRefresh={() => {
             void refreshComfySetup();
+          }}
+          onRetryInstall={() => {
+            void handleInstallComfyUI();
           }}
         />
       </div>

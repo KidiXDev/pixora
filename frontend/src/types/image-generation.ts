@@ -40,9 +40,38 @@ export interface Txt2ImgClipSkipParameters {
   stopAtLayer: number;
 }
 
+export interface Txt2ImgFaceDetailerParameters {
+  enabled: boolean;
+  guideSize: number;
+  guideSizeFor: boolean;
+  maxSize: number;
+  denoise: number;
+  feather: number;
+  noiseMask: boolean;
+  forceInpaint: boolean;
+  inpaintModel: boolean;
+  noiseMaskFeather: number;
+  bboxThreshold: number;
+  bboxDilation: number;
+  bboxCropFactor: number;
+  bboxModel: string;
+  samModel: string;
+  samDetectionHint: string;
+  samDilation: number;
+  samThreshold: number;
+  samBboxExpansion: number;
+  samMaskHintThreshold: number;
+  samMaskHintUseNegative: string;
+  dropSize: number;
+  cycle: number;
+  tiledEncode: boolean;
+  tiledDecode: boolean;
+}
+
 export interface Txt2ImgParameters extends BaseGenerationParameters {
   refine: Txt2ImgRefineParameters;
   clipSkip: Txt2ImgClipSkipParameters;
+  faceDetailer: Txt2ImgFaceDetailerParameters;
 }
 
 export interface Img2ImgParameters extends BaseGenerationParameters {
@@ -62,6 +91,7 @@ export interface ComfyUIConfig {
   apiUrl: string;
   localPath: string;
   args: string;
+  crossAttentionMethod: 'pytorch' | 'sage';
   outputDir: string;
   rootDir: string;
   pythonPath: string;
@@ -136,6 +166,8 @@ export interface ComfyUILogEntry {
 export interface GenerationModelCatalog {
   samplers: string[];
   schedulers: string[];
+  bboxModels: string[];
+  samModels: string[];
   checkpoints: string[];
   vaes: string[];
   loras: string[];

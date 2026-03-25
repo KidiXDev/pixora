@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -43,14 +44,15 @@ type WindowConfig struct {
 }
 
 type ComfyUIBackendConfig struct {
-	RootDir        string `json:"rootDir"`
-	PythonPath     string `json:"pythonPath"`
-	MainScriptPath string `json:"mainScriptPath"`
-	Args           string `json:"args"`
-	OutputDir      string `json:"outputDir"`
-	ModelPathsYAML string `json:"modelPathsYAML"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
+	RootDir              string `json:"rootDir"`
+	PythonPath           string `json:"pythonPath"`
+	MainScriptPath       string `json:"mainScriptPath"`
+	Args                 string `json:"args"`
+	CrossAttentionMethod string `json:"crossAttentionMethod"`
+	OutputDir            string `json:"outputDir"`
+	ModelPathsYAML       string `json:"modelPathsYAML"`
+	Host                 string `json:"host"`
+	Port                 int    `json:"port"`
 }
 
 type AutocompleteConfig struct {
@@ -91,22 +93,51 @@ type GenerationPanelClipSkip struct {
 	StopAtLayer int  `json:"stopAtLayer"`
 }
 
+type GenerationPanelFaceDetailer struct {
+	Enabled                bool    `json:"enabled"`
+	GuideSize              int     `json:"guideSize"`
+	GuideSizeFor           bool    `json:"guideSizeFor"`
+	MaxSize                int     `json:"maxSize"`
+	Denoise                float64 `json:"denoise"`
+	Feather                int     `json:"feather"`
+	NoiseMask              bool    `json:"noiseMask"`
+	ForceInpaint           bool    `json:"forceInpaint"`
+	InpaintModel           bool    `json:"inpaintModel"`
+	NoiseMaskFeather       int     `json:"noiseMaskFeather"`
+	BboxThreshold          float64 `json:"bboxThreshold"`
+	BboxDilation           int     `json:"bboxDilation"`
+	BboxCropFactor         float64 `json:"bboxCropFactor"`
+	BboxModel              string  `json:"bboxModel"`
+	SAMModel               string  `json:"samModel"`
+	SAMDetectionHint       string  `json:"samDetectionHint"`
+	SAMDilation            int     `json:"samDilation"`
+	SAMThreshold           float64 `json:"samThreshold"`
+	SAMBboxExpansion       int     `json:"samBboxExpansion"`
+	SAMMaskHintThreshold   float64 `json:"samMaskHintThreshold"`
+	SAMMaskHintUseNegative string  `json:"samMaskHintUseNegative"`
+	DropSize               int     `json:"dropSize"`
+	Cycle                  int     `json:"cycle"`
+	TiledEncode            bool    `json:"tiledEncode"`
+	TiledDecode            bool    `json:"tiledDecode"`
+}
+
 type GenerationPanelTxt2Img struct {
-	Prompt                string                    `json:"prompt"`
-	NegativePrompt        string                    `json:"negativePrompt"`
-	Seed                  string                    `json:"seed"`
-	VariationSeed         string                    `json:"variationSeed"`
-	VariationSeedStrength float64                   `json:"variationSeedStrength"`
-	Steps                 int                       `json:"steps"`
-	CFGScale              float64                   `json:"cfgScale"`
-	Resolution            GenerationPanelResolution `json:"resolution"`
-	Model                 string                    `json:"model"`
-	VAE                   string                    `json:"vae"`
-	Sampler               string                    `json:"sampler"`
-	Scheduler             string                    `json:"scheduler"`
-	BatchSize             int                       `json:"batchSize"`
-	Refine                GenerationPanelRefine     `json:"refine"`
-	ClipSkip              GenerationPanelClipSkip   `json:"clipSkip"`
+	Prompt                string                      `json:"prompt"`
+	NegativePrompt        string                      `json:"negativePrompt"`
+	Seed                  string                      `json:"seed"`
+	VariationSeed         string                      `json:"variationSeed"`
+	VariationSeedStrength float64                     `json:"variationSeedStrength"`
+	Steps                 int                         `json:"steps"`
+	CFGScale              float64                     `json:"cfgScale"`
+	Resolution            GenerationPanelResolution   `json:"resolution"`
+	Model                 string                      `json:"model"`
+	VAE                   string                      `json:"vae"`
+	Sampler               string                      `json:"sampler"`
+	Scheduler             string                      `json:"scheduler"`
+	BatchSize             int                         `json:"batchSize"`
+	Refine                GenerationPanelRefine       `json:"refine"`
+	ClipSkip              GenerationPanelClipSkip     `json:"clipSkip"`
+	FaceDetailer          GenerationPanelFaceDetailer `json:"faceDetailer"`
 }
 
 type GenerationPanelImg2Img struct {
@@ -387,6 +418,8 @@ func (m *Manager) ensureDefaultsLocked() {
 		m.config.ComfyUI.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
 	}
 
+	m.config.ComfyUI.CrossAttentionMethod = normalizeCrossAttentionMethod(m.config.ComfyUI.CrossAttentionMethod)
+
 	if m.config.ComfyUI.OutputDir == "" {
 		m.config.ComfyUI.OutputDir = filepath.Join("data", "output")
 	}
@@ -426,6 +459,68 @@ func (m *Manager) ensureDefaultsLocked() {
 	if m.config.Generation.Txt2Img.ClipSkip.StopAtLayer < -24 || m.config.Generation.Txt2Img.ClipSkip.StopAtLayer > -1 {
 		m.config.Generation.Txt2Img.ClipSkip.StopAtLayer = -1
 	}
+
+	if m.config.Generation.Txt2Img.FaceDetailer.GuideSize <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.GuideSize = 512
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.GuideSize = clampInt(m.config.Generation.Txt2Img.FaceDetailer.GuideSize, 64, 4096)
+	if !m.config.Generation.Txt2Img.FaceDetailer.GuideSizeFor {
+		m.config.Generation.Txt2Img.FaceDetailer.GuideSizeFor = true
+	}
+
+	if m.config.Generation.Txt2Img.FaceDetailer.MaxSize <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.MaxSize = 1024
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.MaxSize = clampInt(m.config.Generation.Txt2Img.FaceDetailer.MaxSize, 64, 4096)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.Denoise <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.Denoise = 0.5
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.Denoise = clampFloat(m.config.Generation.Txt2Img.FaceDetailer.Denoise, 0.0001, 1)
+
+	m.config.Generation.Txt2Img.FaceDetailer.Feather = clampInt(m.config.Generation.Txt2Img.FaceDetailer.Feather, 0, 100)
+	m.config.Generation.Txt2Img.FaceDetailer.NoiseMaskFeather = clampInt(m.config.Generation.Txt2Img.FaceDetailer.NoiseMaskFeather, 0, 100)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.BboxThreshold <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.BboxThreshold = 0.5
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.BboxThreshold = clampFloat(m.config.Generation.Txt2Img.FaceDetailer.BboxThreshold, 0, 1)
+
+	m.config.Generation.Txt2Img.FaceDetailer.BboxDilation = clampInt(m.config.Generation.Txt2Img.FaceDetailer.BboxDilation, -512, 512)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.BboxCropFactor <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.BboxCropFactor = 3
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.BboxCropFactor = clampFloat(m.config.Generation.Txt2Img.FaceDetailer.BboxCropFactor, 1, 10)
+	if strings.TrimSpace(m.config.Generation.Txt2Img.FaceDetailer.BboxModel) == "" {
+		m.config.Generation.Txt2Img.FaceDetailer.BboxModel = "bbox/face_yolov8m.pt"
+	}
+
+	m.config.Generation.Txt2Img.FaceDetailer.SAMDetectionHint = NormalizeSAMDetectionHint(m.config.Generation.Txt2Img.FaceDetailer.SAMDetectionHint)
+	m.config.Generation.Txt2Img.FaceDetailer.SAMDilation = clampInt(m.config.Generation.Txt2Img.FaceDetailer.SAMDilation, -512, 512)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.SAMThreshold <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.SAMThreshold = 0.93
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.SAMThreshold = clampFloat(m.config.Generation.Txt2Img.FaceDetailer.SAMThreshold, 0, 1)
+
+	m.config.Generation.Txt2Img.FaceDetailer.SAMBboxExpansion = clampInt(m.config.Generation.Txt2Img.FaceDetailer.SAMBboxExpansion, 0, 1000)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintThreshold <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintThreshold = 0.7
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintThreshold = clampFloat(m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintThreshold, 0, 1)
+	m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintUseNegative = NormalizeSAMMaskHintUseNegative(m.config.Generation.Txt2Img.FaceDetailer.SAMMaskHintUseNegative)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.DropSize <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.DropSize = 10
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.DropSize = clampInt(m.config.Generation.Txt2Img.FaceDetailer.DropSize, 1, 4096)
+
+	if m.config.Generation.Txt2Img.FaceDetailer.Cycle <= 0 {
+		m.config.Generation.Txt2Img.FaceDetailer.Cycle = 1
+	}
+	m.config.Generation.Txt2Img.FaceDetailer.Cycle = clampInt(m.config.Generation.Txt2Img.FaceDetailer.Cycle, 1, 10)
 
 	switch m.config.Generation.Txt2Img.Refine.UpscaleMode {
 	case "latent", "model":
@@ -513,5 +608,54 @@ func (m *Manager) ensureDefaultsLocked() {
 	case "none", "single":
 	default:
 		m.config.PromptFormat.CommaSpacingMode = "single"
+	}
+}
+
+func normalizeCrossAttentionMethod(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "sage":
+		return "sage"
+	default:
+		return "pytorch"
+	}
+}
+
+func clampInt(value int, min int, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func clampFloat(value float64, min float64, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func NormalizeSAMDetectionHint(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "center-1", "horizontal-2", "vertical-2", "rect-4", "diamond-4", "mask-area", "mask-points", "mask-point-bbox", "none":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "none"
+	}
+}
+
+func NormalizeSAMMaskHintUseNegative(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "small":
+		return "Small"
+	case "outter", "outer":
+		return "Outter"
+	default:
+		return "False"
 	}
 }

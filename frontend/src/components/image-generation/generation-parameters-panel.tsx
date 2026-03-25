@@ -138,7 +138,33 @@ function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boolean {
     a.refine.steps === b.refine.steps &&
     a.refine.denoiseStrength === b.refine.denoiseStrength &&
     a.clipSkip.enabled === b.clipSkip.enabled &&
-    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer
+    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer &&
+    a.faceDetailer.enabled === b.faceDetailer.enabled &&
+    a.faceDetailer.guideSize === b.faceDetailer.guideSize &&
+    a.faceDetailer.guideSizeFor === b.faceDetailer.guideSizeFor &&
+    a.faceDetailer.maxSize === b.faceDetailer.maxSize &&
+    a.faceDetailer.denoise === b.faceDetailer.denoise &&
+    a.faceDetailer.feather === b.faceDetailer.feather &&
+    a.faceDetailer.noiseMask === b.faceDetailer.noiseMask &&
+    a.faceDetailer.forceInpaint === b.faceDetailer.forceInpaint &&
+    a.faceDetailer.inpaintModel === b.faceDetailer.inpaintModel &&
+    a.faceDetailer.noiseMaskFeather === b.faceDetailer.noiseMaskFeather &&
+    a.faceDetailer.bboxThreshold === b.faceDetailer.bboxThreshold &&
+    a.faceDetailer.bboxDilation === b.faceDetailer.bboxDilation &&
+    a.faceDetailer.bboxCropFactor === b.faceDetailer.bboxCropFactor &&
+    a.faceDetailer.bboxModel === b.faceDetailer.bboxModel &&
+    a.faceDetailer.samModel === b.faceDetailer.samModel &&
+    a.faceDetailer.samDetectionHint === b.faceDetailer.samDetectionHint &&
+    a.faceDetailer.samDilation === b.faceDetailer.samDilation &&
+    a.faceDetailer.samThreshold === b.faceDetailer.samThreshold &&
+    a.faceDetailer.samBboxExpansion === b.faceDetailer.samBboxExpansion &&
+    a.faceDetailer.samMaskHintThreshold === b.faceDetailer.samMaskHintThreshold &&
+    a.faceDetailer.samMaskHintUseNegative ===
+      b.faceDetailer.samMaskHintUseNegative &&
+    a.faceDetailer.dropSize === b.faceDetailer.dropSize &&
+    a.faceDetailer.cycle === b.faceDetailer.cycle &&
+    a.faceDetailer.tiledEncode === b.faceDetailer.tiledEncode &&
+    a.faceDetailer.tiledDecode === b.faceDetailer.tiledDecode
   );
 }
 
@@ -233,6 +259,14 @@ function GenerationParametersPanelBase({
     () => modelCatalog.schedulers,
     [modelCatalog.schedulers]
   );
+  const samModelOptions = React.useMemo(
+    () => modelCatalog.samModels,
+    [modelCatalog.samModels]
+  );
+  const bboxModelOptions = React.useMemo(
+    () => modelCatalog.bboxModels,
+    [modelCatalog.bboxModels]
+  );
   const modelOptions = React.useMemo(
     () => modelCatalog.checkpoints,
     [modelCatalog.checkpoints]
@@ -262,6 +296,8 @@ function GenerationParametersPanelBase({
 
   const [isRefineExpanded, setIsRefineExpanded] = React.useState(false);
   const [isClipSkipExpanded, setIsClipSkipExpanded] = React.useState(false);
+  const [isFaceDetailerExpanded, setIsFaceDetailerExpanded] =
+    React.useState(false);
   const storeSyncTimerRef = React.useRef<number | null>(null);
   const pendingValuesRef = React.useRef<FormValues>({
     txt2img,
@@ -867,6 +903,588 @@ function GenerationParametersPanelBase({
     </div>
   );
 
+  const renderFaceDetailerFields = () => (
+    <div className="space-y-3">
+      <form.Field
+        name="txt2img.faceDetailer"
+        children={(field) => {
+          const value = field.state.value;
+          const isExpanded = isFaceDetailerExpanded;
+
+          return (
+            <Accordion
+              type="single"
+              value={isExpanded ? 'face-detailer' : ''}
+              onValueChange={(nextValue) => {
+                setIsFaceDetailerExpanded(nextValue === 'face-detailer');
+              }}
+              collapsible
+              className="w-full rounded-lg border border-border/50 bg-muted/10 px-3"
+            >
+              <AccordionItem value="face-detailer" className="border-none">
+                <div className="relative w-full py-3 pr-1">
+                  <AccordionTrigger className="w-full items-center py-1 pr-2 hover:no-underline">
+                    <div className="space-y-0.5 text-left">
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/90">
+                        Face Detailer
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Automatically detect faces and run detail enhancement.
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <div
+                    className="absolute right-10 top-1/2 flex h-8 -translate-y-1/2 items-center border-r border-border/10 pr-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={value.enabled}
+                      aria-label="Enable face detailer"
+                      onCheckedChange={(checked) => {
+                        field.handleChange({
+                          ...value,
+                          enabled: checked
+                        });
+                        if (checked) {
+                          setIsFaceDetailerExpanded(true);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <AccordionContent className="space-y-4 pb-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Guide Size
+                      </FieldLabel>
+                      <Input
+                        value={value.guideSize}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            guideSize: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Max Size
+                      </FieldLabel>
+                      <Input
+                        value={value.maxSize}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            maxSize: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        BBox Threshold
+                      </FieldLabel>
+                      <Input
+                        value={value.bboxThreshold}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            bboxThreshold: parseNumeric(
+                              filterNumeric(event.target.value, true)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        BBox Dilation
+                      </FieldLabel>
+                      <Input
+                        value={value.bboxDilation}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            bboxDilation: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        BBox Crop Factor
+                      </FieldLabel>
+                      <Input
+                        value={value.bboxCropFactor}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            bboxCropFactor: parseNumeric(
+                              filterNumeric(event.target.value, true)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Drop Size
+                      </FieldLabel>
+                      <Input
+                        value={value.dropSize}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            dropSize: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        Guide Size For
+                      </FieldLabel>
+                      <Select
+                        value={value.guideSizeFor ? 'bbox' : 'crop_region'}
+                        onValueChange={(next) =>
+                          field.handleChange({
+                            ...value,
+                            guideSizeFor: next === 'bbox'
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-xs bg-muted/20 border-border/40">
+                          <SelectValue placeholder="Select base" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="bbox">bbox</SelectItem>
+                          <SelectItem value="crop_region">crop_region</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Model
+                      </FieldLabel>
+                      <Select
+                        value={value.samModel || samModelOptions[0] || ''}
+                        onValueChange={(next) =>
+                          field.handleChange({
+                            ...value,
+                            samModel: next
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-xs bg-muted/20 border-border/40">
+                          <SelectValue placeholder="Select SAM model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {samModelOptions.map((item) => (
+                            <SelectItem key={item} value={item}>
+                              {item}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Hint
+                      </FieldLabel>
+                      <Select
+                        value={value.samDetectionHint}
+                        onValueChange={(samDetectionHint) =>
+                          field.handleChange({
+                            ...value,
+                            samDetectionHint
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-xs bg-muted/20 border-border/40">
+                          <SelectValue placeholder="Select hint" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[
+                            'center-1',
+                            'horizontal-2',
+                            'vertical-2',
+                            'rect-4',
+                            'diamond-4',
+                            'mask-area',
+                            'mask-points',
+                            'mask-point-bbox',
+                            'none'
+                          ].map((hint) => (
+                            <SelectItem key={hint} value={hint}>
+                              {hint}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Threshold
+                      </FieldLabel>
+                      <Input
+                        value={value.samThreshold}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            samThreshold: parseNumeric(
+                              filterNumeric(event.target.value, true)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Dilation
+                      </FieldLabel>
+                      <Input
+                        value={value.samDilation}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            samDilation: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM BBox Expansion
+                      </FieldLabel>
+                      <Input
+                        value={value.samBboxExpansion}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            samBboxExpansion: parseNumeric(
+                              filterNumeric(event.target.value, false)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Mask Hint
+                      </FieldLabel>
+                      <Input
+                        value={value.samMaskHintThreshold}
+                        onChange={(event) =>
+                          field.handleChange({
+                            ...value,
+                            samMaskHintThreshold: parseNumeric(
+                              filterNumeric(event.target.value, true)
+                            )
+                          })
+                        }
+                        className="h-9 text-xs px-3 bg-muted/20 border-border/40"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        SAM Negative
+                      </FieldLabel>
+                      <Select
+                        value={value.samMaskHintUseNegative}
+                        onValueChange={(samMaskHintUseNegative) =>
+                          field.handleChange({
+                            ...value,
+                            samMaskHintUseNegative
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-xs bg-muted/20 border-border/40">
+                          <SelectValue placeholder="Select mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="False">False</SelectItem>
+                          <SelectItem value="Small">Small</SelectItem>
+                          <SelectItem value="Outter">Outter</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                        BBox Model
+                      </FieldLabel>
+                      <Select
+                        value={value.bboxModel || bboxModelOptions[0] || ''}
+                        onValueChange={(bboxModel) =>
+                          field.handleChange({
+                            ...value,
+                            bboxModel
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-9 text-xs bg-muted/20 border-border/40">
+                          <SelectValue placeholder="Select bbox model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {bboxModelOptions.map((item) => (
+                            <SelectItem key={item} value={item}>
+                              {item}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/10">
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Denoise
+                        </FieldLabel>
+                        <Input
+                          value={value.denoise}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              denoise: parseNumeric(
+                                filterNumeric(event.target.value, true)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.denoise]}
+                        min={0.0001}
+                        max={1}
+                        step={0.01}
+                        onValueChange={([denoise]) =>
+                          field.handleChange({
+                            ...value,
+                            denoise
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Feather
+                        </FieldLabel>
+                        <Input
+                          value={value.feather}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              feather: parseNumeric(
+                                filterNumeric(event.target.value, false)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.feather]}
+                        min={0}
+                        max={100}
+                        step={1}
+                        onValueChange={([feather]) =>
+                          field.handleChange({
+                            ...value,
+                            feather
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Cycle
+                        </FieldLabel>
+                        <Input
+                          value={value.cycle}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              cycle: parseNumeric(
+                                filterNumeric(event.target.value, false)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.cycle]}
+                        min={1}
+                        max={10}
+                        step={1}
+                        onValueChange={([cycle]) =>
+                          field.handleChange({
+                            ...value,
+                            cycle
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 px-0.5">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Noise Mask Feather
+                        </FieldLabel>
+                        <Input
+                          value={value.noiseMaskFeather}
+                          onChange={(event) =>
+                            field.handleChange({
+                              ...value,
+                              noiseMaskFeather: parseNumeric(
+                                filterNumeric(event.target.value, false)
+                              )
+                            })
+                          }
+                          className="h-8 text-xs px-2 w-16 text-center font-mono bg-muted/20 border-border/50"
+                        />
+                      </div>
+                      <Slider
+                        value={[value.noiseMaskFeather]}
+                        min={0}
+                        max={100}
+                        step={1}
+                        onValueChange={([noiseMaskFeather]) =>
+                          field.handleChange({
+                            ...value,
+                            noiseMaskFeather
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <div className="col-span-2 grid grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between w-full rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Force Inpaint
+                        </FieldLabel>
+                        <Switch
+                          checked={value.forceInpaint}
+                          onCheckedChange={(forceInpaint) =>
+                            field.handleChange({
+                              ...value,
+                              forceInpaint
+                            })
+                          }
+                          aria-label="Force inpaint"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between w-full rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Noise Mask
+                        </FieldLabel>
+                        <Switch
+                          checked={value.noiseMask}
+                          onCheckedChange={(noiseMask) =>
+                            field.handleChange({
+                              ...value,
+                              noiseMask
+                            })
+                          }
+                          aria-label="Noise mask"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between w-full rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Inpaint Model
+                        </FieldLabel>
+                        <Switch
+                          checked={value.inpaintModel}
+                          onCheckedChange={(inpaintModel) =>
+                            field.handleChange({
+                              ...value,
+                              inpaintModel
+                            })
+                          }
+                          aria-label="Inpaint model"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between w-full rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Tiled Encode
+                        </FieldLabel>
+                        <Switch
+                          checked={value.tiledEncode}
+                          onCheckedChange={(tiledEncode) =>
+                            field.handleChange({
+                              ...value,
+                              tiledEncode
+                            })
+                          }
+                          aria-label="Tiled encode"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between w-full rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                        <FieldLabel className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
+                          Tiled Decode
+                        </FieldLabel>
+                        <Switch
+                          checked={value.tiledDecode}
+                          onCheckedChange={(tiledDecode) =>
+                            field.handleChange({
+                              ...value,
+                              tiledDecode
+                            })
+                          }
+                          aria-label="Tiled decode"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          );
+        }}
+      />
+    </div>
+  );
+
   const renderNumericParameterFields = ({
     prefix,
     showDenoise
@@ -1412,6 +2030,7 @@ function GenerationParametersPanelBase({
         <div className="space-y-6">
           {renderRefineFields()}
           {renderClipSkipFields()}
+          {renderFaceDetailerFields()}
         </div>
       )}
 

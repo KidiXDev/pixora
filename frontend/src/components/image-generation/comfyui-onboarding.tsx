@@ -7,6 +7,7 @@ interface ComfyUIOnboardingProps {
   isInstalling: boolean;
   onInstall: () => void;
   onRefresh: () => void;
+  onViewLogs?: () => void;
 }
 
 function describeSetupError(kind: string): string {
@@ -32,7 +33,8 @@ export function ComfyUIOnboarding({
   setup,
   isInstalling,
   onInstall,
-  onRefresh
+  onRefresh,
+  onViewLogs
 }: ComfyUIOnboardingProps) {
   const detailError = describeSetupError(setup.errorKind);
   const canInstall = !setup.permissionProblem && !isInstalling;
@@ -93,6 +95,11 @@ export function ComfyUIOnboarding({
           <Button type="button" variant="secondary" onClick={onRefresh}>
             Re-check environment
           </Button>
+          {onViewLogs && (setup.lastError || setup.state === 'error') && (
+            <Button type="button" variant="outline" onClick={onViewLogs}>
+              View setup logs
+            </Button>
+          )}
         </div>
       </section>
     </div>

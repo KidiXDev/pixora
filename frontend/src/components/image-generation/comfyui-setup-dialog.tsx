@@ -19,6 +19,7 @@ interface ComfyUISetupDialogProps {
   logs: ComfyUILogEntry[];
   isInstalling: boolean;
   onRefresh: () => void;
+  onRetryInstall?: () => void;
 }
 
 function formatBytes(value: number): string {
@@ -62,25 +63,32 @@ export function ComfyUISetupDialog({
   setup,
   logs,
   isInstalling,
-  onRefresh
+  onRefresh,
+  onRetryInstall
 }: ComfyUISetupDialogProps) {
   const [verbose, setVerbose] = useState(false);
   const latestLogs = useMemo(() => logs.slice(-300), [logs]);
   const isDownloadRunning = useMemo(
     () =>
       setup.steps.some(
-        (step) => step.id === 'download_archive' && step.status === 'running'
+        (step) =>
+          (step.id === 'download_archive' ||
+            step.id === 'download_default_models') &&
+          step.status === 'running'
       ),
     [setup.steps]
   );
   const dialogDescription = isDownloadRunning
     ? 'Installing ComfyUI...'
     : setup.statusMessage || 'Preparing ComfyUI setup status...';
+  const isIndeterminateRunning =
+    isInstalling && !isDownloadRunning && setup.state === 'installing';
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent
         className="min-w-[min(90vw,760px)] gap-4 p-0"
+        overlayClassName="top-10"
         showCloseButton={!isInstalling}
         onInteractOutside={(event) => {
           if (isInstalling) {
@@ -124,6 +132,17 @@ export function ComfyUISetupDialog({
                   setup.statusMessage ||
                   'Waiting for setup activity...'}
               </p>
+
+              {isIndeterminateRunning && (
+                <div className="mt-3 space-y-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted/60">
+                    <div className="h-full w-[30%] animate-[indeterminate-slow-fast_2.25s_infinite] rounded-full bg-primary/85 shadow-[0_0_10px_rgba(99,102,241,0.35)]" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Processing step... this can take a moment.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -168,18 +187,31 @@ export function ComfyUISetupDialog({
               <p className="mt-2 text-sm text-foreground">
                 {setup.permissionMessage || setup.lastError}
               </p>
+              {setup.currentStepId && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Failed step: {setup.currentStepId}
+                </p>
+              )}
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setVerbose((current) => !current)}
-            >
-              <Terminal className="mr-2 h-4 w-4" />
-              {verbose ? 'Hide verbose' : 'Verbose'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVerbose((current) => !current)}
+              >
+                <Terminal className="mr-2 h-4 w-4" />
+                {verbose ? 'Hide verbose' : 'Verbose'}
+              </Button>
+
+              {setup.state === 'error' && onRetryInstall && !isInstalling && (
+                <Button type="button" onClick={onRetryInstall}>
+                  Retry installation
+                </Button>
+              )}
+            </div>
           </div>
 
           {verbose && (

@@ -97,8 +97,10 @@ func (s *GenerationService) buildText2ImageWorkflowPreviewWithRuntimeRoot(req Ge
 		return nil, "", err
 	}
 
+	modelsRoot, modelsErr := resolveGenerationModelsRoot(cfg)
+
 	resolvedSeeds := resolveGenerationSeeds(req.Seed, req.VariationSeed, req.VariationSeedStrength)
-	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeeds, outputDir); err != nil {
+	if err := injectTxt2ImgWorkflow(workflow, req, resolvedSeeds, outputDir, modelsRoot, modelsErr); err != nil {
 		return nil, "", err
 	}
 
@@ -167,6 +169,62 @@ func normalizeGenerationRequest(req GenerationRequest) GenerationRequest {
 	req.Refine.DenoiseStrength = clampFloat(req.Refine.DenoiseStrength, 0.05, 1)
 	req.VariationSeedStrength = clampFloat(req.VariationSeedStrength, 0, 1)
 
+	if req.FaceDetailer.GuideSize <= 0 {
+		req.FaceDetailer.GuideSize = 512
+	}
+	req.FaceDetailer.GuideSize = clampInt(req.FaceDetailer.GuideSize, 64, 4096)
+	if !req.FaceDetailer.GuideSizeFor {
+		req.FaceDetailer.GuideSizeFor = true
+	}
+
+	if req.FaceDetailer.MaxSize <= 0 {
+		req.FaceDetailer.MaxSize = 1024
+	}
+	req.FaceDetailer.MaxSize = clampInt(req.FaceDetailer.MaxSize, 64, 4096)
+
+	if req.FaceDetailer.Denoise <= 0 {
+		req.FaceDetailer.Denoise = 0.5
+	}
+	req.FaceDetailer.Denoise = clampFloat(req.FaceDetailer.Denoise, 0.0001, 1)
+	req.FaceDetailer.Feather = clampInt(req.FaceDetailer.Feather, 0, 100)
+	req.FaceDetailer.NoiseMaskFeather = clampInt(req.FaceDetailer.NoiseMaskFeather, 0, 100)
+
+	if req.FaceDetailer.BboxThreshold <= 0 {
+		req.FaceDetailer.BboxThreshold = 0.5
+	}
+	req.FaceDetailer.BboxThreshold = clampFloat(req.FaceDetailer.BboxThreshold, 0, 1)
+	req.FaceDetailer.BboxDilation = clampInt(req.FaceDetailer.BboxDilation, -512, 512)
+
+	if req.FaceDetailer.BboxCropFactor <= 0 {
+		req.FaceDetailer.BboxCropFactor = 3
+	}
+	req.FaceDetailer.BboxCropFactor = clampFloat(req.FaceDetailer.BboxCropFactor, 1, 10)
+	if strings.TrimSpace(req.FaceDetailer.BboxModel) == "" {
+		req.FaceDetailer.BboxModel = "bbox/face_yolov8m.pt"
+	}
+	req.FaceDetailer.SAMDetectionHint = config.NormalizeSAMDetectionHint(req.FaceDetailer.SAMDetectionHint)
+	req.FaceDetailer.SAMDilation = clampInt(req.FaceDetailer.SAMDilation, -512, 512)
+	if req.FaceDetailer.SAMThreshold <= 0 {
+		req.FaceDetailer.SAMThreshold = 0.93
+	}
+	req.FaceDetailer.SAMThreshold = clampFloat(req.FaceDetailer.SAMThreshold, 0, 1)
+	req.FaceDetailer.SAMBboxExpansion = clampInt(req.FaceDetailer.SAMBboxExpansion, 0, 1000)
+	if req.FaceDetailer.SAMMaskHintThreshold <= 0 {
+		req.FaceDetailer.SAMMaskHintThreshold = 0.7
+	}
+	req.FaceDetailer.SAMMaskHintThreshold = clampFloat(req.FaceDetailer.SAMMaskHintThreshold, 0, 1)
+	req.FaceDetailer.SAMMaskHintUseNegative = config.NormalizeSAMMaskHintUseNegative(req.FaceDetailer.SAMMaskHintUseNegative)
+
+	if req.FaceDetailer.DropSize <= 0 {
+		req.FaceDetailer.DropSize = 10
+	}
+	req.FaceDetailer.DropSize = clampInt(req.FaceDetailer.DropSize, 1, 4096)
+
+	if req.FaceDetailer.Cycle <= 0 {
+		req.FaceDetailer.Cycle = 1
+	}
+	req.FaceDetailer.Cycle = clampInt(req.FaceDetailer.Cycle, 1, 10)
+
 	return req
 }
 
@@ -188,7 +246,14 @@ func loadWorkflowTemplate(path string) (map[string]comfyWorkflowNode, error) {
 	return graph, nil
 }
 
-func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationRequest, seeds generationSeedConfig, outputDir string) error {
+func injectTxt2ImgWorkflow(
+	graph map[string]comfyWorkflowNode,
+	req GenerationRequest,
+	seeds generationSeedConfig,
+	outputDir string,
+	modelsRoot string,
+	modelsErr error,
+) error {
 	positiveNodeID, err := findNodeByTitle(graph, "Positive", "CLIPTextEncode")
 	if err != nil {
 		return err
@@ -383,6 +448,96 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	decodeNode.Inputs["samples"] = buildWorkflowLink(finalSamplesNodeID, 0)
 	graph[decodeNodeID] = decodeNode
 
+	finalImageNodeID := decodeNodeID
+	if req.FaceDetailer.Enabled {
+		if strings.TrimSpace(req.FaceDetailer.BboxModel) == "" {
+			return fmt.Errorf("face detailer requires bbox model selection")
+		}
+		if strings.TrimSpace(req.FaceDetailer.SAMModel) == "" {
+			return fmt.Errorf("face detailer requires SAM model selection")
+		}
+
+		if modelsErr != nil {
+			return fmt.Errorf("resolve models root for face detailer models: %w", modelsErr)
+		}
+		if _, err := resolveBBoxModelFile(modelsRoot, req.FaceDetailer.BboxModel); err != nil {
+			return err
+		}
+		if _, err := resolveSAMModelFile(modelsRoot, req.FaceDetailer.SAMModel); err != nil {
+			return err
+		}
+
+		bboxProviderNodeID := nextWorkflowNodeID(graph)
+		graph[bboxProviderNodeID] = comfyWorkflowNode{
+			ClassType: "PixoraFaceBBoxDetectorProvider",
+			Inputs: map[string]any{
+				"bbox_model_name": strings.TrimSpace(req.FaceDetailer.BboxModel),
+			},
+			Meta: map[string]any{
+				"title": "Face BBox Detector Provider",
+			},
+		}
+
+		samLoaderNodeID := nextWorkflowNodeID(graph)
+		graph[samLoaderNodeID] = comfyWorkflowNode{
+			ClassType: "PixoraLoadSAMModel",
+			Inputs: map[string]any{
+				"sam_model_name": strings.TrimSpace(req.FaceDetailer.SAMModel),
+			},
+			Meta: map[string]any{
+				"title": "Pixora Load SAM Model",
+			},
+		}
+
+		faceDetailerNodeID := nextWorkflowNodeID(graph)
+		graph[faceDetailerNodeID] = comfyWorkflowNode{
+			ClassType: "PixoraFaceDetailer",
+			Inputs: map[string]any{
+				"image":                      buildWorkflowLink(decodeNodeID, 0),
+				"model":                      buildWorkflowLink(checkpointNodeID, 0),
+				"clip":                       clipInputLink,
+				"vae":                        decodeNode.Inputs["vae"],
+				"guide_size":                 req.FaceDetailer.GuideSize,
+				"guide_size_for":             req.FaceDetailer.GuideSizeFor,
+				"max_size":                   req.FaceDetailer.MaxSize,
+				"seed":                       seedValue,
+				"steps":                      clampInt(req.Steps, 1, 200),
+				"cfg":                        clampFloat(req.CFGScale, 1, 30),
+				"sampler_name":               strings.TrimSpace(req.Sampler),
+				"scheduler":                  strings.TrimSpace(req.Scheduler),
+				"positive":                   buildWorkflowLink(positiveNodeID, 0),
+				"negative":                   buildWorkflowLink(negativeNodeID, 0),
+				"denoise":                    req.FaceDetailer.Denoise,
+				"feather":                    req.FaceDetailer.Feather,
+				"noise_mask":                 req.FaceDetailer.NoiseMask,
+				"force_inpaint":              req.FaceDetailer.ForceInpaint,
+				"inpaint_model":              req.FaceDetailer.InpaintModel,
+				"noise_mask_feather":         req.FaceDetailer.NoiseMaskFeather,
+				"bbox_threshold":             req.FaceDetailer.BboxThreshold,
+				"bbox_dilation":              req.FaceDetailer.BboxDilation,
+				"bbox_crop_factor":           req.FaceDetailer.BboxCropFactor,
+				"sam_model_opt":              buildWorkflowLink(samLoaderNodeID, 0),
+				"sam_detection_hint":         req.FaceDetailer.SAMDetectionHint,
+				"sam_dilation":               req.FaceDetailer.SAMDilation,
+				"sam_threshold":              req.FaceDetailer.SAMThreshold,
+				"sam_bbox_expansion":         req.FaceDetailer.SAMBboxExpansion,
+				"sam_mask_hint_threshold":    req.FaceDetailer.SAMMaskHintThreshold,
+				"sam_mask_hint_use_negative": req.FaceDetailer.SAMMaskHintUseNegative,
+				"drop_size":                  req.FaceDetailer.DropSize,
+				"bbox_detector":              buildWorkflowLink(bboxProviderNodeID, 0),
+				"wildcard":                   "",
+				"cycle":                      req.FaceDetailer.Cycle,
+				"tiled_encode":               req.FaceDetailer.TiledEncode,
+				"tiled_decode":               req.FaceDetailer.TiledDecode,
+			},
+			Meta: map[string]any{
+				"title": "Pixora Face Detailer",
+			},
+		}
+
+		finalImageNodeID = faceDetailerNodeID
+	}
+
 	saveNodeID, err := findNodeByTitle(graph, "Pixora Save Image", "PixoraSaveImage")
 	if err != nil {
 		return err
@@ -390,6 +545,7 @@ func injectTxt2ImgWorkflow(graph map[string]comfyWorkflowNode, req GenerationReq
 	saveNode := graph[saveNodeID]
 	saveNode.Inputs["sub_directory"] = outputDir
 	saveNode.Inputs["filename_prefix"] = "Pixora"
+	saveNode.Inputs["images"] = buildWorkflowLink(finalImageNodeID, 0)
 	graph[saveNodeID] = saveNode
 
 	return nil
@@ -411,6 +567,114 @@ func normalizeRefineUpscaleMethod(raw string) string {
 	default:
 		return "nearest-exact"
 	}
+}
+
+func normalizeSAMDetectionHint(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "center-1", "horizontal-2", "vertical-2", "rect-4", "diamond-4", "mask-area", "mask-points", "mask-point-bbox", "none":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "none"
+	}
+}
+
+func normalizeSAMMaskHintUseNegative(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "small":
+		return "Small"
+	case "outter", "outer":
+		return "Outter"
+	default:
+		return "False"
+	}
+}
+
+func resolveBBoxModelFile(modelsRoot string, modelName string) (string, error) {
+	trimmedName := strings.TrimSpace(modelName)
+	if trimmedName == "" {
+		return "", fmt.Errorf("bbox model is required")
+	}
+
+	ext := strings.ToLower(filepath.Ext(trimmedName))
+	if ext != ".pt" && ext != ".onnx" {
+		return "", fmt.Errorf("invalid bbox model '%s': expected .pt or .onnx file", trimmedName)
+	}
+
+	bboxRoot := filepath.Join(modelsRoot, "bbox")
+	if info, err := os.Stat(bboxRoot); err != nil || !info.IsDir() {
+		if err != nil {
+			return "", fmt.Errorf("bbox models directory not found at '%s': %w", bboxRoot, err)
+		}
+		return "", fmt.Errorf("bbox models directory not found at '%s'", bboxRoot)
+	}
+
+	name := filepath.FromSlash(trimmedName)
+	base := filepath.Base(name)
+	var candidates []string
+	if filepath.IsAbs(name) {
+		candidates = append(candidates, filepath.Clean(name))
+	} else {
+		if filepath.Dir(name) == "." {
+			candidates = append(candidates,
+				filepath.Join(modelsRoot, "bbox", base),
+				filepath.Join(modelsRoot, "ultralytics", "bbox", base),
+				filepath.Join(modelsRoot, base),
+			)
+		} else {
+			candidates = append(candidates,
+				filepath.Join(modelsRoot, name),
+				filepath.Join(modelsRoot, "ultralytics", name),
+				filepath.Join(modelsRoot, "bbox", base),
+			)
+		}
+	}
+
+	checked := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		resolved := filepath.Clean(candidate)
+		checked = append(checked, resolved)
+		if _, err := os.Stat(resolved); err == nil {
+			return resolved, nil
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("failed to stat bbox model '%s': %w", resolved, err)
+		}
+	}
+
+	return "", fmt.Errorf(
+		"bbox model '%s' was not found in %s (checked: %s)",
+		filepath.Base(trimmedName),
+		bboxRoot,
+		strings.Join(checked, ", "),
+	)
+}
+
+func resolveSAMModelFile(modelsRoot string, modelName string) (string, error) {
+	trimmedName := strings.TrimSpace(modelName)
+	if trimmedName == "" {
+		return "", nil
+	}
+
+	if strings.ToLower(filepath.Ext(trimmedName)) != ".pth" {
+		return "", fmt.Errorf("invalid SAM model '%s': expected .pth file", trimmedName)
+	}
+
+	samRoot := filepath.Join(modelsRoot, "sams")
+	if info, err := os.Stat(samRoot); err != nil || !info.IsDir() {
+		if err != nil {
+			return "", fmt.Errorf("SAM models directory not found at '%s': %w", samRoot, err)
+		}
+		return "", fmt.Errorf("SAM models directory not found at '%s'", samRoot)
+	}
+
+	resolved := filepath.Join(samRoot, filepath.Base(trimmedName))
+	if _, err := os.Stat(resolved); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("SAM model '%s' was not found in %s", filepath.Base(trimmedName), samRoot)
+		}
+		return "", fmt.Errorf("failed to stat SAM model '%s': %w", resolved, err)
+	}
+
+	return resolved, nil
 }
 
 func nextWorkflowNodeID(graph map[string]comfyWorkflowNode) string {

@@ -1,34 +1,31 @@
-import os
 import json
-import torch
+import os
+
+import comfy.model_management as model_management
+import comfy.sample
+import comfy.samplers
+import comfy.sd
+import comfy.utils
+import folder_paths
+import latent_preview
 import numpy as np
+import torch
 from PIL import Image, ImageOps, ImageSequence
 from PIL.PngImagePlugin import PngInfo
-
-import folder_paths
-import comfy.utils
-import comfy.sd
-import comfy.sample
-import comfy.model_management as model_management
-import comfy.samplers
-import latent_preview
 from comfy.cli_args import args
-from spandrel import ModelLoader, ImageModelDescriptor
+from spandrel import ImageModelDescriptor, ModelLoader
+
+from .detailer import PixoraFaceBBoxDetectorProvider, PixoraFaceDetailer
+from .sam import PixoraLoadSAMModel
 
 
 class PixoraSaveImage:
-    """
-    Saves images to Pixora's output directory.
-    Target: <pixora_data_dir>/output/txt2img or <pixora_data_dir>/output/img2img
-    """
-
     def __init__(self):
-        # Use ComfyUI's standard output directory instead of a hardcoded path
         self.output_dir = folder_paths.get_output_directory()
         self.compress_level = 4
 
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "images": ("IMAGE", {"tooltip": "The images to save."}),
@@ -53,21 +50,18 @@ class PixoraSaveImage:
         sub_directory = sub_directory.strip().strip('"')
 
         if os.path.isabs(sub_directory):
-            # If an absolute path is provided, use it as the base directory
             base_output_dir = sub_directory
             rel_prefix = filename_prefix
         else:
-            # Otherwise, save relative to ComfyUI's output directory
             base_output_dir = self.output_dir
             sub_dir = sub_directory if sub_directory else "txt2img"
             rel_prefix = os.path.join(sub_dir, filename_prefix)
 
-        # We pass the calculated base_output_dir so get_save_image_path allows saving to that location
-        full_output_folder, filename, counter, subfolder, filename_prefix_final = folder_paths.get_save_image_path(
+        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
             rel_prefix, base_output_dir, images[0].shape[1], images[0].shape[0]
         )
 
-        results = list()
+        results = []
         for batch_number, image in enumerate(images):
             i = 255.0 * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
@@ -83,33 +77,18 @@ class PixoraSaveImage:
 
             filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
             file = f"{filename_with_batch_num}_{counter:05}_.png"
-
             saved_path = os.path.join(full_output_folder, file)
             img.save(saved_path, pnginfo=metadata, compress_level=self.compress_level)
 
-            results.append(
-                {
-                    "filename": file,
-                    "subfolder": subfolder,
-                    "type": "output",
-                    "path": saved_path,
-                }
-            )
+            results.append({"filename": file, "subfolder": subfolder, "type": "output", "path": saved_path})
             counter += 1
 
         return {"ui": {"images": results}}
 
 
 class PixoraLoadCheckpoint:
-    """
-    Loads a checkpoint from an absolute file path.
-    """
-
-    def __init__(self):
-        pass
-
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "ckpt_path": (
@@ -125,13 +104,9 @@ class PixoraLoadCheckpoint:
 
     def load_checkpoint(self, ckpt_path):
         ckpt_path = os.path.normpath(ckpt_path.strip().strip('"'))
-
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(f"Checkpoint file not found: {ckpt_path}")
 
-        import comfy.sd
-
-        # Load the checkpoint using ComfyUI's guess_config loader
         out = comfy.sd.load_checkpoint_guess_config(
             ckpt_path,
             output_vae=True,
@@ -142,12 +117,8 @@ class PixoraLoadCheckpoint:
 
 
 class PixoraLoadImage:
-    """
-    Loads an image from an absolute file path.
-    """
-
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image_path": (
@@ -167,14 +138,13 @@ class PixoraLoadImage:
             raise FileNotFoundError(f"Image path does not exist: {image_path}")
 
         img = Image.open(image_path)
-
         output_images = []
         output_masks = []
 
         for i in ImageSequence.Iterator(img):
             i = ImageOps.exif_transpose(i)
             if i.mode == "I":
-                i = i.point(lambda i: i * (1 / 256)).convert("L")
+                i = i.point(lambda p: p * (1 / 256)).convert("L")
 
             image = i.convert("RGB")
             image = np.array(image).astype(np.float32) / 255.0
@@ -199,20 +169,14 @@ class PixoraLoadImage:
         return (output_image, output_mask)
 
     @classmethod
-    def IS_CHANGED(s, image_path):
+    def IS_CHANGED(cls, image_path):
         image_path = os.path.normpath(image_path.strip().strip('"'))
-        if os.path.exists(image_path):
-            return os.path.getmtime(image_path)
-        return ""
+        return os.path.getmtime(image_path) if os.path.exists(image_path) else ""
 
 
 class PixoraImageUpscaler:
-    """
-    Upscales an image using an upscale model and a multiplier.
-    """
-
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -227,52 +191,34 @@ class PixoraImageUpscaler:
     CATEGORY = "Pixora"
 
     def upscale(self, image, upscale_model, multiplier, upscale_method):
-        # Calculate target dimensions (aligning to 8 like A1111)
         batch_size, height, width, _ = image.shape
-        dest_w = int((width * multiplier) // 8 * 8)
-        dest_h = int((height * multiplier) // 8 * 8)
-
-        # Ensure we have at least 8 pixels
-        dest_w = max(8, dest_w)
-        dest_h = max(8, dest_h)
-
-        print(f"PixoraImageUpscaler: Input {width}x{height} -> Target {dest_w}x{dest_h} (Multiplier {multiplier})")
+        dest_w = max(8, int((width * multiplier) // 8 * 8))
+        dest_h = max(8, int((height * multiplier) // 8 * 8))
 
         device = model_management.get_torch_device()
-
-        # Load AI Upscale Model
         model_path = folder_paths.get_full_path_or_raise("upscale_models", upscale_model)
         sd = comfy.utils.load_torch_file(model_path, safe_load=True)
         if "module.layers.0.residual_group.blocks.0.norm1.weight" in sd:
             sd = comfy.utils.state_dict_prefix_replace(sd, {"module.": ""})
 
         upscale_model_obj = ModelLoader().load_from_state_dict(sd).eval()
-
         if not isinstance(upscale_model_obj, ImageModelDescriptor):
             raise Exception("PixoraImageUpscaler: Upscale model must be a single-image upscaler.")
 
-        # Prepare image for model inference [B, C, H, W]
         in_img = image.movedim(-1, -3).to(device)
-
-        # Move model to device
         memory_required = model_management.module_size(upscale_model_obj.model)
-        # Conservative memory overhead for inference
         memory_required += (512 * 512 * 3) * image.element_size() * max(upscale_model_obj.scale, 1.0) * 128.0
         model_management.free_memory(memory_required, device)
         upscale_model_obj.to(device)
 
         tile = 512
         overlap = 32
-
-        # Step 1: Neural Upscale (e.g. 512 -> 2048 if model is 4x)
         oom = True
         try:
-            print(f"PixoraImageUpscaler: Model inference starting (scaling by {upscale_model_obj.scale}x)...")
             while oom:
                 try:
                     steps = in_img.shape[0] * comfy.utils.get_tiled_scale_steps(width, height, tile_x=tile, tile_y=tile, overlap=overlap)
                     pbar = comfy.utils.ProgressBar(steps)
-                    # This performs the AI upscale
                     s = comfy.utils.tiled_scale(
                         in_img,
                         lambda a: upscale_model_obj(a),
@@ -286,69 +232,29 @@ class PixoraImageUpscaler:
                 except Exception as e:
                     model_management.raise_non_oom(e)
                     tile //= 2
-                    print(f"PixoraImageUpscaler: OOM encounter, reducing tile size to {tile}")
                     if tile < 128:
                         raise e
         finally:
             upscale_model_obj.to("cpu")
 
-        # Move back to [B, H, W, C] and CPU
         s = s.movedim(-3, -1).cpu()
-        print(f"PixoraImageUpscaler: Model output shape: {s.shape[2]}x{s.shape[1]}")
-
-        # Step 2: Resize to User-Requested Multiplier (if model output doesn't match target)
         if s.shape[1] != dest_h or s.shape[2] != dest_w:
-            print(f"PixoraImageUpscaler: Adjusting result from {s.shape[2]}x{s.shape[1]} to {dest_w}x{dest_h} using {upscale_method}")
-            # [B, H, W, C] -> [B, C, H, W] for common_upscale
             s = s.movedim(-1, -3)
             s = comfy.utils.common_upscale(s, dest_w, dest_h, upscale_method, "disabled")
-            # [B, C, H, W] -> [B, H, W, C]
             s = s.movedim(-3, -1)
 
-        print(f"PixoraImageUpscaler: Upscale complete. Final result: {s.shape[2]}x{s.shape[1]}")
         return (torch.clamp(s, 0.0, 1.0),)
 
 
 class PixoraKSamplerWithVariation:
-    """
-    KSampler-compatible node with A1111-style variation handling.
-    It keeps base seed and variation seed separate, then interpolates
-    their prepared noise tensors before sampling.
-    """
-
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "model": ("MODEL",),
-                "seed": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 0x7FFFFFFFFFFFFFFF,
-                        "tooltip": "Base seed.",
-                    },
-                ),
-                "variation_seed": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 0x7FFFFFFFFFFFFFFF,
-                        "tooltip": "Variation (sub-seed).",
-                    },
-                ),
-                "variation_strength": (
-                    "FLOAT",
-                    {
-                        "default": 0.35,
-                        "min": 0.0,
-                        "max": 1.0,
-                        "step": 0.01,
-                        "tooltip": "Interpolation strength between base noise and variation noise.",
-                    },
-                ),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0x7FFFFFFFFFFFFFFF, "tooltip": "Base seed."}),
+                "variation_seed": ("INT", {"default": 0, "min": 0, "max": 0x7FFFFFFFFFFFFFFF, "tooltip": "Variation (sub-seed)."}),
+                "variation_strength": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Interpolation strength between base noise and variation noise."}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 10000}),
                 "cfg": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 100.0, "step": 0.1, "round": 0.01}),
                 "sampler_name": (comfy.samplers.KSampler.SAMPLERS,),
@@ -374,33 +280,23 @@ class PixoraKSamplerWithVariation:
 
         a = noise_a.reshape(noise_a.shape[0], -1)
         b = noise_b.reshape(noise_b.shape[0], -1)
-
         a_norm = torch.nn.functional.normalize(a, dim=1)
         b_norm = torch.nn.functional.normalize(b, dim=1)
-
         dot = torch.sum(a_norm * b_norm, dim=1, keepdim=True).clamp(-0.9995, 0.9995)
         omega = torch.acos(dot)
         sin_omega = torch.sin(omega)
-
         near_linear = torch.abs(sin_omega) < 1e-6
         interp = (torch.sin((1.0 - t) * omega) / sin_omega) * a + (torch.sin(t * omega) / sin_omega) * b
         lerp = (1.0 - t) * a + t * b
         out = torch.where(near_linear, lerp, interp)
-
         return out.reshape_as(noise_a)
 
     def sample(self, model, seed, variation_seed, variation_strength, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0):
         latent_samples = comfy.sample.fix_empty_latent_channels(model, latent_image["samples"])
         batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
-
         base_noise = comfy.sample.prepare_noise(latent_samples, seed, batch_inds)
         strength = float(min(max(variation_strength, 0.0), 1.0))
-        if strength > 0.0:
-            variation_noise = comfy.sample.prepare_noise(latent_samples, variation_seed, batch_inds)
-            noise = self._slerp_noise(base_noise, variation_noise, strength)
-        else:
-            noise = base_noise
-
+        noise = self._slerp_noise(base_noise, comfy.sample.prepare_noise(latent_samples, variation_seed, batch_inds), strength) if strength > 0.0 else base_noise
         noise_mask = latent_image["noise_mask"] if "noise_mask" in latent_image else None
         callback = latent_preview.prepare_callback(model, steps)
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
@@ -431,13 +327,15 @@ class PixoraKSamplerWithVariation:
         return (out,)
 
 
-# Export mappings
 NODE_CLASS_MAPPINGS = {
     "PixoraSaveImage": PixoraSaveImage,
     "PixoraLoadCheckpoint": PixoraLoadCheckpoint,
     "PixoraLoadImage": PixoraLoadImage,
     "PixoraImageUpscaler": PixoraImageUpscaler,
     "PixoraKSamplerWithVariation": PixoraKSamplerWithVariation,
+    "PixoraFaceBBoxDetectorProvider": PixoraFaceBBoxDetectorProvider,
+    "PixoraLoadSAMModel": PixoraLoadSAMModel,
+    "PixoraFaceDetailer": PixoraFaceDetailer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -446,4 +344,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixoraLoadImage": "Pixora Load Image",
     "PixoraImageUpscaler": "Pixora Image Upscaler",
     "PixoraKSamplerWithVariation": "Pixora KSampler With Variation",
+    "PixoraFaceBBoxDetectorProvider": "Pixora Face BBox Detector Provider",
+    "PixoraLoadSAMModel": "Pixora Load SAM Model",
+    "PixoraFaceDetailer": "Pixora Face Detailer",
 }

@@ -42,6 +42,11 @@ const (
 
 const comfyReadyBannerPrefix = "to see the gui go to:"
 
+const (
+	comfyCrossAttentionPytorch = "pytorch"
+	comfyCrossAttentionSage    = "sage"
+)
+
 type comfyStopIntent string
 
 const (
@@ -52,6 +57,7 @@ const (
 )
 
 var comfyModelSubdirs = []string{
+	"bbox",
 	"checkpoints",
 	"clip",
 	"controlnet",
@@ -60,6 +66,7 @@ var comfyModelSubdirs = []string{
 	"embeddings",
 	"latent_upscale_models",
 	"loras",
+	"sams",
 	"text_encoders",
 	"unet",
 	"upscale_models",
@@ -765,7 +772,13 @@ func (m *ComfyUIManager) buildLaunchArgs(cfg config.ComfyUIBackendConfig) []stri
 	args = ensureArgPair(args, "--port", strconv.Itoa(cfg.Port))
 	args = ensureFlag(args, "--normalvram")
 	args = ensureArgPair(args, "--preview-method", "auto")
-	args = ensureFlag(args, "--use-pytorch-cross-attention")
+	args = removeFlag(args, "--use-pytorch-cross-attention")
+	args = removeFlag(args, "--use-sage-attention")
+	if normalizeCrossAttentionMethod(cfg.CrossAttentionMethod) == comfyCrossAttentionSage {
+		args = ensureFlag(args, "--use-sage-attention")
+	} else {
+		args = ensureFlag(args, "--use-pytorch-cross-attention")
+	}
 	args = ensureFlag(args, "--enable-manager")
 	args = ensureArgPair(args, "--extra-model-paths-config", cfg.ModelPathsYAML)
 
@@ -789,6 +802,7 @@ func (m *ComfyUIManager) prepareRuntimeConfig(cfg config.ComfyUIBackendConfig) (
 	if strings.TrimSpace(cfg.Args) == "" {
 		cfg.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
 	}
+	cfg.CrossAttentionMethod = normalizeCrossAttentionMethod(cfg.CrossAttentionMethod)
 
 	cfg.PythonPath = resolveRuntimePath(rootDir, cfg.PythonPath, filepath.Join("backend", "comfy", "python_embeded", "python.exe"))
 	cfg.MainScriptPath = resolveRuntimePath(rootDir, cfg.MainScriptPath, filepath.Join("backend", "comfy", "ComfyUI", "main.py"))
@@ -907,6 +921,7 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 	content := strings.Join([]string{
 		"comfyui:",
 		fmt.Sprintf("  base_path: \"%s\"", root),
+		"  bbox: bbox",
 		"  checkpoints: checkpoints",
 		"  text_encoders: |",
 		"    text_encoders",
@@ -920,6 +935,7 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 		"  embeddings: embeddings",
 		"  latent_upscale_models: latent_upscale_models",
 		"  loras: loras",
+		"  sams: sams",
 		"  upscale_models: upscale_models",
 		"  vae: vae",
 	}, "\n") + "\n"
@@ -928,33 +944,7 @@ func writeModelPathsYAML(filePath string, modelsRoot string) error {
 }
 
 func resolvePreferredModelsRoot(runtimeRoot string) string {
-	defaultRoot := filepath.Join(runtimeRoot, "data", "sd")
-	candidates := []string{defaultRoot}
-
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(cwd, "data", "sd"))
-	}
-
-	bestPath := ""
-	bestScore := -1
-	for _, candidate := range uniqueAndSorted(candidates) {
-		info, statErr := os.Stat(candidate)
-		if statErr != nil || !info.IsDir() {
-			continue
-		}
-
-		score := scoreModelsRoot(candidate)
-		if score > bestScore {
-			bestScore = score
-			bestPath = candidate
-		}
-	}
-
-	if strings.TrimSpace(bestPath) != "" {
-		return bestPath
-	}
-
-	return defaultRoot
+	return filepath.Join(runtimeRoot, "data", "sd")
 }
 
 func (m *ComfyUIManager) syncBundledCustomNodes(rootDir string) error {
@@ -1161,6 +1151,46 @@ func ensureArgPair(args []string, flag string, value string) []string {
 	}
 
 	return append(args, flag, value)
+}
+
+func removeFlag(args []string, flag string) []string {
+	if len(args) == 0 {
+		return args
+	}
+
+	cleaned := make([]string, 0, len(args))
+	skipNext := false
+	for i := 0; i < len(args); i++ {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+
+		arg := args[i]
+		if arg == flag {
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				skipNext = true
+			}
+			continue
+		}
+
+		if strings.HasPrefix(arg, flag+"=") {
+			continue
+		}
+
+		cleaned = append(cleaned, arg)
+	}
+
+	return cleaned
+}
+
+func normalizeCrossAttentionMethod(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case comfyCrossAttentionSage:
+		return comfyCrossAttentionSage
+	default:
+		return comfyCrossAttentionPytorch
+	}
 }
 
 func hasFlag(args []string, flag string) bool {

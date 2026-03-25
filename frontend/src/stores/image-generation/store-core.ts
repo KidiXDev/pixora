@@ -30,6 +30,8 @@ export interface PersistedImageGenerationState {
 export const DEFAULT_MODEL_CATALOG: GenerationModelCatalog = {
   samplers: [],
   schedulers: [],
+  bboxModels: [],
+  samModels: [],
   checkpoints: [],
   vaes: [],
   loras: [],
@@ -60,6 +62,7 @@ export const defaultState: PersistedImageGenerationState = {
     apiUrl: DEFAULT_COMFYUI_API_URL,
     localPath: '',
     args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager',
+    crossAttentionMethod: 'pytorch',
     outputDir: '',
     rootDir: '',
     pythonPath: '',
@@ -140,6 +143,10 @@ export function sanitizePersistedState(
     clipSkip: {
       ...defaultState.txt2img.clipSkip,
       ...(candidate.txt2img?.clipSkip ?? {})
+    },
+    faceDetailer: {
+      ...defaultState.txt2img.faceDetailer,
+      ...(candidate.txt2img?.faceDetailer ?? {})
     }
   };
   const nextImg2Img: Img2ImgParameters = {
@@ -214,6 +221,81 @@ export function sanitizePersistedState(
         nextTxt2Img.clipSkip.stopAtLayer <= -1
           ? clamp(Math.round(nextTxt2Img.clipSkip.stopAtLayer), -24, -1)
           : defaultState.txt2img.clipSkip.stopAtLayer
+    },
+    faceDetailer: {
+      ...nextTxt2Img.faceDetailer,
+      enabled: Boolean(nextTxt2Img.faceDetailer.enabled),
+      guideSize: Number.isFinite(nextTxt2Img.faceDetailer.guideSize)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.guideSize), 64, 4096)
+        : defaultState.txt2img.faceDetailer.guideSize,
+      guideSizeFor: Boolean(nextTxt2Img.faceDetailer.guideSizeFor),
+      maxSize: Number.isFinite(nextTxt2Img.faceDetailer.maxSize)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.maxSize), 64, 4096)
+        : defaultState.txt2img.faceDetailer.maxSize,
+      denoise: Number.isFinite(nextTxt2Img.faceDetailer.denoise)
+        ? clamp(nextTxt2Img.faceDetailer.denoise, 0.0001, 1)
+        : defaultState.txt2img.faceDetailer.denoise,
+      feather: Number.isFinite(nextTxt2Img.faceDetailer.feather)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.feather), 0, 100)
+        : defaultState.txt2img.faceDetailer.feather,
+      noiseMask: Boolean(nextTxt2Img.faceDetailer.noiseMask),
+      forceInpaint: Boolean(nextTxt2Img.faceDetailer.forceInpaint),
+      inpaintModel: Boolean(nextTxt2Img.faceDetailer.inpaintModel),
+      noiseMaskFeather: Number.isFinite(nextTxt2Img.faceDetailer.noiseMaskFeather)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.noiseMaskFeather), 0, 100)
+        : defaultState.txt2img.faceDetailer.noiseMaskFeather,
+      bboxThreshold: Number.isFinite(nextTxt2Img.faceDetailer.bboxThreshold)
+        ? clamp(nextTxt2Img.faceDetailer.bboxThreshold, 0, 1)
+        : defaultState.txt2img.faceDetailer.bboxThreshold,
+      bboxDilation: Number.isFinite(nextTxt2Img.faceDetailer.bboxDilation)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.bboxDilation), -512, 512)
+        : defaultState.txt2img.faceDetailer.bboxDilation,
+      bboxCropFactor: Number.isFinite(nextTxt2Img.faceDetailer.bboxCropFactor)
+        ? clamp(nextTxt2Img.faceDetailer.bboxCropFactor, 1, 10)
+        : defaultState.txt2img.faceDetailer.bboxCropFactor,
+      bboxModel: nextTxt2Img.faceDetailer.bboxModel?.trim() ||
+        defaultState.txt2img.faceDetailer.bboxModel,
+      samModel: nextTxt2Img.faceDetailer.samModel?.trim() || '',
+      samDetectionHint: [
+        'center-1',
+        'horizontal-2',
+        'vertical-2',
+        'rect-4',
+        'diamond-4',
+        'mask-area',
+        'mask-points',
+        'mask-point-bbox',
+        'none'
+      ].includes(nextTxt2Img.faceDetailer.samDetectionHint)
+        ? nextTxt2Img.faceDetailer.samDetectionHint
+        : defaultState.txt2img.faceDetailer.samDetectionHint,
+      samDilation: Number.isFinite(nextTxt2Img.faceDetailer.samDilation)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.samDilation), -512, 512)
+        : defaultState.txt2img.faceDetailer.samDilation,
+      samThreshold: Number.isFinite(nextTxt2Img.faceDetailer.samThreshold)
+        ? clamp(nextTxt2Img.faceDetailer.samThreshold, 0, 1)
+        : defaultState.txt2img.faceDetailer.samThreshold,
+      samBboxExpansion: Number.isFinite(nextTxt2Img.faceDetailer.samBboxExpansion)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.samBboxExpansion), 0, 1000)
+        : defaultState.txt2img.faceDetailer.samBboxExpansion,
+      samMaskHintThreshold: Number.isFinite(
+        nextTxt2Img.faceDetailer.samMaskHintThreshold
+      )
+        ? clamp(nextTxt2Img.faceDetailer.samMaskHintThreshold, 0, 1)
+        : defaultState.txt2img.faceDetailer.samMaskHintThreshold,
+      samMaskHintUseNegative: ['False', 'Small', 'Outter'].includes(
+        nextTxt2Img.faceDetailer.samMaskHintUseNegative
+      )
+        ? nextTxt2Img.faceDetailer.samMaskHintUseNegative
+        : defaultState.txt2img.faceDetailer.samMaskHintUseNegative,
+      dropSize: Number.isFinite(nextTxt2Img.faceDetailer.dropSize)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.dropSize), 1, 4096)
+        : defaultState.txt2img.faceDetailer.dropSize,
+      cycle: Number.isFinite(nextTxt2Img.faceDetailer.cycle)
+        ? clamp(Math.round(nextTxt2Img.faceDetailer.cycle), 1, 10)
+        : defaultState.txt2img.faceDetailer.cycle,
+      tiledEncode: Boolean(nextTxt2Img.faceDetailer.tiledEncode),
+      tiledDecode: Boolean(nextTxt2Img.faceDetailer.tiledDecode)
     }
   };
   const normalizedImg2Img: Img2ImgParameters = {
@@ -249,7 +331,11 @@ export function sanitizePersistedState(
     generateForever: Boolean(candidate.generateForever),
     comfyUI: {
       ...defaultState.comfyUI,
-      ...(candidate.comfyUI ?? {})
+      ...(candidate.comfyUI ?? {}),
+      crossAttentionMethod:
+        candidate.comfyUI?.crossAttentionMethod === 'sage'
+          ? 'sage'
+          : 'pytorch'
     },
     txt2img: normalizedTxt2Img,
     img2img: normalizedImg2Img,
@@ -308,7 +394,33 @@ export function isSameTxt2Img(a: Txt2ImgParameters, b: Txt2ImgParameters): boole
     a.refine.steps === b.refine.steps &&
     a.refine.denoiseStrength === b.refine.denoiseStrength &&
     a.clipSkip.enabled === b.clipSkip.enabled &&
-    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer
+    a.clipSkip.stopAtLayer === b.clipSkip.stopAtLayer &&
+    a.faceDetailer.enabled === b.faceDetailer.enabled &&
+    a.faceDetailer.guideSize === b.faceDetailer.guideSize &&
+    a.faceDetailer.guideSizeFor === b.faceDetailer.guideSizeFor &&
+    a.faceDetailer.maxSize === b.faceDetailer.maxSize &&
+    a.faceDetailer.denoise === b.faceDetailer.denoise &&
+    a.faceDetailer.feather === b.faceDetailer.feather &&
+    a.faceDetailer.noiseMask === b.faceDetailer.noiseMask &&
+    a.faceDetailer.forceInpaint === b.faceDetailer.forceInpaint &&
+    a.faceDetailer.inpaintModel === b.faceDetailer.inpaintModel &&
+    a.faceDetailer.noiseMaskFeather === b.faceDetailer.noiseMaskFeather &&
+    a.faceDetailer.bboxThreshold === b.faceDetailer.bboxThreshold &&
+    a.faceDetailer.bboxDilation === b.faceDetailer.bboxDilation &&
+    a.faceDetailer.bboxCropFactor === b.faceDetailer.bboxCropFactor &&
+    a.faceDetailer.bboxModel === b.faceDetailer.bboxModel &&
+    a.faceDetailer.samModel === b.faceDetailer.samModel &&
+    a.faceDetailer.samDetectionHint === b.faceDetailer.samDetectionHint &&
+    a.faceDetailer.samDilation === b.faceDetailer.samDilation &&
+    a.faceDetailer.samThreshold === b.faceDetailer.samThreshold &&
+    a.faceDetailer.samBboxExpansion === b.faceDetailer.samBboxExpansion &&
+    a.faceDetailer.samMaskHintThreshold === b.faceDetailer.samMaskHintThreshold &&
+    a.faceDetailer.samMaskHintUseNegative ===
+      b.faceDetailer.samMaskHintUseNegative &&
+    a.faceDetailer.dropSize === b.faceDetailer.dropSize &&
+    a.faceDetailer.cycle === b.faceDetailer.cycle &&
+    a.faceDetailer.tiledEncode === b.faceDetailer.tiledEncode &&
+    a.faceDetailer.tiledDecode === b.faceDetailer.tiledDecode
   );
 }
 

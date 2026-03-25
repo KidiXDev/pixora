@@ -406,9 +406,127 @@ export class GenerationClipSkipRequest {
     }
 }
 
+export class GenerationFaceDetailerRequest {
+    "enabled": boolean;
+    "guideSize": number;
+    "guideSizeFor": boolean;
+    "maxSize": number;
+    "denoise": number;
+    "feather": number;
+    "noiseMask": boolean;
+    "forceInpaint": boolean;
+    "inpaintModel": boolean;
+    "noiseMaskFeather": number;
+    "bboxThreshold": number;
+    "bboxDilation": number;
+    "bboxCropFactor": number;
+    "bboxModel": string;
+    "samModel": string;
+    "samDetectionHint": string;
+    "samDilation": number;
+    "samThreshold": number;
+    "samBboxExpansion": number;
+    "samMaskHintThreshold": number;
+    "samMaskHintUseNegative": string;
+    "dropSize": number;
+    "cycle": number;
+    "tiledEncode": boolean;
+    "tiledDecode": boolean;
+
+    /** Creates a new GenerationFaceDetailerRequest instance. */
+    constructor($$source: Partial<GenerationFaceDetailerRequest> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("guideSize" in $$source)) {
+            this["guideSize"] = 0;
+        }
+        if (!("guideSizeFor" in $$source)) {
+            this["guideSizeFor"] = false;
+        }
+        if (!("maxSize" in $$source)) {
+            this["maxSize"] = 0;
+        }
+        if (!("denoise" in $$source)) {
+            this["denoise"] = 0;
+        }
+        if (!("feather" in $$source)) {
+            this["feather"] = 0;
+        }
+        if (!("noiseMask" in $$source)) {
+            this["noiseMask"] = false;
+        }
+        if (!("forceInpaint" in $$source)) {
+            this["forceInpaint"] = false;
+        }
+        if (!("inpaintModel" in $$source)) {
+            this["inpaintModel"] = false;
+        }
+        if (!("noiseMaskFeather" in $$source)) {
+            this["noiseMaskFeather"] = 0;
+        }
+        if (!("bboxThreshold" in $$source)) {
+            this["bboxThreshold"] = 0;
+        }
+        if (!("bboxDilation" in $$source)) {
+            this["bboxDilation"] = 0;
+        }
+        if (!("bboxCropFactor" in $$source)) {
+            this["bboxCropFactor"] = 0;
+        }
+        if (!("bboxModel" in $$source)) {
+            this["bboxModel"] = "";
+        }
+        if (!("samModel" in $$source)) {
+            this["samModel"] = "";
+        }
+        if (!("samDetectionHint" in $$source)) {
+            this["samDetectionHint"] = "";
+        }
+        if (!("samDilation" in $$source)) {
+            this["samDilation"] = 0;
+        }
+        if (!("samThreshold" in $$source)) {
+            this["samThreshold"] = 0;
+        }
+        if (!("samBboxExpansion" in $$source)) {
+            this["samBboxExpansion"] = 0;
+        }
+        if (!("samMaskHintThreshold" in $$source)) {
+            this["samMaskHintThreshold"] = 0;
+        }
+        if (!("samMaskHintUseNegative" in $$source)) {
+            this["samMaskHintUseNegative"] = "";
+        }
+        if (!("dropSize" in $$source)) {
+            this["dropSize"] = 0;
+        }
+        if (!("cycle" in $$source)) {
+            this["cycle"] = 0;
+        }
+        if (!("tiledEncode" in $$source)) {
+            this["tiledEncode"] = false;
+        }
+        if (!("tiledDecode" in $$source)) {
+            this["tiledDecode"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenerationFaceDetailerRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenerationFaceDetailerRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenerationFaceDetailerRequest($$parsedSource as Partial<GenerationFaceDetailerRequest>);
+    }
+}
+
 export class GenerationModelCatalog {
     "samplers": string[];
     "schedulers": string[];
+    "bboxModels": string[];
     "checkpoints": string[];
     "vaes": string[];
     "loras": string[];
@@ -417,6 +535,7 @@ export class GenerationModelCatalog {
     "textEncoders": string[];
     "diffusionModels": string[];
     "unets": string[];
+    "samModels": string[];
 
     /** Creates a new GenerationModelCatalog instance. */
     constructor($$source: Partial<GenerationModelCatalog> = {}) {
@@ -425,6 +544,9 @@ export class GenerationModelCatalog {
         }
         if (!("schedulers" in $$source)) {
             this["schedulers"] = [];
+        }
+        if (!("bboxModels" in $$source)) {
+            this["bboxModels"] = [];
         }
         if (!("checkpoints" in $$source)) {
             this["checkpoints"] = [];
@@ -450,6 +572,9 @@ export class GenerationModelCatalog {
         if (!("unets" in $$source)) {
             this["unets"] = [];
         }
+        if (!("samModels" in $$source)) {
+            this["samModels"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -468,6 +593,8 @@ export class GenerationModelCatalog {
         const $$createField7_0 = $$createType6;
         const $$createField8_0 = $$createType6;
         const $$createField9_0 = $$createType6;
+        const $$createField10_0 = $$createType6;
+        const $$createField11_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("samplers" in $$parsedSource) {
             $$parsedSource["samplers"] = $$createField0_0($$parsedSource["samplers"]);
@@ -475,29 +602,35 @@ export class GenerationModelCatalog {
         if ("schedulers" in $$parsedSource) {
             $$parsedSource["schedulers"] = $$createField1_0($$parsedSource["schedulers"]);
         }
+        if ("bboxModels" in $$parsedSource) {
+            $$parsedSource["bboxModels"] = $$createField2_0($$parsedSource["bboxModels"]);
+        }
         if ("checkpoints" in $$parsedSource) {
-            $$parsedSource["checkpoints"] = $$createField2_0($$parsedSource["checkpoints"]);
+            $$parsedSource["checkpoints"] = $$createField3_0($$parsedSource["checkpoints"]);
         }
         if ("vaes" in $$parsedSource) {
-            $$parsedSource["vaes"] = $$createField3_0($$parsedSource["vaes"]);
+            $$parsedSource["vaes"] = $$createField4_0($$parsedSource["vaes"]);
         }
         if ("loras" in $$parsedSource) {
-            $$parsedSource["loras"] = $$createField4_0($$parsedSource["loras"]);
+            $$parsedSource["loras"] = $$createField5_0($$parsedSource["loras"]);
         }
         if ("controlnets" in $$parsedSource) {
-            $$parsedSource["controlnets"] = $$createField5_0($$parsedSource["controlnets"]);
+            $$parsedSource["controlnets"] = $$createField6_0($$parsedSource["controlnets"]);
         }
         if ("upscaleModels" in $$parsedSource) {
-            $$parsedSource["upscaleModels"] = $$createField6_0($$parsedSource["upscaleModels"]);
+            $$parsedSource["upscaleModels"] = $$createField7_0($$parsedSource["upscaleModels"]);
         }
         if ("textEncoders" in $$parsedSource) {
-            $$parsedSource["textEncoders"] = $$createField7_0($$parsedSource["textEncoders"]);
+            $$parsedSource["textEncoders"] = $$createField8_0($$parsedSource["textEncoders"]);
         }
         if ("diffusionModels" in $$parsedSource) {
-            $$parsedSource["diffusionModels"] = $$createField8_0($$parsedSource["diffusionModels"]);
+            $$parsedSource["diffusionModels"] = $$createField9_0($$parsedSource["diffusionModels"]);
         }
         if ("unets" in $$parsedSource) {
-            $$parsedSource["unets"] = $$createField9_0($$parsedSource["unets"]);
+            $$parsedSource["unets"] = $$createField10_0($$parsedSource["unets"]);
+        }
+        if ("samModels" in $$parsedSource) {
+            $$parsedSource["samModels"] = $$createField11_0($$parsedSource["samModels"]);
         }
         return new GenerationModelCatalog($$parsedSource as Partial<GenerationModelCatalog>);
     }
@@ -620,6 +753,7 @@ export class GenerationRequest {
     "batchSize": number;
     "clipSkip": GenerationClipSkipRequest;
     "refine": GenerationRefineRequest;
+    "faceDetailer": GenerationFaceDetailerRequest;
 
     /** Creates a new GenerationRequest instance. */
     constructor($$source: Partial<GenerationRequest> = {}) {
@@ -677,6 +811,9 @@ export class GenerationRequest {
         if (!("refine" in $$source)) {
             this["refine"] = (new GenerationRefineRequest());
         }
+        if (!("faceDetailer" in $$source)) {
+            this["faceDetailer"] = (new GenerationFaceDetailerRequest());
+        }
 
         Object.assign(this, $$source);
     }
@@ -687,12 +824,16 @@ export class GenerationRequest {
     static createFrom($$source: any = {}): GenerationRequest {
         const $$createField16_0 = $$createType7;
         const $$createField17_0 = $$createType8;
+        const $$createField18_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("clipSkip" in $$parsedSource) {
             $$parsedSource["clipSkip"] = $$createField16_0($$parsedSource["clipSkip"]);
         }
         if ("refine" in $$parsedSource) {
             $$parsedSource["refine"] = $$createField17_0($$parsedSource["refine"]);
+        }
+        if ("faceDetailer" in $$parsedSource) {
+            $$parsedSource["faceDetailer"] = $$createField18_0($$parsedSource["faceDetailer"]);
         }
         return new GenerationRequest($$parsedSource as Partial<GenerationRequest>);
     }
@@ -917,3 +1058,4 @@ const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $Create.Array($Create.Any);
 const $$createType7 = GenerationClipSkipRequest.createFrom;
 const $$createType8 = GenerationRefineRequest.createFrom;
+const $$createType9 = GenerationFaceDetailerRequest.createFrom;
