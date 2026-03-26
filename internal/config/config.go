@@ -415,7 +415,7 @@ func (m *Manager) ensureDefaultsLocked() {
 	}
 
 	if m.config.ComfyUI.Args == "" {
-		m.config.ComfyUI.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
+		m.config.ComfyUI.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
 	}
 
 	m.config.ComfyUI.CrossAttentionMethod = normalizeCrossAttentionMethod(m.config.ComfyUI.CrossAttentionMethod)

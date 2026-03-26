@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"pixora/internal/config"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,6 +24,17 @@ const (
 	generationPreviewFrameInterval           = 120 * time.Millisecond
 	generationProgressUpdateInterval         = 200 * time.Millisecond
 	generationProgressMinDelta       float64 = 0.03
+	comfyCheckpointOptionsCacheTTL           = 60 * time.Second
+)
+
+type comfyCheckpointOptionsCacheEntry struct {
+	options   []string
+	expiresAt time.Time
+}
+
+var (
+	comfyCheckpointOptionsCacheMu sync.RWMutex
+	comfyCheckpointOptionsCache   = map[string]comfyCheckpointOptionsCacheEntry{}
 )
 
 func (s *GenerationService) generateText2ImageInternal(ctx context.Context, req GenerationRequest, overridePromptID string, onPromptQueued func(string)) (*GenerationResult, error) {
@@ -212,6 +224,10 @@ func reconcileWorkflowCheckpointForComfy(baseURL string, workflow map[string]com
 }
 
 func fetchComfyCheckpointOptions(baseURL string) ([]string, error) {
+	if cached := getCachedComfyCheckpointOptions(baseURL); len(cached) > 0 {
+		return cached, nil
+	}
+
 	endpoints := []string{
 		fmt.Sprintf("%s/object_info/CheckpointLoaderSimple", baseURL),
 		fmt.Sprintf("%s/object_info", baseURL),
@@ -245,11 +261,63 @@ func fetchComfyCheckpointOptions(baseURL string) ([]string, error) {
 		}
 
 		if options := extractComfyCheckpointOptions(payload); len(options) > 0 {
+			setCachedComfyCheckpointOptions(baseURL, options)
 			return options, nil
 		}
 	}
 
 	return nil, fmt.Errorf("checkpoint options unavailable")
+}
+
+func getCachedComfyCheckpointOptions(baseURL string) []string {
+	key := strings.TrimSpace(baseURL)
+	if key == "" {
+		return nil
+	}
+
+	now := time.Now()
+	comfyCheckpointOptionsCacheMu.RLock()
+	entry, ok := comfyCheckpointOptionsCache[key]
+	comfyCheckpointOptionsCacheMu.RUnlock()
+	if !ok {
+		return nil
+	}
+	if now.After(entry.expiresAt) {
+		comfyCheckpointOptionsCacheMu.Lock()
+		delete(comfyCheckpointOptionsCache, key)
+		comfyCheckpointOptionsCacheMu.Unlock()
+		return nil
+	}
+
+	if len(entry.options) == 0 {
+		return nil
+	}
+
+	result := make([]string, len(entry.options))
+	copy(result, entry.options)
+	return result
+}
+
+func setCachedComfyCheckpointOptions(baseURL string, options []string) {
+	key := strings.TrimSpace(baseURL)
+	if key == "" || len(options) == 0 {
+		return
+	}
+
+	normalized := uniqueAndSorted(options)
+	if len(normalized) == 0 {
+		return
+	}
+
+	stored := make([]string, len(normalized))
+	copy(stored, normalized)
+
+	comfyCheckpointOptionsCacheMu.Lock()
+	comfyCheckpointOptionsCache[key] = comfyCheckpointOptionsCacheEntry{
+		options:   stored,
+		expiresAt: time.Now().Add(comfyCheckpointOptionsCacheTTL),
+	}
+	comfyCheckpointOptionsCacheMu.Unlock()
 }
 
 func extractComfyCheckpointOptions(payload map[string]any) []string {

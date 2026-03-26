@@ -39,8 +39,8 @@ const (
 )
 
 const (
-	comfyInstallArchiveURL      = "https://github.com/Comfy-Org/ComfyUI/releases/download/v0.17.2/ComfyUI_windows_portable_nvidia_cu126.7z"
-	comfyInstallArchiveName     = "ComfyUI_windows_portable_nvidia_cu126.7z"
+	comfyInstallArchiveURL      = "https://github.com/Comfy-Org/ComfyUI/releases/download/v0.18.2/ComfyUI_windows_portable_nvidia.7z"
+	comfyInstallArchiveName     = "ComfyUI_windows_portable_nvidia.7z"
 	comfyInstallExtractedFolder = "ComfyUI_windows_portable"
 )
 
@@ -1194,13 +1194,16 @@ func hasPixoraComfyIntegration(workspaceRoot string) bool {
 	checks := []string{
 		filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes", "pixorabridge"),
 		filepath.Join(workspaceRoot, "backend", "comfy", "ComfyUI", "custom_nodes", "comfyui-manager"),
-		filepath.Join(modelsRoot, "sams", "sam_vit_b_01ec64.pth"),
-		filepath.Join(modelsRoot, "bbox", "face_yolov8n_v2.pt"),
-		filepath.Join(modelsRoot, "bbox", "face_yolov8n.pt"),
+		filepath.Join(modelsRoot, "sams"),
+		filepath.Join(modelsRoot, "bbox"),
 	}
 
 	for _, path := range checks {
-		if _, err := os.Stat(path); err != nil {
+		info, err := os.Stat(path)
+		if err != nil {
+			return false
+		}
+		if !info.IsDir() {
 			return false
 		}
 	}

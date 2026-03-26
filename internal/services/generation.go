@@ -318,52 +318,16 @@ func resolveGenerationModelsRoot(cfg config.ComfyUIBackendConfig) (string, error
 		return "", fmt.Errorf("resolve runtime root: %w", err)
 	}
 
-	candidates := []string{
-		filepath.Join(runtimeRoot, "data", "sd"),
+	modelsRoot := filepath.Join(runtimeRoot, "data", "sd")
+	info, statErr := os.Stat(modelsRoot)
+	if statErr != nil {
+		return "", fmt.Errorf("stat models root: %w", statErr)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("stat models root: %w", os.ErrNotExist)
 	}
 
-	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
-		candidates = append(candidates, filepath.Join(cwd, "data", "sd"))
-	}
-
-	bestPath := ""
-	bestScore := -1
-	for _, candidate := range uniqueAndSorted(candidates) {
-		info, statErr := os.Stat(candidate)
-		if statErr != nil {
-			continue
-		}
-		if !info.IsDir() {
-			continue
-		}
-
-		score := scoreModelsRoot(candidate)
-		if score > bestScore {
-			bestScore = score
-			bestPath = candidate
-		}
-	}
-
-	if bestPath != "" {
-		return bestPath, nil
-	}
-
-	return "", fmt.Errorf("stat models root: %w", os.ErrNotExist)
-}
-
-func scoreModelsRoot(root string) int {
-	total := 0
-	total += len(listCheckpointModelFiles(root))
-	total += len(listModelFiles(filepath.Join(root, "vae"), checkpointLikeExtensions))
-	total += len(listModelFiles(filepath.Join(root, "loras"), checkpointLikeExtensions))
-	total += len(listModelFiles(filepath.Join(root, "controlnet"), checkpointLikeExtensions))
-	total += len(listModelFiles(filepath.Join(root, "upscale_models"), upscaleModelExtensions))
-	total += len(listModelFiles(filepath.Join(root, "text_encoders"), textEncoderExtensions))
-	total += len(listModelFiles(filepath.Join(root, "clip"), textEncoderExtensions))
-	total += len(listModelFiles(filepath.Join(root, "diffusion_models"), checkpointLikeExtensions))
-	total += len(listModelFiles(filepath.Join(root, "unet"), checkpointLikeExtensions))
-	total += len(listModelFiles(filepath.Join(root, "sams"), map[string]struct{}{".pth": {}}))
-	return total
+	return modelsRoot, nil
 }
 
 func listCheckpointModelFiles(modelsRoot string) []string {

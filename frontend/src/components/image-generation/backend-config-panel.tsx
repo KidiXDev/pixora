@@ -190,7 +190,7 @@ export function BackendConfigPanel({
               value={comfyUI.args}
               onChange={(e) => onComfyUIChange({ args: e.target.value })}
               className="h-10 bg-background/50 border-border/60 focus:border-primary/50 transition-all font-mono text-[13px]"
-              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
+              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
             />
             <p className="text-[10px] text-muted-foreground mt-1 px-1">
               Custom CLI arguments passed to the ComfyUI process on startup.

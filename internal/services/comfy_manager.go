@@ -779,7 +779,6 @@ func (m *ComfyUIManager) buildLaunchArgs(cfg config.ComfyUIBackendConfig) []stri
 	} else {
 		args = ensureFlag(args, "--use-pytorch-cross-attention")
 	}
-	args = ensureFlag(args, "--enable-manager")
 	args = ensureArgPair(args, "--extra-model-paths-config", cfg.ModelPathsYAML)
 
 	return args
@@ -800,7 +799,7 @@ func (m *ComfyUIManager) prepareRuntimeConfig(cfg config.ComfyUIBackendConfig) (
 		cfg.Port = 7180
 	}
 	if strings.TrimSpace(cfg.Args) == "" {
-		cfg.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager"
+		cfg.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
 	}
 	cfg.CrossAttentionMethod = normalizeCrossAttentionMethod(cfg.CrossAttentionMethod)
 

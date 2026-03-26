@@ -61,7 +61,7 @@ export const defaultState: PersistedImageGenerationState = {
   comfyUI: {
     apiUrl: DEFAULT_COMFYUI_API_URL,
     localPath: '',
-    args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention --enable-manager',
+    args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention',
     crossAttentionMethod: 'pytorch',
     outputDir: '',
     rootDir: '',

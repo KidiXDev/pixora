@@ -31,7 +31,7 @@ export const defaultTxt2ImgParameters: Txt2ImgParameters = {
   cfgScale: DEFAULT_CFG_SCALE,
   resolution: { ...DEFAULT_RESOLUTION },
   model: '',
-  vae: '',
+  vae: 'Auto',
   sampler: DEFAULT_SAMPLER,
   scheduler: DEFAULT_SCHEDULER,
   batchSize: DEFAULT_BATCH_SIZE,

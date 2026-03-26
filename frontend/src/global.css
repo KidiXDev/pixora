@@ -172,23 +172,15 @@
 
   @keyframes indeterminate-slow-fast {
     0% {
-      transform: translateX(-115%) scaleX(0.65);
-      animation-timing-function: cubic-bezier(0.22, 0.6, 0.36, 1);
+      transform: translateX(-100%) scaleX(0.2);
+      animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     }
-    38% {
-      transform: translateX(-30%) scaleX(0.9);
-      animation-timing-function: cubic-bezier(0.3, 0, 0.7, 1);
-    }
-    58% {
-      transform: translateX(38%) scaleX(1);
-      animation-timing-function: cubic-bezier(0.18, 0.9, 0.24, 1);
-    }
-    78% {
-      transform: translateX(92%) scaleX(0.92);
-      animation-timing-function: cubic-bezier(0.38, 0.02, 0.72, 0.95);
+    50% {
+      transform: translateX(0%) scaleX(0.5);
+      animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     }
     100% {
-      transform: translateX(175%) scaleX(0.7);
+      transform: translateX(100%) scaleX(0.2);
     }
   }
 }

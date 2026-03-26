@@ -135,8 +135,8 @@ export function ComfyUISetupDialog({
 
               {isIndeterminateRunning && (
                 <div className="mt-3 space-y-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted/60">
-                    <div className="h-full w-[30%] animate-[indeterminate-slow-fast_2.25s_infinite] rounded-full bg-primary/85 shadow-[0_0_10px_rgba(99,102,241,0.35)]" />
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/20">
+                    <div className="h-full w-full animate-[indeterminate-slow-fast_2s_infinite] rounded-full bg-primary/95 shadow-[0_0_10px_0_var(--primary)] shadow-primary/30" />
                   </div>
                   <p className="text-[11px] text-muted-foreground">
                     Processing step... this can take a moment.
