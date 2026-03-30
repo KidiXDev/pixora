@@ -43,20 +43,41 @@ function Copy-DirectoryWithoutVenv {
   }
 }
 
+function Copy-DirectoryMerge {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Target
+  )
+
+  New-Item -ItemType Directory -Path $Target -Force | Out-Null
+
+  $robocopyArgs = @(
+    $Source
+    $Target
+    '/E'
+    '/NFL'
+    '/NDL'
+    '/NJH'
+    '/NJS'
+    '/NP'
+  )
+
+  & robocopy @robocopyArgs | Out-Null
+  if ($LASTEXITCODE -gt 7) {
+    throw "robocopy failed with exit code $LASTEXITCODE while copying $Source"
+  }
+}
+
 $backendFolders = @('workflow', 'ext', 'node')
 foreach ($folder in $backendFolders) {
   $sourcePath = Join-Path $sourceBackend $folder
   $targetPath = Join-Path $targetBackend $folder
 
-  if (Test-Path $targetPath) {
-    Remove-Item -Recurse -Force $targetPath
-  }
-
   if (Test-Path $sourcePath) {
     if ($folder -eq 'node') {
       Copy-DirectoryWithoutVenv -Source $sourcePath -Target $targetPath
     } else {
-      Copy-Item -Recurse -Force $sourcePath $targetPath
+      Copy-DirectoryMerge -Source $sourcePath -Target $targetPath
     }
   } else {
     Write-Warning "Skipping missing source folder: $sourcePath"
@@ -66,9 +87,6 @@ foreach ($folder in $backendFolders) {
 $sourceData = Join-Path $root 'data'
 $targetData = Join-Path $binDir 'data'
 
-if (Test-Path $targetData) {
-  Remove-Item -Recurse -Force $targetData
-}
 New-Item -ItemType Directory -Path $targetData -Force | Out-Null
 
 if (Test-Path $sourceData) {

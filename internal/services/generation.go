@@ -312,24 +312,6 @@ func (s *GenerationService) GetModelCatalog() (*GenerationModelCatalog, error) {
 	return catalog, nil
 }
 
-func resolveGenerationModelsRoot(cfg config.ComfyUIBackendConfig) (string, error) {
-	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve runtime root: %w", err)
-	}
-
-	modelsRoot := filepath.Join(runtimeRoot, "data", "sd")
-	info, statErr := os.Stat(modelsRoot)
-	if statErr != nil {
-		return "", fmt.Errorf("stat models root: %w", statErr)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("stat models root: %w", os.ErrNotExist)
-	}
-
-	return modelsRoot, nil
-}
-
 func listCheckpointModelFiles(modelsRoot string) []string {
 	return listModelFiles(filepath.Join(modelsRoot, "checkpoints"), checkpointLikeExtensions)
 }
@@ -664,50 +646,6 @@ func (s *GenerationService) resolveAutocompleteSource(completionRoot string, sou
 	}
 
 	return path, nil
-}
-
-func resolveGenerationCompletionRoot(cfg config.ComfyUIBackendConfig) (string, error) {
-	candidates := make([]string, 0, 3)
-	seen := make(map[string]struct{}, 3)
-
-	appendCandidate := func(path string) {
-		trimmed := strings.TrimSpace(path)
-		if trimmed == "" {
-			return
-		}
-		normalized := filepath.Clean(trimmed)
-		if _, ok := seen[normalized]; ok {
-			return
-		}
-		seen[normalized] = struct{}{}
-		candidates = append(candidates, normalized)
-	}
-
-	if exePath, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exePath)
-		appendCandidate(filepath.Join(exeDir, "data", "completion"))
-	}
-
-	configuredRoot := strings.TrimSpace(cfg.RootDir)
-	if configuredRoot != "" {
-		root := configuredRoot
-		if !filepath.IsAbs(root) {
-			if cwd, err := os.Getwd(); err == nil {
-				root = filepath.Join(cwd, root)
-			}
-		}
-		appendCandidate(filepath.Join(root, "data", "completion"))
-	}
-
-	for _, candidate := range candidates {
-		info, statErr := os.Stat(candidate)
-		if statErr != nil || !info.IsDir() {
-			continue
-		}
-		return candidate, nil
-	}
-
-	return "", fmt.Errorf("read completion directory: %w", os.ErrNotExist)
 }
 
 func listCompletionCSVFiles(completionRoot string) ([]string, error) {

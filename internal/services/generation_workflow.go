@@ -733,19 +733,11 @@ func resolveGenerationOutputDir(cfg config.ComfyUIBackendConfig, mode string) (s
 }
 
 func resolveGenerationOutputDirPath(cfg config.ComfyUIBackendConfig, mode string) (string, error) {
-	runtimeRoot, err := resolveRuntimeRoot(cfg.RootDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve runtime root: %w", err)
-	}
-
 	baseOutput := strings.TrimSpace(cfg.OutputDir)
 	if baseOutput == "" {
 		baseOutput = filepath.Join("data", "output")
 	}
-
-	if !filepath.IsAbs(baseOutput) {
-		baseOutput = filepath.Join(runtimeRoot, baseOutput)
-	}
+	baseOutput = resolveGenerationOutputBaseDir(cfg, baseOutput)
 
 	subDir := "text2img"
 	if strings.EqualFold(mode, "img2img") {
