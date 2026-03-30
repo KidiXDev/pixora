@@ -140,6 +140,7 @@ export class ComfyUIBackendConfig {
     "pythonPath": string;
     "mainScriptPath": string;
     "args": string;
+    "previewMethod": string;
     "crossAttentionMethod": string;
     "outputDir": string;
     "modelPathsYAML": string;
@@ -159,6 +160,9 @@ export class ComfyUIBackendConfig {
         }
         if (!("args" in $$source)) {
             this["args"] = "";
+        }
+        if (!("previewMethod" in $$source)) {
+            this["previewMethod"] = "";
         }
         if (!("crossAttentionMethod" in $$source)) {
             this["crossAttentionMethod"] = "";

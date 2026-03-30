@@ -1,4 +1,5 @@
 import { BackendConfigPanel } from '@/components/image-generation/backend-config-panel';
+import { ScrollablePage } from '@/components/layout/scrollable-page';
 import {
   Sheet,
   SheetContent,
@@ -53,7 +54,10 @@ export function BackendConfigDrawer({
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex-1 px-5 py-4 overflow-y-auto min-h-0 custom-scrollbar">
+          <ScrollablePage
+            containerClassName="flex-1 min-h-0"
+            className="px-5 py-4"
+          >
             <BackendConfigPanel
               comfyUI={comfyUI}
               status={status}
@@ -67,7 +71,7 @@ export function BackendConfigDrawer({
               onRestart={onRestart}
               onLogsClick={onLogsClick}
             />
-          </div>
+          </ScrollablePage>
         </div>
       </SheetContent>
     </Sheet>

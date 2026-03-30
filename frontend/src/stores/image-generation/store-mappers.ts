@@ -11,6 +11,8 @@ import { ComfyUIBackendConfig } from '../../../bindings/pixora/internal/config/m
 
 export const DEFAULT_COMFYUI_HOST = '127.0.0.1';
 export const DEFAULT_COMFYUI_PORT = 7180;
+export const DEFAULT_COMFYUI_PREVIEW_METHOD: ComfyUIConfig['previewMethod'] =
+  'auto';
 
 export function normalizeComfyPort(value: number): number {
   if (!Number.isFinite(value)) {
@@ -39,6 +41,9 @@ export function mapBackendConfigToComfyUI(
   const port = normalizeComfyPort(backend.port || current.port);
   const crossAttentionMethod =
     backend.crossAttentionMethod === 'sage' ? 'sage' : 'pytorch';
+  const previewMethod = normalizePreviewMethod(
+    backend.previewMethod || readLegacyPreviewMethodFromArgs(backend.args)
+  );
 
   return {
     ...current,
@@ -47,6 +52,7 @@ export function mapBackendConfigToComfyUI(
     mainScriptPath: backend.mainScriptPath,
     modelPathsYAML: backend.modelPathsYAML,
     args: backend.args,
+    previewMethod,
     crossAttentionMethod,
     outputDir: backend.outputDir,
     host,
@@ -62,12 +68,43 @@ export function toBackendComfyConfig(input: ComfyUIConfig): ComfyUIBackendConfig
     pythonPath: input.pythonPath,
     mainScriptPath: input.mainScriptPath,
     args: input.args,
+    previewMethod: input.previewMethod,
     crossAttentionMethod: input.crossAttentionMethod,
     outputDir: input.outputDir,
     modelPathsYAML: input.modelPathsYAML,
     host: input.host,
     port: normalizeComfyPort(input.port)
   });
+}
+
+function normalizePreviewMethod(raw: string): ComfyUIConfig['previewMethod'] {
+  switch (raw.trim().toLowerCase()) {
+    case 'taesd':
+      return 'taesd';
+    case 'latent2rgb':
+      return 'latent2rgb';
+    default:
+      return DEFAULT_COMFYUI_PREVIEW_METHOD;
+  }
+}
+
+function readLegacyPreviewMethodFromArgs(args: string): string {
+  const tokens = args
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token !== '');
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === '--preview-method') {
+      return tokens[index + 1] || '';
+    }
+    if (token.startsWith('--preview-method=')) {
+      return token.slice('--preview-method='.length);
+    }
+  }
+
+  return '';
 }
 
 export function mapStatus(input: {

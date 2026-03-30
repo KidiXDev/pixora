@@ -5,6 +5,7 @@ import {
 import {
   buildComfyApiURL,
   DEFAULT_COMFYUI_HOST,
+  DEFAULT_COMFYUI_PREVIEW_METHOD,
   DEFAULT_COMFYUI_PORT
 } from '@/stores/image-generation/store-mappers';
 import type {
@@ -61,7 +62,8 @@ export const defaultState: PersistedImageGenerationState = {
   comfyUI: {
     apiUrl: DEFAULT_COMFYUI_API_URL,
     localPath: '',
-    args: '--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention',
+    args: '',
+    previewMethod: DEFAULT_COMFYUI_PREVIEW_METHOD,
     crossAttentionMethod: 'pytorch',
     outputDir: '',
     rootDir: '',
@@ -332,6 +334,11 @@ export function sanitizePersistedState(
     comfyUI: {
       ...defaultState.comfyUI,
       ...(candidate.comfyUI ?? {}),
+      previewMethod:
+        candidate.comfyUI?.previewMethod === 'taesd' ||
+        candidate.comfyUI?.previewMethod === 'latent2rgb'
+          ? candidate.comfyUI.previewMethod
+          : DEFAULT_COMFYUI_PREVIEW_METHOD,
       crossAttentionMethod:
         candidate.comfyUI?.crossAttentionMethod === 'sage'
           ? 'sage'
@@ -464,5 +471,4 @@ export function buildPreviewItem(
     seed: current.seed.trim() || 'random'
   };
 }
-
 

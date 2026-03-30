@@ -15,6 +15,7 @@ import {
   applyCatalogDefaults,
   buildComfyApiURL,
   DEFAULT_COMFYUI_HOST,
+  DEFAULT_COMFYUI_PREVIEW_METHOD,
   mapBackendConfigToComfyUI,
   mapLog,
   mapStatus,
@@ -77,6 +78,7 @@ interface ImageGenerationState extends PersistedImageGenerationState {
   generationProgress: number;
   generationMessage: string;
   activeGenerationJobId: string;
+  isGenerationPanelHydrated: boolean;
 
   initializeComfyLifecycle: () => Promise<void>;
   refreshComfySetup: () => Promise<void>;
@@ -105,7 +107,6 @@ interface WailsEventLike {
 
 let comfyEventUnsubscribers: Array<() => void> = [];
 let comfyEventsBound = false;
-let generationPanelHydrated = false;
 let generationPanelPersistTimer: ReturnType<typeof setTimeout> | null = null;
 const defaultComfySetupSteps: ComfyUISetupStep[] = [
   {
@@ -147,6 +148,12 @@ const defaultComfySetupSteps: ComfyUISetupStep[] = [
   {
     id: 'copy_custom_nodes',
     label: 'Copy Custom Nodes',
+    status: 'pending',
+    message: ''
+  },
+  {
+    id: 'prepare_triton_embed_python',
+    label: 'Prepare Embedded Python Include/Libs',
     status: 'pending',
     message: ''
   },
@@ -410,22 +417,23 @@ export const useImageGenerationStore = create<ImageGenerationState>(
     generationProgress: 0,
     generationMessage: '',
     activeGenerationJobId: '',
+    isGenerationPanelHydrated: false,
 
     loadModelCatalog: async () => {
-      const setup = get().comfySetup;
-      if (!setup.isReady) {
-        set({
-          modelCatalog: DEFAULT_MODEL_CATALOG,
-          modelCatalogError: '',
-          isModelCatalogLoading: false
-        });
-        return;
-      }
-
       set({ isModelCatalogLoading: true, modelCatalogError: '' });
       try {
         const catalogResponse = await GetModelCatalog();
         const catalog = mapModelCatalog(catalogResponse);
+
+        if (!get().isGenerationPanelHydrated) {
+          set({
+            modelCatalog: catalog,
+            modelCatalogError: '',
+            isModelCatalogLoading: false
+          });
+          return;
+        }
+
         set((state) => {
           const withDefaults = applyCatalogDefaults(
             state.txt2img,
@@ -768,16 +776,14 @@ export const useImageGenerationStore = create<ImageGenerationState>(
 
         let catalog = DEFAULT_MODEL_CATALOG;
         let catalogError = '';
-        if (mappedSetup.isReady) {
-          try {
-            const catalogResponse = await GetModelCatalog();
-            catalog = mapModelCatalog(catalogResponse);
-          } catch (error) {
-            catalogError = toErrorMessage(error);
-          }
+        try {
+          const catalogResponse = await GetModelCatalog();
+          catalog = mapModelCatalog(catalogResponse);
+        } catch (error) {
+          catalogError = toErrorMessage(error);
         }
 
-        if (!generationPanelHydrated) {
+        if (!get().isGenerationPanelHydrated) {
           const panelConfig = await GetGenerationPanelConfig();
           const persistedPanel =
             sanitizePersistedState(panelConfig) ?? defaultState;
@@ -799,10 +805,10 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             comfyError: mappedStatus.lastError || mappedSetup.lastError || '',
             modelCatalogError: catalogError,
             isComfySetupLoading: false,
-            isComfySetupInstalling: mappedSetup.state === 'installing'
+            isComfySetupInstalling: mappedSetup.state === 'installing',
+            isGenerationPanelHydrated: true
           }));
 
-          generationPanelHydrated = true;
           persistFromStoreSnapshot(get);
           return;
         }
@@ -1011,6 +1017,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
             port,
             crossAttentionMethod:
               merged.crossAttentionMethod === 'sage' ? 'sage' : 'pytorch',
+            previewMethod:
+              merged.previewMethod === 'taesd' ||
+              merged.previewMethod === 'latent2rgb'
+                ? merged.previewMethod
+                : DEFAULT_COMFYUI_PREVIEW_METHOD,
             apiUrl: buildComfyApiURL(host, port),
             localPath: merged.mainScriptPath || merged.localPath
           };
@@ -1439,6 +1450,5 @@ if (import.meta.hot) {
     }
     comfyEventUnsubscribers = [];
     comfyEventsBound = false;
-    generationPanelHydrated = false;
   });
 }

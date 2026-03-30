@@ -87,7 +87,7 @@ export function BackendConfigPanel({
   })();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Backend Status Card */}
       <section className="rounded-2xl border border-border/50 bg-card/50 p-5 shadow-sm backdrop-blur-sm">
         <div className="flex items-center justify-between mb-4">
@@ -190,10 +190,11 @@ export function BackendConfigPanel({
               value={comfyUI.args}
               onChange={(e) => onComfyUIChange({ args: e.target.value })}
               className="h-10 bg-background/50 border-border/60 focus:border-primary/50 transition-all font-mono text-[13px]"
-              placeholder="--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
             />
             <p className="text-[10px] text-muted-foreground mt-1 px-1">
-              Custom CLI arguments passed to the ComfyUI process on startup.
+              Additional ComfyUI CLI arguments only. Pixora-managed arguments
+              (listen, port, preview-method, cross-attention, fast mode, cuda
+              malloc) are always handled automatically.
             </p>
           </div>
 
@@ -206,8 +207,7 @@ export function BackendConfigPanel({
               value={comfyUI.crossAttentionMethod}
               onValueChange={(value) =>
                 onComfyUIChange({
-                  crossAttentionMethod:
-                    value === 'sage' ? 'sage' : 'pytorch'
+                  crossAttentionMethod: value === 'sage' ? 'sage' : 'pytorch'
                 })
               }
             >
@@ -222,6 +222,41 @@ export function BackendConfigPanel({
             </RadioGroup>
             <p className="text-[10px] text-muted-foreground mt-1 px-1">
               Choose one method. Pixora will map it to the launch argument.
+            </p>
+          </div>
+
+          <div className="space-y-1.5 px-1">
+            <Label className="text-xs font-medium opacity-80">
+              Preview Method
+            </Label>
+            <RadioGroup
+              className="gap-2 rounded-md border border-border/60 bg-background/50 p-3"
+              value={comfyUI.previewMethod}
+              onValueChange={(value) =>
+                onComfyUIChange({
+                  previewMethod:
+                    value === 'taesd' || value === 'latent2rgb' ? value : 'auto'
+                })
+              }
+            >
+              <label className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs">
+                <RadioGroupItem value="auto" id="preview-method-auto" />
+                <span>Auto</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs">
+                <RadioGroupItem value="taesd" id="preview-method-taesd" />
+                <span>TAESD</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs">
+                <RadioGroupItem
+                  value="latent2rgb"
+                  id="preview-method-latent2rgb"
+                />
+                <span>Latent2RGB</span>
+              </label>
+            </RadioGroup>
+            <p className="text-[10px] text-muted-foreground mt-1 px-1">
+              Pixora maps this to --preview-method auto/taesd/latent2rgb.
             </p>
           </div>
 

@@ -15,6 +15,14 @@ const (
 	ScanModeWalk   ScanMode = "walk"
 )
 
+const (
+	DefaultComfyUIHost               = "127.0.0.1"
+	DefaultComfyUIPort               = 7180
+	DefaultComfyCrossAttentionMethod = "pytorch"
+	DefaultComfyPreviewMethod        = "auto"
+	DefaultComfyAdditionalLaunchArgs = ""
+)
+
 type FolderConfig struct {
 	Path     string   `json:"path"`
 	ScanMode ScanMode `json:"scanMode"`
@@ -48,6 +56,7 @@ type ComfyUIBackendConfig struct {
 	PythonPath           string `json:"pythonPath"`
 	MainScriptPath       string `json:"mainScriptPath"`
 	Args                 string `json:"args"`
+	PreviewMethod        string `json:"previewMethod"`
 	CrossAttentionMethod string `json:"crossAttentionMethod"`
 	OutputDir            string `json:"outputDir"`
 	ModelPathsYAML       string `json:"modelPathsYAML"`
@@ -407,16 +416,19 @@ func (m *Manager) ensureDefaultsLocked() {
 	}
 
 	if m.config.ComfyUI.Host == "" {
-		m.config.ComfyUI.Host = "127.0.0.1"
+		m.config.ComfyUI.Host = DefaultComfyUIHost
 	}
 
 	if m.config.ComfyUI.Port <= 0 {
-		m.config.ComfyUI.Port = 7180
+		m.config.ComfyUI.Port = DefaultComfyUIPort
 	}
 
+	m.config.ComfyUI.Args = strings.TrimSpace(m.config.ComfyUI.Args)
 	if m.config.ComfyUI.Args == "" {
-		m.config.ComfyUI.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
+		m.config.ComfyUI.Args = DefaultComfyAdditionalLaunchArgs
 	}
+
+	m.config.ComfyUI.PreviewMethod = NormalizeComfyPreviewMethod(m.config.ComfyUI.PreviewMethod)
 
 	m.config.ComfyUI.CrossAttentionMethod = normalizeCrossAttentionMethod(m.config.ComfyUI.CrossAttentionMethod)
 
@@ -616,7 +628,22 @@ func normalizeCrossAttentionMethod(raw string) string {
 	case "sage":
 		return "sage"
 	default:
-		return "pytorch"
+		return DefaultComfyCrossAttentionMethod
+	}
+}
+
+func NormalizeComfyCrossAttentionMethod(raw string) string {
+	return normalizeCrossAttentionMethod(raw)
+}
+
+func NormalizeComfyPreviewMethod(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "taesd":
+		return "taesd"
+	case "latent2rgb":
+		return "latent2rgb"
+	default:
+		return DefaultComfyPreviewMethod
 	}
 }
 

@@ -43,8 +43,7 @@ const (
 const comfyReadyBannerPrefix = "to see the gui go to:"
 
 const (
-	comfyCrossAttentionPytorch = "pytorch"
-	comfyCrossAttentionSage    = "sage"
+	comfyCrossAttentionSage = "sage"
 )
 
 type comfyStopIntent string
@@ -766,22 +765,25 @@ func explainComfyExitError(err error) string {
 }
 
 func (m *ComfyUIManager) buildLaunchArgs(cfg config.ComfyUIBackendConfig) []string {
-	args := strings.Fields(cfg.Args)
+	additionalArgs := stripManagedLaunchArgs(strings.Fields(cfg.Args))
 
-	args = ensureArgPair(args, "--listen", cfg.Host)
-	args = ensureArgPair(args, "--port", strconv.Itoa(cfg.Port))
-	args = ensureFlag(args, "--normalvram")
-	args = ensureArgPair(args, "--preview-method", "auto")
-	args = removeFlag(args, "--use-pytorch-cross-attention")
-	args = removeFlag(args, "--use-sage-attention")
-	if normalizeCrossAttentionMethod(cfg.CrossAttentionMethod) == comfyCrossAttentionSage {
-		args = ensureFlag(args, "--use-sage-attention")
-	} else {
-		args = ensureFlag(args, "--use-pytorch-cross-attention")
+	systemArgs := []string{
+		"--listen", cfg.Host,
+		"--port", strconv.Itoa(cfg.Port),
+		"--normalvram",
+		"--preview-method", config.NormalizeComfyPreviewMethod(cfg.PreviewMethod),
+		"--fast", "fp16_accumulation",
+		"--cuda-malloc",
+		"--extra-model-paths-config", cfg.ModelPathsYAML,
 	}
-	args = ensureArgPair(args, "--extra-model-paths-config", cfg.ModelPathsYAML)
 
-	return args
+	if config.NormalizeComfyCrossAttentionMethod(cfg.CrossAttentionMethod) == comfyCrossAttentionSage {
+		systemArgs = append(systemArgs, "--use-sage-attention")
+	} else {
+		systemArgs = append(systemArgs, "--use-pytorch-cross-attention")
+	}
+
+	return append(systemArgs, additionalArgs...)
 }
 
 func (m *ComfyUIManager) prepareRuntimeConfig(cfg config.ComfyUIBackendConfig) (config.ComfyUIBackendConfig, error) {
@@ -793,15 +795,14 @@ func (m *ComfyUIManager) prepareRuntimeConfig(cfg config.ComfyUIBackendConfig) (
 	cfg.RootDir = rootDir
 
 	if cfg.Host == "" {
-		cfg.Host = "127.0.0.1"
+		cfg.Host = config.DefaultComfyUIHost
 	}
 	if cfg.Port <= 0 {
-		cfg.Port = 7180
+		cfg.Port = config.DefaultComfyUIPort
 	}
-	if strings.TrimSpace(cfg.Args) == "" {
-		cfg.Args = "--listen 127.0.0.1 --port 7180 --normalvram --preview-method auto --use-pytorch-cross-attention"
-	}
-	cfg.CrossAttentionMethod = normalizeCrossAttentionMethod(cfg.CrossAttentionMethod)
+	cfg.Args = strings.Join(stripManagedLaunchArgs(strings.Fields(cfg.Args)), " ")
+	cfg.PreviewMethod = config.NormalizeComfyPreviewMethod(cfg.PreviewMethod)
+	cfg.CrossAttentionMethod = config.NormalizeComfyCrossAttentionMethod(cfg.CrossAttentionMethod)
 
 	cfg.PythonPath = resolveRuntimePath(rootDir, cfg.PythonPath, filepath.Join("backend", "comfy", "python_embeded", "python.exe"))
 	cfg.MainScriptPath = resolveRuntimePath(rootDir, cfg.MainScriptPath, filepath.Join("backend", "comfy", "ComfyUI", "main.py"))
@@ -1183,15 +1184,6 @@ func removeFlag(args []string, flag string) []string {
 	return cleaned
 }
 
-func normalizeCrossAttentionMethod(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case comfyCrossAttentionSage:
-		return comfyCrossAttentionSage
-	default:
-		return comfyCrossAttentionPytorch
-	}
-}
-
 func hasFlag(args []string, flag string) bool {
 	for _, arg := range args {
 		if arg == flag {
@@ -1203,6 +1195,27 @@ func hasFlag(args []string, flag string) bool {
 	}
 
 	return false
+}
+
+func stripManagedLaunchArgs(args []string) []string {
+	managedFlags := []string{
+		"--listen",
+		"--port",
+		"--normalvram",
+		"--preview-method",
+		"--use-pytorch-cross-attention",
+		"--use-sage-attention",
+		"--extra-model-paths-config",
+		"--fast",
+		"--cuda-malloc",
+	}
+
+	cleaned := append([]string{}, args...)
+	for _, managedFlag := range managedFlags {
+		cleaned = removeFlag(cleaned, managedFlag)
+	}
+
+	return cleaned
 }
 
 func looksLikePortInUse(message string) bool {

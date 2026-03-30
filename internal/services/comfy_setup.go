@@ -1,6 +1,7 @@
 package services
 
 import (
+	"archive/zip"
 	"errors"
 	"fmt"
 	"io"
@@ -42,6 +43,8 @@ const (
 	comfyInstallArchiveURL      = "https://github.com/Comfy-Org/ComfyUI/releases/download/v0.18.2/ComfyUI_windows_portable_nvidia.7z"
 	comfyInstallArchiveName     = "ComfyUI_windows_portable_nvidia.7z"
 	comfyInstallExtractedFolder = "ComfyUI_windows_portable"
+	tritonIncludeLibsArchiveURL = "https://github.com/woct0rdho/triton-windows/releases/download/v3.0.0-windows.post1/python_3.13.2_include_libs.zip"
+	tritonIncludeLibsArchive    = "python_3.13.2_include_libs.zip"
 )
 
 var comfyEmbeddedPythonPackages = []string{
@@ -155,6 +158,7 @@ func defaultComfySetupSteps() []ComfyUISetupStep {
 		{ID: "finalize_install_dir", Label: "Finalize Installation Folder", Status: comfySetupStepPending},
 		{ID: "prepare_model_paths", Label: "Prepare Model Paths", Status: comfySetupStepPending},
 		{ID: "copy_custom_nodes", Label: "Copy Custom Nodes", Status: comfySetupStepPending},
+		{ID: "prepare_triton_embed_python", Label: "Prepare Embedded Python Include/Libs", Status: comfySetupStepPending},
 		{ID: "install_python_dependencies", Label: "Install Embedded Python Dependencies", Status: comfySetupStepPending},
 		{ID: "install_comfyui_manager", Label: "Install ComfyUI Manager", Status: comfySetupStepPending},
 		{ID: "download_default_models", Label: "Download Default Models", Status: comfySetupStepPending},
@@ -493,6 +497,17 @@ func (m *ComfyUIManager) InstallComfyUI() error {
 		return m.completeSetupWithError("copy_custom_nodes", setupErr)
 	}
 	m.setSetupStepCompleted("copy_custom_nodes", "Custom nodes copied successfully.")
+
+	m.setSetupStepRunning("prepare_triton_embed_python", "Preparing embedded Python include/libs for Triton...")
+	if err := m.ensureEmbeddedPythonIncludeLibs(workspaceRoot); err != nil {
+		setupErr := newComfySetupError(
+			comfySetupErrorIncompleteInstall,
+			"Pixora could not prepare embedded Python include/libs required for Triton.",
+			err,
+		)
+		return m.completeSetupWithError("prepare_triton_embed_python", setupErr)
+	}
+	m.setSetupStepCompleted("prepare_triton_embed_python", "Embedded Python include/libs ready.")
 
 	m.setSetupStepRunning("install_python_dependencies", "Installing embedded Python dependencies for Pixora custom nodes...")
 	if err := m.installEmbeddedPythonDependencies(workspaceRoot); err != nil {
@@ -1242,6 +1257,182 @@ func (m *ComfyUIManager) installEmbeddedPythonDependencies(workspaceRoot string)
 	pipArgs := append([]string{"-m", "pip", "install"}, comfyEmbeddedPythonPackages...)
 	if err := m.runEmbeddedPythonCommand(workspaceRoot, "install pixora dependencies", pipArgs...); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m *ComfyUIManager) ensureEmbeddedPythonIncludeLibs(workspaceRoot string) error {
+	pythonEmbeddedDir := filepath.Join(workspaceRoot, "backend", "comfy", "python_embeded")
+	if _, err := os.Stat(pythonEmbeddedDir); err != nil {
+		return fmt.Errorf("embedded python directory not found: %w", err)
+	}
+
+	if hasEmbeddedPythonIncludeLibs(pythonEmbeddedDir) {
+		m.appendLog("info", "setup", "embedded Python include/libs already exist; skipping Triton include/libs download")
+		return nil
+	}
+
+	pythonVersionOutput, err := m.runEmbeddedPythonCommandCapture(
+		workspaceRoot,
+		"detect embedded python version",
+		"-c",
+		"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')",
+	)
+	if err != nil {
+		return err
+	}
+
+	trimmedVersion := strings.TrimSpace(pythonVersionOutput)
+	if !strings.HasPrefix(trimmedVersion, "3.13.") {
+		m.appendLog(
+			"warn",
+			"setup",
+			fmt.Sprintf("embedded Python version is %s; skipping %s because it targets Python 3.13", trimmedVersion, tritonIncludeLibsArchive),
+		)
+		return nil
+	}
+
+	tempDir, err := os.MkdirTemp("", "pixora-triton-include-libs-*")
+	if err != nil {
+		return fmt.Errorf("create temporary folder for Triton include/libs archive: %w", err)
+	}
+	defer func() {
+		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
+			m.appendLog("warn", "setup", fmt.Sprintf("failed cleaning temporary Triton include/libs folder: %v", removeErr))
+		}
+	}()
+
+	archivePath := filepath.Join(tempDir, tritonIncludeLibsArchive)
+	m.appendLog("info", "setup", "downloading Triton embedded Python include/libs archive")
+	if err := downloadFile(tritonIncludeLibsArchiveURL, archivePath, nil); err != nil {
+		return fmt.Errorf("download Triton include/libs archive: %w", err)
+	}
+
+	if err := extractIncludeLibsArchive(archivePath, pythonEmbeddedDir); err != nil {
+		return fmt.Errorf("extract Triton include/libs archive: %w", err)
+	}
+
+	if !hasEmbeddedPythonIncludeLibs(pythonEmbeddedDir) {
+		return fmt.Errorf("embedded Python include/libs are still missing after extraction")
+	}
+
+	return nil
+}
+
+func (m *ComfyUIManager) runEmbeddedPythonCommandCapture(workspaceRoot string, commandLabel string, args ...string) (string, error) {
+	pythonPath := filepath.Join(workspaceRoot, "backend", "comfy", "python_embeded", "python.exe")
+	if _, err := os.Stat(pythonPath); err != nil {
+		return "", fmt.Errorf("embedded python executable not found: %w", err)
+	}
+
+	cmd := exec.Command(pythonPath, args...)
+	cmd.Dir = workspaceRoot
+	configureComfyProcess(cmd)
+	m.appendLog("info", "setup", fmt.Sprintf("running command (%s): %s %s", commandLabel, pythonPath, strings.Join(args, " ")))
+	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	if output != "" {
+		m.appendLog("info", "setup", output)
+	}
+	if err != nil {
+		m.appendLog("error", "setup", fmt.Sprintf("command failed (%s): %v", commandLabel, err))
+		if output != "" {
+			return "", fmt.Errorf("%s failed: %w (output: %s)", commandLabel, err, output)
+		}
+		return "", fmt.Errorf("%s failed: %w", commandLabel, err)
+	}
+
+	return output, nil
+}
+
+func hasEmbeddedPythonIncludeLibs(pythonEmbeddedDir string) bool {
+	requiredFiles := []string{
+		filepath.Join(pythonEmbeddedDir, "include", "Python.h"),
+		filepath.Join(pythonEmbeddedDir, "libs", "python3.lib"),
+		filepath.Join(pythonEmbeddedDir, "libs", "python313.lib"),
+	}
+
+	for _, requiredFile := range requiredFiles {
+		if _, err := os.Stat(requiredFile); err != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func extractIncludeLibsArchive(archivePath string, destinationRoot string) error {
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return fmt.Errorf("open zip archive: %w", err)
+	}
+	defer reader.Close()
+
+	hasExtracted := false
+	for _, file := range reader.File {
+		rawName := strings.TrimSpace(file.Name)
+		if rawName == "" {
+			continue
+		}
+
+		normalized := filepath.ToSlash(rawName)
+		if strings.HasPrefix(normalized, "/") || strings.Contains(normalized, "../") {
+			return fmt.Errorf("unsafe path in archive: %s", rawName)
+		}
+
+		if !strings.HasPrefix(normalized, "include/") && !strings.HasPrefix(normalized, "libs/") {
+			continue
+		}
+
+		targetPath := filepath.Join(destinationRoot, filepath.FromSlash(normalized))
+		cleanTargetPath := filepath.Clean(targetPath)
+		cleanDestinationRoot := filepath.Clean(destinationRoot)
+		if !strings.HasPrefix(strings.ToLower(cleanTargetPath), strings.ToLower(cleanDestinationRoot+string(os.PathSeparator))) && !strings.EqualFold(cleanTargetPath, cleanDestinationRoot) {
+			return fmt.Errorf("archive target escapes destination: %s", rawName)
+		}
+
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(cleanTargetPath, 0755); err != nil {
+				return fmt.Errorf("create extracted directory %s: %w", cleanTargetPath, err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(cleanTargetPath), 0755); err != nil {
+			return fmt.Errorf("create extracted file directory %s: %w", cleanTargetPath, err)
+		}
+
+		openedFile, err := file.Open()
+		if err != nil {
+			return fmt.Errorf("open zipped file %s: %w", rawName, err)
+		}
+
+		targetFile, err := os.Create(cleanTargetPath)
+		if err != nil {
+			_ = openedFile.Close()
+			return fmt.Errorf("create extracted file %s: %w", cleanTargetPath, err)
+		}
+
+		if _, err := io.Copy(targetFile, openedFile); err != nil {
+			_ = openedFile.Close()
+			_ = targetFile.Close()
+			return fmt.Errorf("extract file %s: %w", rawName, err)
+		}
+
+		if err := openedFile.Close(); err != nil {
+			_ = targetFile.Close()
+			return fmt.Errorf("close zipped file %s: %w", rawName, err)
+		}
+		if err := targetFile.Close(); err != nil {
+			return fmt.Errorf("close extracted file %s: %w", cleanTargetPath, err)
+		}
+
+		hasExtracted = true
+	}
+
+	if !hasExtracted {
+		return fmt.Errorf("archive did not contain include/ or libs/ entries")
 	}
 
 	return nil

@@ -91,6 +91,7 @@ export interface ComfyUIConfig {
   apiUrl: string;
   localPath: string;
   args: string;
+  previewMethod: 'auto' | 'taesd' | 'latent2rgb';
   crossAttentionMethod: 'pytorch' | 'sage';
   outputDir: string;
   rootDir: string;
