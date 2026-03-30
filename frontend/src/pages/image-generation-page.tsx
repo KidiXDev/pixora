@@ -54,6 +54,7 @@ export default function ImageGenerationPage() {
     modelCatalogError,
     isComfyActionPending,
     isComfySetupLoading,
+    isGenerationPanelHydrated,
     isComfySetupInstalling,
     isComfyConfigSaving,
     initializeComfyLifecycle,
@@ -76,6 +77,7 @@ export default function ImageGenerationPage() {
       modelCatalogError: state.modelCatalogError,
       isComfyActionPending: state.isComfyActionPending,
       isComfySetupLoading: state.isComfySetupLoading,
+      isGenerationPanelHydrated: state.isGenerationPanelHydrated,
       isComfySetupInstalling: state.isComfySetupInstalling,
       isComfyConfigSaving: state.isComfyConfigSaving,
       initializeComfyLifecycle: state.initializeComfyLifecycle,
@@ -392,12 +394,15 @@ export default function ImageGenerationPage() {
   };
 
   const shouldShowSetupOnboarding =
+    isGenerationPanelHydrated &&
     !isComfySetupLoading &&
     (!comfySetup.isReady ||
       comfySetup.requiresOnboarding ||
       comfySetup.state === 'installing' ||
       comfySetup.state === 'error' ||
       comfySetup.permissionProblem);
+
+  const isPageInitializing = isComfySetupLoading || !isGenerationPanelHydrated;
 
   const handleInstallComfyUI = useCallback(async () => {
     if (isComfySetupInstalling) {
@@ -418,7 +423,7 @@ export default function ImageGenerationPage() {
     void installComfyUI();
   }, [confirm, installComfyUI, isComfySetupInstalling]);
 
-  if (isComfySetupLoading) {
+  if (isPageInitializing) {
     return (
       <div className="flex h-full overflow-hidden bg-[radial-gradient(ellipse_at_top_right,var(--tw-gradient-stops))] from-primary/5 via-background to-background">
         <GenerationSideNav

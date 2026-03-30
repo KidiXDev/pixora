@@ -2108,16 +2108,17 @@ function GenerationParametersPanelBase({
     };
   }, [form.store, flushFormChangesToStore]);
   React.useEffect(() => {
-    lastSyncedValuesRef.current = {
+    if (storeSyncTimerRef.current !== null) {
+      window.clearTimeout(storeSyncTimerRef.current);
+      storeSyncTimerRef.current = null;
+    }
+
+    const latestValues = {
       txt2img,
       img2img
     };
-    if (storeSyncTimerRef.current === null) {
-      pendingValuesRef.current = {
-        txt2img,
-        img2img
-      };
-    }
+    lastSyncedValuesRef.current = latestValues;
+    pendingValuesRef.current = latestValues;
   }, [txt2img, img2img]);
   React.useEffect(() => {
     const currentTxt2Img = form.getFieldValue('txt2img');

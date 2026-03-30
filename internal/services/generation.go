@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	defaultGenerationSteps     = 28
+	defaultGenerationSteps     = 20
 	defaultGenerationCFGScale  = 7.0
 	defaultGenerationWidth     = 1024
 	defaultGenerationHeight    = 1024

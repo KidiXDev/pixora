@@ -445,7 +445,7 @@ func (m *Manager) ensureDefaultsLocked() {
 	}
 
 	if m.config.Generation.Txt2Img.Steps <= 0 {
-		m.config.Generation.Txt2Img.Steps = 28
+		m.config.Generation.Txt2Img.Steps = 20
 	}
 
 	if m.config.Generation.Txt2Img.CFGScale <= 0 {

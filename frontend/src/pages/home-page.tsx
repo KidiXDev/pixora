@@ -15,7 +15,7 @@ export default function HomePage() {
   useKeyboardNavigation();
 
   return (
-    <div className="flex h-full w-full bg-background relative overflow-hidden">
+    <div className="flex h-full w-full bg-background relative overflow-hidden select-none">
       <div className="h-full w-full relative">
         <div
           className={`absolute inset-0 transition-opacity duration-300 ${hasActiveViewer ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}

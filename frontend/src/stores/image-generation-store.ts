@@ -834,10 +834,11 @@ export const useImageGenerationStore = create<ImageGenerationState>(
           };
         });
       } catch (error) {
-        set({
+        set(() => ({
           comfyError: toErrorMessage(error),
-          isComfySetupLoading: false
-        });
+          isComfySetupLoading: false,
+          isGenerationPanelHydrated: true
+        }));
       }
     },
 

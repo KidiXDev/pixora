@@ -37,7 +37,7 @@ func TestParseComfyPromptJSON(t *testing.T) {
   "4": {
     "inputs": {
       "seed": 123456789,
-      "steps": 28,
+      "steps": 20,
       "cfg": 6.5,
       "sampler_name": "dpmpp_2m",
       "positive": [
