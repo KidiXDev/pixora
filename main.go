@@ -38,6 +38,8 @@ func init() {
 }
 
 func main() {
+	hideConsoleWindow()
+
 	database, err := db.New()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
