@@ -46,6 +46,10 @@ export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
     });
 }
 
+export function GetImageRawWorkflow(path: string): $CancellablePromise<string> {
+    return $Call.ByID(2931403016, path);
+}
+
 export function GetImages(query: string, folderPath: string, offset: number, limit: number, sortBy: string, direction: string): $CancellablePromise<$models.PaginatedImages | null> {
     return $Call.ByID(3312439230, query, folderPath, offset, limit, sortBy, direction).then(($result: any) => {
         return $$createType4($result);

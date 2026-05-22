@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"pixora/internal/config"
 	"pixora/internal/db"
+	"pixora/internal/parser"
 	"runtime"
 	"strings"
 	"time"
@@ -367,6 +368,29 @@ func (s *GalleryService) RefetchImageMetadata(path string, mode string, pluginID
 	}
 
 	return s.indexer.RefetchMetadata(path, refetchMode, pluginID)
+}
+
+func (s *GalleryService) GetImageRawWorkflow(path string) (string, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return "", fmt.Errorf("path is required")
+	}
+
+	meta, parseCtx, err := parser.ParsePNGMetadataWithContext(trimmedPath)
+	if err != nil {
+		return "", err
+	}
+	if meta == nil {
+		meta = &parser.ImageMetadata{}
+	}
+
+	if s.plugins != nil {
+		if pluginMeta, _, pluginErr := s.plugins.ParsePNG(parseCtx); pluginErr == nil && pluginMeta != nil {
+			meta = mergeParsedMetadata(meta, pluginMeta)
+		}
+	}
+
+	return strings.TrimSpace(meta.Raw), nil
 }
 
 func (s *GalleryService) ListParserPluginLogs(pluginID string, limit int) []ParserPluginLogEntry {

@@ -87,6 +87,7 @@ export function MetadataInspector() {
       const target = e.target as HTMLElement;
 
       if (target.closest('.metadata-inspector-panel')) return;
+      if (target.closest('.full-image-viewer-panel')) return;
 
       if (target.tagName.toLowerCase() === 'img') return;
 
