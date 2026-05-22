@@ -14,15 +14,24 @@ export function FullImageViewer() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const image = images.find((img) => img.ID === selectedImageId);
+  const currentImage = images.find((img) => img.ID === selectedImageId);
+  const [activeImage, setActiveImage] = useState<typeof currentImage | null>(null);
+
+  useEffect(() => {
+    if (currentImage) {
+      setActiveImage(currentImage);
+    }
+  }, [currentImage]);
+
+  const image = activeImage;
   const metadataStatus = image?.MetadataStatus;
   const isMetadataUnavailable = metadataStatus === 2;
 
   useEffect(() => {
-    if (selectedImageId && !image && !isLoading) {
+    if (selectedImageId && !currentImage && !isLoading) {
       setSelectedImageId(null);
     }
-  }, [selectedImageId, image, isLoading, setSelectedImageId]);
+  }, [selectedImageId, currentImage, isLoading, setSelectedImageId]);
 
   // Reset state when image changes
   useEffect(() => {
@@ -31,7 +40,7 @@ export function FullImageViewer() {
     setIsDragging(false);
   }, [selectedImageId]);
 
-  if (!selectedImageId || !image) return null;
+  if (!image) return null;
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (scale <= 1) return;
@@ -71,9 +80,9 @@ export function FullImageViewer() {
   };
 
   return (
-    <div className="relative w-full h-full bg-black/95 flex flex-col">
+    <div className="relative w-full h-full flex flex-col">
       {/* Top toolbar */}
-      <div className="absolute top-0 left-0 w-full p-4 flex items-center justify-between z-10 bg-linear-to-b from-black/60 to-transparent pointer-events-none">
+      <div className="absolute top-0 left-0 w-full pr-[33.333%] p-4 flex items-center justify-between z-10 bg-linear-to-b from-black/60 to-transparent pointer-events-none">
         <div className="text-white/80 text-sm truncate max-w-md pointer-events-auto">
           {image.Path.split(/[/\\]/).pop()}
         </div>
@@ -85,7 +94,12 @@ export function FullImageViewer() {
       </div>
 
       <div
-        className="flex-1 w-full h-full p-8 flex items-center justify-center overflow-hidden"
+        className="flex-1 w-full h-full p-8 pr-[33.333%] flex items-center justify-center overflow-hidden"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setSelectedImageId(null);
+          }
+        }}
         onMouseLeave={handleMouseLeave}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

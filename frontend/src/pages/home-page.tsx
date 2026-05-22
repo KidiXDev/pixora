@@ -18,13 +18,17 @@ export default function HomePage() {
     <div className="flex h-full w-full bg-background relative overflow-hidden select-none">
       <div className="h-full w-full relative">
         <div
-          className={`absolute inset-0 transition-opacity duration-300 ${hasActiveViewer ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={`absolute inset-0 transition-opacity duration-300 ${hasActiveViewer ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
         >
           <GalleryGrid />
         </div>
 
         <div
-          className={`absolute inset-0 transition-opacity duration-300 ${selectedImageId && !isCompareMode ? 'opacity-100 pointer-events-auto pr-[33.333%]' : 'opacity-0 pointer-events-none pr-0'}`}
+          className={`absolute inset-0 transition-all duration-300 ${
+            selectedImageId && !isCompareMode
+              ? 'opacity-100 pointer-events-auto bg-black/70 backdrop-blur-md'
+              : 'opacity-0 pointer-events-none bg-black/0 backdrop-blur-none'
+          }`}
         >
           <FullImageViewer />
         </div>
