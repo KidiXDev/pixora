@@ -32,7 +32,9 @@ tasks:
   build:native:
     summary: Builds the application using native Go cross-compilation
     internal: true
-    deps:
+    cmds:
+      # Keep these tasks sequential to avoid `go mod tidy` running while
+      # frontend dependency installation is mutating node_modules.
       - task: common:go:mod:tidy
       - task: common:build:frontend
         vars:
@@ -41,7 +43,6 @@ tasks:
           DEV:
             ref: .DEV
       - task: common:generate:icons
-    cmds:
       - task: generate:syso
       - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
       - cmd: powershell Remove-item *.syso

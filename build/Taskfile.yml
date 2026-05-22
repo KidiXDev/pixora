@@ -30,13 +30,14 @@ tasks:
       - exclude: node_modules/**/*
     generates:
       - dist/**/*
-    deps:
+    cmds:
+      # Run in sequence to avoid racing `npm install` against `go mod tidy`
+      # (triggered by `generate:bindings`) when Task executes deps in parallel.
       - task: install:frontend:deps
       - task: generate:bindings
         vars:
           BUILD_FLAGS:
             ref: .BUILD_FLAGS
-    cmds:
       - npm run {{.BUILD_COMMAND}} -q
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
