@@ -259,10 +259,13 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 	}
 
 	clipTexts := make(map[string]string)
+	clipNodeIDs := make([]string, 0)
 	nodeInputs := make(map[string]map[string]any)
+	nodeClasses := make(map[string]string)
 	positiveRef := ""
 	negativeRef := ""
 	latentRef := ""
+	samplerRef := ""
 
 	for nodeID, nodeVal := range nodes {
 		nodeMap, ok := asMap(nodeVal)
@@ -272,22 +275,27 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 		inputs, _ := asMap(nodeMap["inputs"])
 		nodeInputs[nodeID] = inputs
 
-		classType := asString(nodeMap["class_type"])
-		switch classType {
-		case "CLIPTextEncode":
-			if text := asString(inputs["text"]); text != "" {
-				clipTexts[nodeID] = text
+		classType := normalizeClassType(asString(nodeMap["class_type"]))
+		nodeClasses[nodeID] = classType
+
+		if metadata.Model == "" {
+			if model := extractComfyModelName(classType, inputs); model != "" {
+				metadata.Model = model
 			}
-		case "CheckpointLoaderSimple":
-			if metadata.Model == "" {
-				metadata.Model = asString(inputs["ckpt_name"])
-			}
-		case "KSampler", "KSamplerAdvanced", "PixoraKSamplerWithVariation":
+		}
+
+		switch {
+		case isClipTextEncodeClass(classType):
+			clipNodeIDs = append(clipNodeIDs, nodeID)
+		case isSamplerNodeClass(classType):
 			if metadata.Sampler == "" {
 				if sampler := asString(inputs["sampler_name"]); sampler != "" {
 					metadata.Sampler = sampler
 				} else {
 					metadata.Sampler = asString(inputs["sampler"])
+					if metadata.Sampler == "" {
+						samplerRef = extractNodeRefID(inputs["sampler"])
+					}
 				}
 			}
 			if metadata.Seed == "" {
@@ -309,7 +317,15 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 			if latentRef == "" {
 				latentRef = extractNodeRefID(inputs["latent_image"])
 			}
-		case "EmptyLatentImage":
+		case classType == "ksamplerselect":
+			if metadata.Sampler == "" {
+				if sampler := asString(inputs["sampler_name"]); sampler != "" {
+					metadata.Sampler = sampler
+				} else {
+					metadata.Sampler = asString(inputs["sampler"])
+				}
+			}
+		case isLatentSizeNodeClass(classType):
 			if metadata.Width == 0 {
 				if width, ok := asInt(inputs["width"]); ok {
 					metadata.Width = width
@@ -318,6 +334,29 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 			if metadata.Height == 0 {
 				if height, ok := asInt(inputs["height"]); ok {
 					metadata.Height = height
+				}
+			}
+		}
+	}
+
+	for _, nodeID := range clipNodeIDs {
+		if text := resolvePromptTextForNode(nodeID, nodeInputs, map[string]bool{}); text != "" {
+			clipTexts[nodeID] = text
+		}
+	}
+
+	if metadata.Sampler == "" && samplerRef != "" {
+		if samplerInputs, ok := nodeInputs[samplerRef]; ok {
+			if sampler := asString(samplerInputs["sampler_name"]); sampler != "" {
+				metadata.Sampler = sampler
+			} else {
+				metadata.Sampler = asString(samplerInputs["sampler"])
+			}
+		}
+		if metadata.Sampler == "" {
+			if classType, ok := nodeClasses[samplerRef]; ok && classType == "ksamplerselect" {
+				if samplerInputs, ok := nodeInputs[samplerRef]; ok {
+					metadata.Sampler = asString(samplerInputs["sampler_name"])
 				}
 			}
 		}
@@ -344,6 +383,99 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 			}
 		}
 	}
+}
+
+func normalizeClassType(classType string) string {
+	return strings.ToLower(strings.TrimSpace(classType))
+}
+
+func isClipTextEncodeClass(classType string) bool {
+	return strings.Contains(classType, "cliptextencode")
+}
+
+func isSamplerNodeClass(classType string) bool {
+	switch classType {
+	case "ksampler", "ksampleradvanced", "pixoraksamplerwithvariation", "samplercustom", "samplercustomadvanced", "yeksampler":
+		return true
+	default:
+		return false
+	}
+}
+
+func isLatentSizeNodeClass(classType string) bool {
+	return strings.Contains(classType, "empty") && strings.Contains(classType, "latent")
+}
+
+func extractComfyModelName(classType string, inputs map[string]any) string {
+	if model := asString(inputs["ckpt_name"]); model != "" {
+		return model
+	}
+	if model := asString(inputs["unet_name"]); model != "" {
+		return model
+	}
+
+	if strings.Contains(classType, "checkpoint") || strings.Contains(classType, "unet") || strings.Contains(classType, "diffusion") || strings.Contains(classType, "loader") {
+		if model := asString(inputs["model_name"]); model != "" {
+			return model
+		}
+		if model := asString(inputs["diffusion_model"]); model != "" {
+			return model
+		}
+		if model := asString(inputs["diffusion_model_name"]); model != "" {
+			return model
+		}
+	}
+
+	return ""
+}
+
+func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]any, visiting map[string]bool) string {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return ""
+	}
+	if visiting[nodeID] {
+		return ""
+	}
+
+	inputs, ok := nodeInputs[nodeID]
+	if !ok || inputs == nil {
+		return ""
+	}
+
+	visiting[nodeID] = true
+	defer delete(visiting, nodeID)
+
+	stringKeys := []string{
+		"text",
+		"prompt",
+		"positive_prompt",
+		"negative_prompt",
+	}
+	for _, key := range stringKeys {
+		if text := strings.TrimSpace(asString(inputs[key])); text != "" {
+			return text
+		}
+	}
+
+	linkKeys := []string{
+		"text",
+		"prompt",
+		"positive_prompt",
+		"negative_prompt",
+	}
+	for _, key := range linkKeys {
+		refID := extractNodeRefID(inputs[key])
+		if refID == "" {
+			continue
+		}
+
+		if text := resolvePromptTextForNode(refID, nodeInputs, visiting); text != "" {
+			return text
+		}
+	}
+
+	return ""
 }
 
 func asMap(v any) (map[string]any, bool) {
