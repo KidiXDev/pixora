@@ -6,11 +6,11 @@ interface IntroScreenProps {
 }
 
 export function IntroScreen({ onComplete }: IntroScreenProps) {
-  // Splash screen runs for exactly 1.5 seconds
+  // Splash screen runs for exactly 0.75 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete();
-    }, 1500);
+    }, 750);
 
     return () => clearTimeout(timer);
   }, [onComplete]);

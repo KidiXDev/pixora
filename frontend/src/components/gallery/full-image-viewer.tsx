@@ -1,7 +1,6 @@
 import { useGalleryStore } from '@/stores/gallery-store';
-import { Check, Copy } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
-import { GetImageRawWorkflow } from '../../../bindings/pixora/internal/services/galleryservice';
+import { useState, useEffect } from 'react';
+import { RawWorkflowInspector } from './raw-workflow-inspector';
 
 export function FullImageViewer() {
   const images = useGalleryStore((state) => state.images);
@@ -16,53 +15,6 @@ export function FullImageViewer() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showRawWorkflow, setShowRawWorkflow] = useState(false);
-  const [rawWorkflow, setRawWorkflow] = useState('');
-  const [rawWorkflowError, setRawWorkflowError] = useState('');
-  const [isRawWorkflowLoading, setIsRawWorkflowLoading] = useState(false);
-  const [copiedRaw, setCopiedRaw] = useState(false);
-  const [workflowHeight, setWorkflowHeight] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('pixora:workflow-panel-height');
-      return saved ? parseInt(saved, 10) : 224;
-    } catch {
-      return 224;
-    }
-  });
-
-  const resizableRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showRawWorkflow) return;
-
-    const element = resizableRef.current;
-    if (!element) return;
-
-    let timeoutId: number;
-
-    const observer = new ResizeObserver(() => {
-      const height = element.offsetHeight;
-      if (height > 0) {
-        window.clearTimeout(timeoutId);
-        timeoutId = window.setTimeout(() => {
-          setWorkflowHeight(height);
-          try {
-            window.localStorage.setItem(
-              'pixora:workflow-panel-height',
-              String(height)
-            );
-          } catch (err) {
-            console.error('Failed to save workflow panel height', err);
-          }
-        }, 150);
-      }
-    });
-
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      window.clearTimeout(timeoutId);
-    };
-  }, [showRawWorkflow]);
 
   const currentImage = images.find((img) => img.ID === selectedImageId);
   const [activeImage, setActiveImage] = useState<typeof currentImage | null>(
@@ -91,57 +43,9 @@ export function FullImageViewer() {
     setScale(1);
     setIsDragging(false);
     setShowRawWorkflow(false);
-    setRawWorkflow('');
-    setRawWorkflowError('');
-    setIsRawWorkflowLoading(false);
-    setCopiedRaw(false);
   }, [selectedImageId]);
 
   if (!image) return null;
-
-  const prettyRawWorkflow = (() => {
-    const trimmed = rawWorkflow.trim();
-    if (!trimmed) return '';
-    try {
-      return JSON.stringify(JSON.parse(trimmed), null, 2);
-    } catch {
-      return rawWorkflow;
-    }
-  })();
-
-  const handleToggleRawWorkflow = async () => {
-    const nextShow = !showRawWorkflow;
-    setShowRawWorkflow(nextShow);
-    if (!nextShow || rawWorkflow || isRawWorkflowLoading) return;
-
-    setIsRawWorkflowLoading(true);
-    setRawWorkflowError('');
-    try {
-      const result = await GetImageRawWorkflow(image.Path);
-      const trimmed = (result || '').trim();
-      if (!trimmed) {
-        setRawWorkflowError('No raw workflow metadata found in this image.');
-      } else {
-        setRawWorkflow(trimmed);
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Failed to load raw workflow metadata.';
-      setRawWorkflowError(message);
-    } finally {
-      setIsRawWorkflowLoading(false);
-    }
-  };
-
-  const handleCopyRawWorkflow = () => {
-    const value = prettyRawWorkflow || rawWorkflow;
-    if (!value) return;
-    navigator.clipboard.writeText(value).catch(() => {});
-    setCopiedRaw(true);
-    setTimeout(() => setCopiedRaw(false), 1500);
-  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (scale <= 1) return;
@@ -191,7 +95,7 @@ export function FullImageViewer() {
           <button
             type="button"
             onClick={() => {
-              void handleToggleRawWorkflow();
+              setShowRawWorkflow(!showRawWorkflow);
             }}
             className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
               showRawWorkflow
@@ -210,35 +114,10 @@ export function FullImageViewer() {
       </div>
 
       {showRawWorkflow && (
-        <div
-          className="absolute top-16 left-4 right-[calc(33.333%+1rem)] z-20 pointer-events-auto rounded-lg border border-white/20 bg-black/75 backdrop-blur-sm shadow-xl"
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-            <div className="text-xs font-semibold text-white/90">
-              Raw Workflow JSON
-            </div>
-            <button
-              type="button"
-              onClick={handleCopyRawWorkflow}
-              disabled={!rawWorkflow}
-              className="inline-flex items-center gap-1 rounded border border-white/20 px-2 py-1 text-[11px] font-medium text-white/90 disabled:opacity-50 hover:bg-white/10 transition-colors"
-            >
-              {copiedRaw ? <Check size={12} /> : <Copy size={12} />}
-              {copiedRaw ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-          <div
-            ref={resizableRef}
-            style={{ height: `${workflowHeight}px` }}
-            className="min-h-24 max-h-[65vh] resize-y overflow-auto p-3 text-[11px] leading-relaxed font-mono whitespace-pre-wrap break-all text-white/85 select-text cursor-text"
-          >
-            {isRawWorkflowLoading && 'Loading raw workflow...'}
-            {!isRawWorkflowLoading && rawWorkflowError && rawWorkflowError}
-            {!isRawWorkflowLoading && !rawWorkflowError && prettyRawWorkflow}
-          </div>
-        </div>
+        <RawWorkflowInspector
+          imagePath={image.Path}
+          onClose={() => setShowRawWorkflow(false)}
+        />
       )}
 
       <div
