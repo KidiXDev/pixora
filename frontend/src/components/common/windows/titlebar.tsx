@@ -22,7 +22,7 @@ export function Titlebar() {
     >
       <div className="flex items-center px-4 font-semibold text-sm">Pixora</div>
       <div
-        className="flex h-full mt-1 mr-1"
+        className="flex h-full"
         style={{ '--wails-draggable': 'no-drag' } as React.CSSProperties}
       >
         <button

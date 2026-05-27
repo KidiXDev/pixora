@@ -263,7 +263,9 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 	nodeInputs := make(map[string]map[string]any)
 	nodeClasses := make(map[string]string)
 	positiveRef := ""
+	positiveRefIdx := 0
 	negativeRef := ""
+	negativeRefIdx := 0
 	latentRef := ""
 	samplerRef := ""
 	modelScore := 0
@@ -309,10 +311,10 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 				}
 			}
 			if positiveRef == "" {
-				positiveRef = extractNodeRefID(inputs["positive"])
+				positiveRef, positiveRefIdx = extractNodeRefIDWithIndex(inputs["positive"])
 			}
 			if negativeRef == "" {
-				negativeRef = extractNodeRefID(inputs["negative"])
+				negativeRef, negativeRefIdx = extractNodeRefIDWithIndex(inputs["negative"])
 			}
 			if latentRef == "" {
 				latentRef = extractNodeRefID(inputs["latent_image"])
@@ -340,6 +342,10 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 	}
 
 	for _, nodeID := range clipNodeIDs {
+		// Resolve the text for this CLIP encode node.
+		// We pass outputIndex=0 (positive slot) since CLIP text encode nodes
+		// themselves don't select a slot — the slot is encoded in the
+		// reference pointing *to* this node from the sampler.
 		if text := resolvePromptTextForNode(nodeID, nodeInputs, map[string]bool{}); text != "" {
 			clipTexts[nodeID] = text
 		}
@@ -364,9 +370,20 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 
 	if metadata.Prompt == "" && positiveRef != "" {
 		metadata.Prompt = strings.TrimSpace(clipTexts[positiveRef])
+		if metadata.Prompt == "" {
+			metadata.Prompt = strings.TrimSpace(
+				resolvePromptTextForNodeWithIndex(positiveRef, positiveRefIdx, nodeInputs, map[string]bool{}),
+			)
+		}
 	}
 	if metadata.NegativePrompt == "" && negativeRef != "" {
 		metadata.NegativePrompt = strings.TrimSpace(clipTexts[negativeRef])
+		if metadata.NegativePrompt == "" {
+			// Same fallback for the negative side.
+			metadata.NegativePrompt = strings.TrimSpace(
+				resolvePromptTextForNodeWithIndex(negativeRef, negativeRefIdx, nodeInputs, map[string]bool{}),
+			)
+		}
 	}
 
 	if (metadata.Width == 0 || metadata.Height == 0) && latentRef != "" {
@@ -470,6 +487,10 @@ func isLikelyDiffusionModelLoaderClass(classType string) bool {
 }
 
 func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]any, visiting map[string]bool) string {
+	return resolvePromptTextForNodeWithIndex(nodeID, 0, nodeInputs, visiting)
+}
+
+func resolvePromptTextForNodeWithIndex(nodeID string, outputIndex int, nodeInputs map[string]map[string]any, visiting map[string]bool) string {
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID == "" {
 		return ""
@@ -486,6 +507,7 @@ func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]an
 	visiting[nodeID] = true
 	defer delete(visiting, nodeID)
 
+	// Direct string keys — ordered by preference
 	stringKeys := []string{
 		"text",
 		"prompt",
@@ -498,6 +520,17 @@ func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]an
 		}
 	}
 
+	routerKey := "positive"
+	if outputIndex == 1 {
+		routerKey = "negative"
+	}
+	if refID, refIdx := extractNodeRefIDWithIndex(inputs[routerKey]); refID != "" {
+		if text := resolvePromptTextForNodeWithIndex(refID, refIdx, nodeInputs, visiting); text != "" {
+			return text
+		}
+	}
+
+	// Follow generic link keys
 	linkKeys := []string{
 		"text",
 		"prompt",
@@ -505,12 +538,12 @@ func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]an
 		"negative_prompt",
 	}
 	for _, key := range linkKeys {
-		refID := extractNodeRefID(inputs[key])
+		refID, refIdx := extractNodeRefIDWithIndex(inputs[key])
 		if refID == "" {
 			continue
 		}
 
-		if text := resolvePromptTextForNode(refID, nodeInputs, visiting); text != "" {
+		if text := resolvePromptTextForNodeWithIndex(refID, refIdx, nodeInputs, visiting); text != "" {
 			return text
 		}
 	}
@@ -586,23 +619,39 @@ func asInt64String(v any) (string, bool) {
 }
 
 func extractNodeRefID(v any) string {
+	id, _ := extractNodeRefIDWithIndex(v)
+	return id
+}
+
+func extractNodeRefIDWithIndex(v any) (string, int) {
 	arr, ok := v.([]any)
 	if !ok || len(arr) == 0 {
-		return ""
+		return "", 0
 	}
 
+	var nodeID string
 	switch id := arr[0].(type) {
 	case string:
-		return id
+		nodeID = id
 	case float64:
-		return strconv.FormatInt(int64(id), 10)
+		nodeID = strconv.FormatInt(int64(id), 10)
 	case int:
-		return strconv.Itoa(id)
+		nodeID = strconv.Itoa(id)
 	case int64:
-		return strconv.FormatInt(id, 10)
+		nodeID = strconv.FormatInt(id, 10)
 	default:
-		return ""
+		return "", 0
 	}
+
+	// Extract output index (second element if present)
+	outputIndex := 0
+	if len(arr) >= 2 {
+		if idx, ok := asInt(arr[1]); ok {
+			outputIndex = idx
+		}
+	}
+
+	return nodeID, outputIndex
 }
 
 func parseA1111Parameters(params string, metadata *ImageMetadata) {

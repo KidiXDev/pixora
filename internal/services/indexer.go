@@ -556,11 +556,17 @@ func shouldRefreshPNGMetadata(ext string, stored *db.ImageRecord) bool {
 		return false
 	}
 
-	if stored.MetadataStatus != db.MetadataStatusUnknown {
-		return false
+	// Always re-parse if metadata status is unknown and both prompt and model are empty.
+	if stored.MetadataStatus == db.MetadataStatusUnknown {
+		return strings.TrimSpace(stored.Model) == "" && strings.TrimSpace(stored.Prompt) == ""
 	}
 
-	return strings.TrimSpace(stored.Model) == "" && strings.TrimSpace(stored.Prompt) == ""
+	// Also re-parse if the image was previously indexed with data present (model/sampler/etc.)
+	if stored.MetadataStatus == db.MetadataStatusPresent && strings.TrimSpace(stored.Prompt) == "" {
+		return true
+	}
+
+	return false
 }
 
 func classifyMetadataStatus(meta *parser.ImageMetadata) int {
