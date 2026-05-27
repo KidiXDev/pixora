@@ -1,6 +1,6 @@
 import { useGalleryStore } from '@/stores/gallery-store';
 import { Check, Copy } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { GetImageRawWorkflow } from '../../../bindings/pixora/internal/services/galleryservice';
 
 export function FullImageViewer() {
@@ -20,6 +20,49 @@ export function FullImageViewer() {
   const [rawWorkflowError, setRawWorkflowError] = useState('');
   const [isRawWorkflowLoading, setIsRawWorkflowLoading] = useState(false);
   const [copiedRaw, setCopiedRaw] = useState(false);
+  const [workflowHeight, setWorkflowHeight] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('pixora:workflow-panel-height');
+      return saved ? parseInt(saved, 10) : 224;
+    } catch {
+      return 224;
+    }
+  });
+
+  const resizableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showRawWorkflow) return;
+
+    const element = resizableRef.current;
+    if (!element) return;
+
+    let timeoutId: number;
+
+    const observer = new ResizeObserver(() => {
+      const height = element.offsetHeight;
+      if (height > 0) {
+        window.clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => {
+          setWorkflowHeight(height);
+          try {
+            window.localStorage.setItem(
+              'pixora:workflow-panel-height',
+              String(height)
+            );
+          } catch (err) {
+            console.error('Failed to save workflow panel height', err);
+          }
+        }, 150);
+      }
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+    };
+  }, [showRawWorkflow]);
 
   const currentImage = images.find((img) => img.ID === selectedImageId);
   const [activeImage, setActiveImage] = useState<typeof currentImage | null>(
@@ -186,7 +229,11 @@ export function FullImageViewer() {
               {copiedRaw ? 'Copied' : 'Copy'}
             </button>
           </div>
-          <div className="h-56 min-h-24 max-h-[65vh] resize-y overflow-auto p-3 text-[11px] leading-relaxed font-mono whitespace-pre-wrap break-all text-white/85 select-text cursor-text">
+          <div
+            ref={resizableRef}
+            style={{ height: `${workflowHeight}px` }}
+            className="min-h-24 max-h-[65vh] resize-y overflow-auto p-3 text-[11px] leading-relaxed font-mono whitespace-pre-wrap break-all text-white/85 select-text cursor-text"
+          >
             {isRawWorkflowLoading && 'Loading raw workflow...'}
             {!isRawWorkflowLoading && rawWorkflowError && rawWorkflowError}
             {!isRawWorkflowLoading && !rawWorkflowError && prettyRawWorkflow}
