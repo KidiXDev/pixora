@@ -88,6 +88,22 @@ export function MetadataInspector() {
 
       if (target.closest('.metadata-inspector-panel')) return;
       if (target.closest('.full-image-viewer-panel')) return;
+      if (target.closest('.titlebar-panel')) return;
+
+      const hasWailsStyle = (el: HTMLElement | null): boolean => {
+        if (!el) return false;
+        try {
+          const style = window.getComputedStyle(el);
+          const draggable = style.getPropertyValue('--wails-draggable');
+          const resize = style.getPropertyValue('--wails-resize');
+          if (draggable || resize) return true;
+        } catch {
+          // ignore potential errors in getComputedStyle on non-elements
+        }
+        return hasWailsStyle(el.parentElement);
+      };
+
+      if (hasWailsStyle(target)) return;
 
       if (target.tagName.toLowerCase() === 'img') return;
 
