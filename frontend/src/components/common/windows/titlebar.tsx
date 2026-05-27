@@ -1,7 +1,34 @@
-import { Window } from '@wailsio/runtime';
+import { Window, Events } from '@wailsio/runtime';
 import { Minus, Square, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export function Titlebar() {
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    // Check initial state
+    Window.IsMaximised().then(setIsMaximized);
+
+    // Listen to maximize/unmaximize events
+    const unsubscribeMaximise = Events.On('common:WindowMaximise', () => {
+      setIsMaximized(true);
+    });
+
+    const unsubscribeUnmaximise = Events.On('common:WindowUnMaximise', () => {
+      setIsMaximized(false);
+    });
+
+    const unsubscribeRestore = Events.On('common:WindowRestore', () => {
+      Window.IsMaximised().then(setIsMaximized);
+    });
+
+    return () => {
+      unsubscribeMaximise();
+      unsubscribeUnmaximise();
+      unsubscribeRestore();
+    };
+  }, []);
+
   const handleMinimize = () => {
     Window.Minimise();
   };
@@ -44,6 +71,22 @@ export function Titlebar() {
           <X size={16} />
         </button>
       </div>
+
+      {!isMaximized && (
+        <>
+          <div
+            aria-hidden="true"
+            className="absolute top-0 right-0 h-full w-px"
+            style={{ '--wails-resize': 'right' } as React.CSSProperties}
+          />
+          <div
+            aria-hidden="true"
+            className="absolute top-0 right-0 h-px w-full"
+            style={{ '--wails-resize': 'top' } as React.CSSProperties}
+          />
+        </>
+      )}
     </div>
   );
 }
+

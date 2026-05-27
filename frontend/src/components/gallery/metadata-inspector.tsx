@@ -361,7 +361,7 @@ export function MetadataInspector() {
                 )}
               </Button>
             </div>
-            <div className="text-sm bg-destructive/5 text-foreground/80 p-4 rounded-xl border border-destructive/10 leading-relaxed italic break-all overflow-hidden">
+            <div className="text-sm bg-destructive/5 text-foreground/80 p-4 rounded-xl border border-destructive/10 leading-relaxed italic break-all overflow-hidden select-text">
               {image.NegativePrompt}
             </div>
           </div>
