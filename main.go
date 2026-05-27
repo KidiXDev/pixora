@@ -348,9 +348,14 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowDidMove, func(event *application.WindowEvent) {
-		switch getCurrentState() {
-		case windowStateFull, windowStateMax, windowStateMin:
+		state := getCurrentState()
+		switch state {
+		case windowStateFull, windowStateMin:
 			return
+		case windowStateMax:
+			if window.IsMaximised() {
+				return
+			}
 		}
 
 		updateState(windowStateNormal)
@@ -358,9 +363,14 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowDidResize, func(event *application.WindowEvent) {
-		switch getCurrentState() {
-		case windowStateFull, windowStateMax, windowStateMin:
+		state := getCurrentState()
+		switch state {
+		case windowStateFull, windowStateMin:
 			return
+		case windowStateMax:
+			if window.IsMaximised() {
+				return
+			}
 		}
 
 		updateState(windowStateNormal)

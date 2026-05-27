@@ -49,6 +49,7 @@ import {
   X
 } from 'lucide-react';
 import {
+  type CSSProperties,
   memo,
   startTransition,
   useCallback,
@@ -94,6 +95,10 @@ const GALLERY_SORT_DIRECTION_OPTIONS: ReadonlyArray<{
   { value: 'asc', label: 'Asc' },
   { value: 'desc', label: 'Desc' }
 ];
+
+const noDragRegionStyle: CSSProperties = {
+  ['--wails-draggable' as string]: 'no-drag'
+};
 
 function isGallerySortBy(value: string): value is GallerySortBy {
   return GALLERY_SORT_BY_OPTIONS.some((option) => option.value === value);
@@ -516,7 +521,10 @@ export function TabNavigation() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden">
+      <div
+        className="flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden"
+        style={noDragRegionStyle}
+      >
         {/* Scrollable Tabs Area */}
         <div className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar contain-[layout_style_paint]">
           <SortableContext

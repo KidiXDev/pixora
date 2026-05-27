@@ -16,12 +16,13 @@ export function Titlebar() {
 
   return (
     <div
-      className="relative z-10000 flex h-10 w-full shrink-0 items-center justify-between border-b border-white/10 bg-background text-foreground shadow-sm"
+      onDoubleClick={handleMaximize}
+      className="relative z-10000 flex h-10 w-full shrink-0 items-center justify-between border-b border-white/10 bg-background text-foreground shadow-sm select-none"
       style={{ '--wails-draggable': 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center px-4 font-semibold text-sm">Pixora</div>
       <div
-        className="flex h-full"
+        className="flex h-full mt-1 mr-1"
         style={{ '--wails-draggable': 'no-drag' } as React.CSSProperties}
       >
         <button
