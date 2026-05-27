@@ -10,6 +10,7 @@ import (
 	"pixora/internal/config"
 	"pixora/internal/db"
 	"pixora/internal/services"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -152,6 +153,7 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(27, 38, 54),
 		URL:              "/",
+		Hidden:           true,
 	}
 
 	windowConfig := cfgMgr.GetConfig().Window
@@ -184,8 +186,12 @@ func main() {
 }
 
 func applyPersistedWindowOptions(options *application.WebviewWindowOptions, windowCfg config.WindowConfig) {
+	startState := windowStateToStartState(windowCfg.State)
+	if runtime.GOOS == "windows" && startState == application.WindowStateMaximised {
+		startState = application.WindowStateNormal
+	}
 	startBounds, hasStartBounds := resolveInitialWindowBounds(windowCfg)
-	if hasStartBounds {
+	if hasStartBounds && startState == application.WindowStateNormal {
 		options.Width = maxInt(startBounds.Width, options.MinWidth)
 		options.Height = maxInt(startBounds.Height, options.MinHeight)
 		options.InitialPosition = application.WindowXY
@@ -193,7 +199,7 @@ func applyPersistedWindowOptions(options *application.WebviewWindowOptions, wind
 		options.Y = startBounds.Y
 	}
 
-	options.StartState = windowStateToStartState(windowCfg.State)
+	options.StartState = startState
 }
 
 func resolveInitialWindowBounds(windowCfg config.WindowConfig) (config.WindowBounds, bool) {
@@ -217,12 +223,15 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 		mu                    sync.Mutex
 		current               = initial
 		stateBeforeFullscreen = windowStateNormal
+		startState            = windowStateNormal
+		showOnce              sync.Once
 		timer                 *time.Timer
 	)
 
 	if current.State == "" {
 		current.State = windowStateNormal
 	}
+	startState = strings.ToLower(current.State)
 	if current.State == windowStateNormal || current.State == windowStateMax {
 		stateBeforeFullscreen = current.State
 	}
@@ -270,6 +279,12 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 		return windowStateNormal
 	}
 
+	getCurrentState := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return current.State
+	}
+
 	updateBounds := func(updateNormal bool) {
 		x, y := window.Position()
 		width, height := window.Size()
@@ -308,16 +323,33 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 		}
 	}
 
+	showWindow := func() {
+		showOnce.Do(func() {
+			if runtime.GOOS == "windows" && startState == windowStateMax {
+				window.Maximise()
+			}
+			window.Show()
+		})
+	}
+
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(event *application.WindowEvent) {
-		updateState(currentWindowState())
-		if !window.IsFullscreen() && !window.IsMaximised() && !window.IsMinimised() {
+		updateState(startState)
+		if startState == windowStateNormal {
 			updateBounds(true)
 			window.SetMinSize(defaultWindowWidth, defaultWindowHeight)
 		}
+		if runtime.GOOS != "windows" {
+			showWindow()
+		}
+	})
+
+	window.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(event *application.WindowEvent) {
+		showWindow()
 	})
 
 	window.OnWindowEvent(events.Common.WindowDidMove, func(event *application.WindowEvent) {
-		if window.IsFullscreen() || window.IsMaximised() || window.IsMinimised() {
+		switch getCurrentState() {
+		case windowStateFull, windowStateMax, windowStateMin:
 			return
 		}
 
@@ -326,7 +358,8 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowDidResize, func(event *application.WindowEvent) {
-		if window.IsFullscreen() || window.IsMaximised() || window.IsMinimised() {
+		switch getCurrentState() {
+		case windowStateFull, windowStateMax, windowStateMin:
 			return
 		}
 
@@ -376,13 +409,15 @@ func bindWindowPersistence(window *application.WebviewWindow, cfgMgr *config.Man
 	})
 
 	window.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if window.IsFullscreen() {
+		state := getCurrentState()
+		switch state {
+		case windowStateFull:
 			updateState(getRestoreStateAfterFullscreen())
-		} else if !window.IsMaximised() && !window.IsMinimised() {
+		case windowStateNormal:
 			updateBounds(true)
 			updateState(windowStateNormal)
-		} else {
-			updateState(currentWindowState())
+		default:
+			updateState(state)
 		}
 		saveNow()
 	})
