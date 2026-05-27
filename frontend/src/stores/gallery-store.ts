@@ -36,6 +36,7 @@ const MAX_TAB_SNAPSHOT_ENTRIES = 12;
 let latestFetchRequestId = 0;
 let inFlightNextPageKey: string | null = null;
 let persistTabFolderTimer: ReturnType<typeof setTimeout> | null = null;
+let lastActiveTabId: string | null = null;
 
 interface ActiveTabContext {
   tabId: string;
@@ -80,7 +81,7 @@ function normalizePath(path: string): string {
     return '';
   }
 
-  const sep = trimmed.includes('\\') ? '\\' : '/';
+  const sep = '\\';
   const splitPattern = /[/\\]+/;
   const root = /^[A-Za-z]:/.test(trimmed) ? trimmed.slice(0, 2) : '';
   const tail = root ? trimmed.slice(2) : trimmed;
@@ -373,6 +374,8 @@ interface GalleryState {
   limit: number;
   hasMore: boolean;
   isLoading: boolean;
+  lastFetchedSignature: string | null;
+  isTabSwitching: boolean;
 
   setImages: (images: ImageRecord[], total: number) => void;
   setSearchQuery: (query: string) => void;
@@ -414,6 +417,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   limit: 100,
   hasMore: false,
   isLoading: false,
+  lastFetchedSignature: null,
+  isTabSwitching: false,
 
   setImages: (images, total) =>
     set({
@@ -531,7 +536,31 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
 
   hydrateActiveTabSnapshot: () => {
     const activeContext = getActiveTabContext();
+    const currentState = get();
+
+    if (lastActiveTabId && activeContext && lastActiveTabId !== activeContext.tabId) {
+      const prevTab = useTabsStore.getState().tabs.find((t) => t.id === lastActiveTabId);
+      if (prevTab) {
+        const prevRootPath = normalizePath(typeof prevTab.path === 'string' ? prevTab.path : '');
+        if (prevRootPath && !isPageTabPath(prevRootPath)) {
+          const prevIsWalk = Boolean(prevTab.isWalk);
+          const prevCurrentPath = currentState.currentFolderPath || prevRootPath;
+          const prevQuery = typeof currentState.searchQuery === 'string' ? currentState.searchQuery : '';
+          const prevSnapshotKey = buildTabSnapshotKey(
+            lastActiveTabId,
+            prevIsWalk,
+            prevCurrentPath,
+            prevQuery,
+            currentState.sortBy,
+            currentState.sortDirection
+          );
+          setSnapshot(prevSnapshotKey, toSnapshot(currentState));
+        }
+      }
+    }
+
     if (!activeContext || !activeContext.rootPath) {
+      lastActiveTabId = null;
       set({
         rootFolderPath: '',
         currentFolderPath: '',
@@ -544,12 +573,15 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         compareSlider: 50,
         offset: 0,
         isLoading: false,
-        hasMore: false
+        hasMore: false,
+        lastFetchedSignature: null
       });
       return false;
     }
 
     const { tabId, rootPath, isWalk } = activeContext;
+    lastActiveTabId = tabId;
+
     if (isPageTabPath(rootPath)) {
       set({
         rootFolderPath: rootPath,
@@ -563,7 +595,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         compareSlider: 50,
         offset: 0,
         isLoading: false,
-        hasMore: false
+        hasMore: false,
+        lastFetchedSignature: null
       });
       return false;
     }
@@ -571,7 +604,6 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const { searchQuery, sortBy, sortDirection } = get();
     const safeQuery = typeof searchQuery === 'string' ? searchQuery : '';
     const persistedCurrentPath = getPersistedTabFolderPath(tabId);
-    const currentState = get();
     const canReuseStateCurrentPath =
       samePath(currentState.rootFolderPath, rootPath) &&
       pathWithinRoot(currentState.currentFolderPath, rootPath) &&
@@ -595,7 +627,17 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
     const snapshot = getSnapshot(snapshotKey);
 
     if (snapshot) {
-      set({ ...snapshot, isLoading: false });
+      set({
+        ...snapshot,
+        isLoading: false,
+        lastFetchedSignature: snapshotKey,
+        isTabSwitching: true
+      });
+      setTimeout(() => {
+        if (useTabsStore.getState().activeTabId === tabId) {
+          set({ isTabSwitching: false });
+        }
+      }, 350);
       if (!isWalk) {
         setPersistedTabFolderPath(
           tabId,
@@ -617,7 +659,8 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       compareSlider: 50,
       offset: 0,
       isLoading: false,
-      hasMore: false
+      hasMore: false,
+      lastFetchedSignature: null
     });
 
     if (!isWalk) {
@@ -757,7 +800,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
           isLoading: false
         };
 
-        set(nextState);
+        set({ ...nextState, lastFetchedSignature: snapshotKey });
         setPersistedTabFolderPath(tabId, rootPath);
         setSnapshot(snapshotKey, {
           ...toSnapshot(get()),
@@ -804,7 +847,7 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         isLoading: false
       };
 
-      set(nextState);
+      set({ ...nextState, lastFetchedSignature: snapshotKey });
       setPersistedTabFolderPath(tabId, nextState.currentFolderPath || rootPath);
       setSnapshot(snapshotKey, {
         ...toSnapshot(get()),

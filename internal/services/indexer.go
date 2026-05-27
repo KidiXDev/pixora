@@ -338,7 +338,7 @@ func (i *Indexer) processFile(path string, stored *db.ImageRecord) {
 func (i *Indexer) handleStoredImage(path string, ext string, stored *db.ImageRecord) (bool, bool) {
 	refreshMetadata := shouldRefreshPNGMetadata(ext, stored)
 	if refreshMetadata {
-		log.Printf("Refreshing stale PNG metadata for %s (missing parsed metadata)", path)
+		// log.Printf("Refreshing stale PNG metadata for %s (missing parsed metadata)", path)
 	} else if stored.ThumbReady {
 		return false, refreshMetadata
 	}
@@ -408,13 +408,13 @@ func (i *Indexer) extractMetadata(path string, ext string, refreshMetadata bool)
 	}
 
 	result.status = classifyMetadataStatus(meta)
-	if refreshMetadata {
-		if result.status == db.MetadataStatusPresent {
-			log.Printf("Fixed stale metadata for %s", path)
-		} else {
-			log.Printf("PNG metadata unavailable after refresh for %s", path)
-		}
-	}
+	// if refreshMetadata {
+	// 	if result.status == db.MetadataStatusPresent {
+	// 		log.Printf("Fixed stale metadata for %s", path)
+	// 	} else {
+	// 		log.Printf("PNG metadata unavailable after refresh for %s", path)
+	// 	}
+	// }
 
 	result.prompt = meta.Prompt
 	result.negativePrompt = meta.NegativePrompt

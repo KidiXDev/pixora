@@ -84,34 +84,38 @@ export function MetadataInspector() {
 
   useEffect(() => {
     const handleOutsideClick = (e: PointerEvent) => {
-      const target = e.target as HTMLElement;
-
-      if (target.closest('.metadata-inspector-panel')) return;
-      if (target.closest('.full-image-viewer-panel')) return;
-      if (target.closest('.titlebar-panel')) return;
-
-      const hasWailsStyle = (el: HTMLElement | null): boolean => {
-        if (!el) return false;
-        try {
-          const style = window.getComputedStyle(el);
-          const draggable = style.getPropertyValue('--wails-draggable');
-          const resize = style.getPropertyValue('--wails-resize');
-          if (draggable || resize) return true;
-        } catch {
-          // ignore potential errors in getComputedStyle on non-elements
-        }
-        return hasWailsStyle(el.parentElement);
+      const path = e.composedPath();
+      const hasClickedElement = (selector: string) => {
+        return path.some(
+          (el) => el instanceof HTMLElement && el.closest(selector)
+        );
       };
 
-      if (hasWailsStyle(target)) return;
+      if (hasClickedElement('.metadata-inspector-panel')) return;
+      if (hasClickedElement('.full-image-viewer-panel')) return;
+      if (hasClickedElement('.titlebar-panel')) return;
+      if (hasClickedElement('.tab-navigation-panel')) return;
 
-      if (target.tagName.toLowerCase() === 'img') return;
+      const hasWailsStyleInPath = path.some((el) => {
+        if (!(el instanceof HTMLElement)) return false;
+        try {
+          const style = window.getComputedStyle(el);
+          return !!(style.getPropertyValue('--wails-draggable') || style.getPropertyValue('--wails-resize'));
+        } catch {
+          return false;
+        }
+      });
+
+      if (hasWailsStyleInPath) return;
+
+      const targetElement = path[0];
+      if (targetElement instanceof HTMLElement && targetElement.tagName.toLowerCase() === 'img') return;
 
       const isRadixPortal = !!document.querySelector('[data-radix-portal]');
       const hasOpenSelect = !!document.querySelector('[data-state="open"]');
       const isClickingRadixPortal =
-        !!target.closest('[data-radix-portal]') ||
-        !!target.closest('[data-slot^="select-"]');
+        hasClickedElement('[data-radix-portal]') ||
+        hasClickedElement('[data-slot^="select-"]');
 
       if (isRadixPortal || hasOpenSelect || isClickingRadixPortal) {
         return;

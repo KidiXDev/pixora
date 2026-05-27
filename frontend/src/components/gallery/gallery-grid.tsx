@@ -216,16 +216,33 @@ export function GalleryGrid() {
   const pruneTabScopedState = useGalleryStore(
     (state) => state.pruneTabScopedState
   );
+  const hydrateActiveTabSnapshot = useGalleryStore(
+    (state) => state.hydrateActiveTabSnapshot
+  );
   const tabs = useTabsStore((state) => state.tabs);
   const activeTabId = useTabsStore((state) => state.activeTabId);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabPath = activeTab?.path ?? null;
 
+  useLayoutEffect(() => {
+    hydrateActiveTabSnapshot();
+  }, [activeTabId, hydrateActiveTabSnapshot]);
+
   useEffect(() => {
-    if (activeTabId && activeTabPath === null) {
+    if (!activeTabId || !activeTabPath) {
       return;
     }
+
+    const state = useGalleryStore.getState();
+    const isWalk = Boolean(activeTab?.isWalk);
+    const safeQuery = typeof state.searchQuery === 'string' ? state.searchQuery : '';
+    const currentSignature = `${activeTabId}|${isWalk ? 'walk' : 'normal'}|${state.currentFolderPath || activeTabPath || ''}|${safeQuery}|${state.sortBy}|${state.sortDirection}`;
+
+    if (state.lastFetchedSignature === currentSignature) {
+      return;
+    }
+
     const frameId = requestAnimationFrame(() => {
       void fetchImages(true);
     });

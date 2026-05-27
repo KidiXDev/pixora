@@ -21,6 +21,12 @@ export function FullImageViewer() {
     null
   );
 
+  // Sync state during render immediately if we are switching images (not closing)
+  // to avoid showing the old image while switching tabs or images.
+  if (currentImage && activeImage !== currentImage) {
+    setActiveImage(currentImage);
+  }
+
   useEffect(() => {
     if (currentImage) {
       setActiveImage(currentImage);
@@ -37,7 +43,6 @@ export function FullImageViewer() {
     }
   }, [selectedImageId, currentImage, isLoading, setSelectedImageId]);
 
-  // Reset state when image changes
   useEffect(() => {
     setOffset({ x: 0, y: 0 });
     setScale(1);
@@ -121,7 +126,7 @@ export function FullImageViewer() {
       )}
 
       <div
-        className="flex-1 w-full h-full p-8 pr-[33.333%] flex items-center justify-center overflow-hidden"
+        className="flex-1 w-full h-full p-8 pr-[33.333%] flex items-center justify-center overflow-hidden relative"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             setSelectedImageId(null);

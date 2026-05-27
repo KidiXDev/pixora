@@ -522,7 +522,7 @@ export function TabNavigation() {
       onDragEnd={handleDragEnd}
     >
       <div
-        className="flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden"
+        className="tab-navigation-panel flex h-12 w-full items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/40 px-2 overflow-hidden"
         style={noDragRegionStyle}
       >
         {/* Scrollable Tabs Area */}
