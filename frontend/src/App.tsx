@@ -1,14 +1,17 @@
 import { ConfirmationProvider } from '@/components/providers/confirmation-provider';
 import { Events } from '@wailsio/runtime';
+import { AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { GetSetupStatus } from '../bindings/pixora/internal/services/comfyuimanager';
 import { ToggleDevTools } from '../bindings/pixora/internal/services/galleryservice';
+import { IntroScreen } from './components/common/intro-screen';
 import { router } from './routes';
 import { useConfigStore } from './stores/config-store';
 
 function App() {
   const [globalPermissionMessage, setGlobalPermissionMessage] = useState('');
+  const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
     useConfigStore.getState().loadConfig();
@@ -87,6 +90,14 @@ function App() {
 
   return (
     <ConfirmationProvider>
+      <AnimatePresence>
+        {showIntro && (
+          <IntroScreen
+            onComplete={() => setShowIntro(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {globalPermissionMessage !== '' && (
         <div className="fixed left-4 right-4 top-16 z-9998 rounded-lg border border-destructive/60 bg-destructive/15 px-4 py-3 text-sm text-foreground shadow-lg backdrop-blur-sm">
           <p className="font-medium text-destructive">
