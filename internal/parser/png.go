@@ -266,6 +266,7 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 	negativeRef := ""
 	latentRef := ""
 	samplerRef := ""
+	modelScore := 0
 
 	for nodeID, nodeVal := range nodes {
 		nodeMap, ok := asMap(nodeVal)
@@ -278,10 +279,9 @@ func parseComfyPromptJSON(raw string, metadata *ImageMetadata) {
 		classType := normalizeClassType(asString(nodeMap["class_type"]))
 		nodeClasses[nodeID] = classType
 
-		if metadata.Model == "" {
-			if model := extractComfyModelName(classType, inputs); model != "" {
-				metadata.Model = model
-			}
+		if model, score := extractComfyModelName(classType, inputs); score > modelScore {
+			metadata.Model = model
+			modelScore = score
 		}
 
 		switch {
@@ -406,27 +406,67 @@ func isLatentSizeNodeClass(classType string) bool {
 	return strings.Contains(classType, "empty") && strings.Contains(classType, "latent")
 }
 
-func extractComfyModelName(classType string, inputs map[string]any) string {
+func extractComfyModelName(classType string, inputs map[string]any) (string, int) {
 	if model := asString(inputs["ckpt_name"]); model != "" {
-		return model
+		return model, 100
 	}
 	if model := asString(inputs["unet_name"]); model != "" {
-		return model
+		return model, 95
+	}
+	if model := asString(inputs["diffusion_model"]); model != "" {
+		return model, 90
+	}
+	if model := asString(inputs["diffusion_model_name"]); model != "" {
+		return model, 90
 	}
 
-	if strings.Contains(classType, "checkpoint") || strings.Contains(classType, "unet") || strings.Contains(classType, "diffusion") || strings.Contains(classType, "loader") {
+	if isLikelyDiffusionModelLoaderClass(classType) {
 		if model := asString(inputs["model_name"]); model != "" {
-			return model
-		}
-		if model := asString(inputs["diffusion_model"]); model != "" {
-			return model
-		}
-		if model := asString(inputs["diffusion_model_name"]); model != "" {
-			return model
+			return model, 70
 		}
 	}
 
-	return ""
+	return "", 0
+}
+
+func isLikelyDiffusionModelLoaderClass(classType string) bool {
+	if classType == "" {
+		return false
+	}
+
+	negativeKeywords := []string{
+		"samloader",
+		"samdetector",
+		"detector",
+		"clipseg",
+		"ultralytics",
+		"bbox",
+		"segm",
+		"segment",
+		"mask",
+		"onnx",
+	}
+	for _, keyword := range negativeKeywords {
+		if strings.Contains(classType, keyword) {
+			return false
+		}
+	}
+
+	positiveKeywords := []string{
+		"checkpoint",
+		"loadcheckpoint",
+		"unet",
+		"diffusion",
+		"modelloader",
+		"model_loader",
+	}
+	for _, keyword := range positiveKeywords {
+		if strings.Contains(classType, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func resolvePromptTextForNode(nodeID string, nodeInputs map[string]map[string]any, visiting map[string]bool) string {

@@ -289,6 +289,31 @@ func TestParseComfyPromptJSONSupportsYEPromptChain(t *testing.T) {
 	}
 }
 
+func TestParseComfyPromptJSONIgnoresSAMLoaderModelName(t *testing.T) {
+	raw := `{
+  "1": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "Prefer GPU"
+    },
+    "class_type": "SAMLoader"
+  },
+  "2": {
+    "inputs": {
+      "ckpt_name": "realvisxl_v5.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  }
+}`
+
+	m := &ImageMetadata{}
+	parseComfyPromptJSON(raw, m)
+
+	if m.Model != "realvisxl_v5.safetensors" {
+		t.Fatalf("unexpected model: %q", m.Model)
+	}
+}
+
 func TestParseITXtChunkUncompressed(t *testing.T) {
 	payload := []byte("parameters\x00\x00\x00\x00\x00hello world")
 	key, text, err := parseITXtChunk(payload)
