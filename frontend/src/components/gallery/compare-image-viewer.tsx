@@ -1,8 +1,8 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import { Slider } from '@/components/ui/slider';
 import { useGalleryStore } from '@/stores/gallery-store';
 import { useTabsStore } from '@/stores/tabs-store';
-import { Info, MoveHorizontal } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Columns2, Info, MoveHorizontal, Split } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ImageRecord } from '../../../bindings/pixora/internal/db/models';
 import { Button } from '../ui/button';
@@ -454,10 +454,21 @@ export function CompareImageViewer() {
   const activeTabId = useTabsStore((state) => state.activeTabId);
   const frameRef = useRef<HTMLDivElement>(null);
   const [showAnalysisPanel, setShowAnalysisPanel] = useState(false);
+  const [compareMode, setCompareMode] = useState<'swipe' | 'side-by-side'>(
+    'swipe'
+  );
+
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     setShowAnalysisPanel(false);
-  }, [activeTabId, compareImageIds?.[0], compareImageIds?.[1]]);
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+  }, [activeTabId, compareImageIds?.[0], compareImageIds?.[1], compareMode]);
 
   const firstImage = compareImageIds
     ? images.find((img) => img.ID === compareImageIds[0]) || null
@@ -497,6 +508,47 @@ export function CompareImageViewer() {
     updateFromPointerX(e.clientX);
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (compareMode !== 'side-by-side') return;
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - offset.x,
+      y: e.clientY - offset.y
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (compareMode !== 'side-by-side' || !isDragging) return;
+    setOffset({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (compareMode !== 'side-by-side') return;
+    const delta = -e.deltaY;
+    const factor = 0.002;
+    setScale((prev) => {
+      const next = prev + delta * factor;
+      return Math.max(1, Math.min(8, next));
+    });
+  };
+
+  const handleDoubleClick = () => {
+    if (compareMode !== 'side-by-side') return;
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
   const onImageError = (
     e: React.SyntheticEvent<HTMLImageElement, Event>,
     hash: string
@@ -514,11 +566,44 @@ export function CompareImageViewer() {
           <div className="truncate max-w-[45%]">
             A: {firstImage.Path.split(/[/\\]/).pop()}
           </div>
-          <MoveHorizontal size={16} className="text-white/70" />
+          <div className="flex items-center gap-2">
+            <MoveHorizontal size={16} className="text-white/70" />
+            <span className="text-xs text-white/40 uppercase tracking-widest hidden sm:inline">
+              {compareMode === 'swipe' ? 'Swipe Mode' : 'Side-by-Side'}
+            </span>
+          </div>
           <div className="flex max-w-[45%] items-center justify-end gap-2">
-            <div className="truncate text-right">
+            <div className="truncate text-right mr-1">
               B: {secondImage.Path.split(/[/\\]/).pop()}
             </div>
+
+            <Button
+              type="button"
+              variant={'ghost'}
+              onClick={() =>
+                setCompareMode((prev) =>
+                  prev === 'swipe' ? 'side-by-side' : 'swipe'
+                )
+              }
+              title={
+                compareMode === 'swipe'
+                  ? 'Switch to Side-by-Side view'
+                  : 'Switch to Swipe Split view'
+              }
+              aria-label={
+                compareMode === 'swipe'
+                  ? 'Switch to Side-by-Side view'
+                  : 'Switch to Swipe Split view'
+              }
+              className="h-8 w-8 p-0 text-white/70 hover:text-white hover:bg-white/10"
+            >
+              {compareMode === 'swipe' ? (
+                <Columns2 size={14} />
+              ) : (
+                <Split size={14} />
+              )}
+            </Button>
+
             <Button
               type="button"
               variant={'ghost'}
@@ -529,6 +614,7 @@ export function CompareImageViewer() {
               aria-label={
                 showAnalysisPanel ? 'Hide metadata diff' : 'Show metadata diff'
               }
+              className="h-8 w-8 p-0 text-white/70 hover:text-white hover:bg-white/10"
             >
               <Info size={14} />
             </Button>
@@ -537,39 +623,95 @@ export function CompareImageViewer() {
       </div>
 
       <div className="absolute inset-0 p-6 pt-16 pb-24">
-        <div
-          ref={frameRef}
-          className="relative h-full w-full touch-none select-none overflow-hidden rounded-lg border border-white/10 bg-black"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-        >
-          <img
-            src={`/image/?path=${encodeURIComponent(secondImage.Path)}`}
-            alt="Compare image B"
-            className="absolute inset-0 h-full w-full object-contain"
-            draggable={false}
-            onError={(e) => onImageError(e, secondImage.Hash)}
-          />
-
-          <img
-            src={`/image/?path=${encodeURIComponent(firstImage.Path)}`}
-            alt="Compare image A"
-            className="absolute inset-0 h-full w-full object-contain"
-            draggable={false}
-            style={{ clipPath: `inset(0 ${100 - compareSlider}% 0 0)` }}
-            onError={(e) => onImageError(e, firstImage.Hash)}
-          />
-
+        {compareMode === 'swipe' ? (
           <div
-            className="pointer-events-none absolute inset-y-0 z-20"
-            style={{ left: `${compareSlider}%` }}
+            ref={frameRef}
+            className="relative h-full w-full touch-none select-none overflow-hidden rounded-lg border border-white/10 bg-black"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
           >
-            <div className="absolute -left-px top-0 h-full w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.3)]" />
-            <div className="absolute left-0 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/50 bg-black/70 p-2 text-white shadow-lg">
-              <MoveHorizontal size={14} />
+            <img
+              src={`/image/?path=${encodeURIComponent(secondImage.Path)}`}
+              alt="Compare image B"
+              className="absolute inset-0 h-full w-full object-contain"
+              draggable={false}
+              onError={(e) => onImageError(e, secondImage.Hash)}
+            />
+
+            <img
+              src={`/image/?path=${encodeURIComponent(firstImage.Path)}`}
+              alt="Compare image A"
+              className="absolute inset-0 h-full w-full object-contain"
+              draggable={false}
+              style={{ clipPath: `inset(0 ${100 - compareSlider}% 0 0)` }}
+              onError={(e) => onImageError(e, firstImage.Hash)}
+            />
+
+            <div
+              className="pointer-events-none absolute inset-y-0 z-20"
+              style={{ left: `${compareSlider}%` }}
+            >
+              <div className="absolute -left-px top-0 h-full w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.3)]" />
+              <div className="absolute left-0 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/50 bg-black/70 p-2 text-white shadow-lg">
+                <MoveHorizontal size={14} />
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div
+            className="grid grid-cols-2 gap-4 h-full w-full select-none"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+            onWheel={handleWheel}
+            onDoubleClick={handleDoubleClick}
+          >
+            <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 bg-black flex items-center justify-center">
+              <img
+                src={`/image/?path=${encodeURIComponent(firstImage.Path)}`}
+                alt="Compare image A"
+                className="max-w-full max-h-full object-contain select-none shadow-2xl rounded-sm transition-transform duration-75 ease-out"
+                draggable={false}
+                style={{
+                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                  transition: isDragging ? 'none' : undefined,
+                  cursor: isDragging
+                    ? 'grabbing'
+                    : scale > 1
+                      ? 'grab'
+                      : 'default'
+                }}
+                onError={(e) => onImageError(e, firstImage.Hash)}
+              />
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-black/75 text-xs text-white/90 border border-white/10 font-medium z-10">
+                Image A
+              </div>
+            </div>
+
+            <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 bg-black flex items-center justify-center">
+              <img
+                src={`/image/?path=${encodeURIComponent(secondImage.Path)}`}
+                alt="Compare image B"
+                className="max-w-full max-h-full object-contain select-none shadow-2xl rounded-sm transition-transform duration-75 ease-out"
+                draggable={false}
+                style={{
+                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                  transition: isDragging ? 'none' : undefined,
+                  cursor: isDragging
+                    ? 'grabbing'
+                    : scale > 1
+                      ? 'grab'
+                      : 'default'
+                }}
+                onError={(e) => onImageError(e, secondImage.Hash)}
+              />
+              <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-black/75 text-xs text-white/90 border border-white/10 font-medium z-10">
+                Image B
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-24 left-1/2 top-16 z-30 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 md:left-auto md:right-4 md:w-96 md:translate-x-0 pointer-events-none">
@@ -655,18 +797,20 @@ export function CompareImageViewer() {
                       <div className="text-[10px] uppercase tracking-wide text-white/55">
                         Weight Changes
                       </div>
-                      {analysis.prompt.weightChanges.slice(0, 6).map((change) => (
-                        <div
-                          key={`weight-${change.key}`}
-                          className="flex items-center justify-between gap-2 text-[11px]"
-                        >
-                          <span className="truncate">{change.label}</span>
-                          <span className="text-white/65">
-                            {formatWeight(change.fromWeight)} -&gt;{' '}
-                            {formatWeight(change.toWeight)}
-                          </span>
-                        </div>
-                      ))}
+                      {analysis.prompt.weightChanges
+                        .slice(0, 6)
+                        .map((change) => (
+                          <div
+                            key={`weight-${change.key}`}
+                            className="flex items-center justify-between gap-2 text-[11px]"
+                          >
+                            <span className="truncate">{change.label}</span>
+                            <span className="text-white/65">
+                              {formatWeight(change.fromWeight)} -&gt;{' '}
+                              {formatWeight(change.toWeight)}
+                            </span>
+                          </div>
+                        ))}
                     </div>
                   )}
 
@@ -748,24 +892,38 @@ export function CompareImageViewer() {
         </AnimatePresence>
       </div>
 
-      <div className="absolute bottom-4 left-1/2 z-20 w-[min(560px,80%)] -translate-x-1/2 rounded-xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-md">
-        <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider text-white/70">
-          <span>Swipe Divider</span>
-          <span>{Math.round(compareSlider)}%</span>
+      {compareMode === 'swipe' ? (
+        <div className="absolute bottom-4 left-1/2 z-20 w-[min(560px,80%)] -translate-x-1/2 rounded-xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider text-white/70">
+            <span>Swipe Divider</span>
+            <span>{Math.round(compareSlider)}%</span>
+          </div>
+          <Slider
+            value={[compareSlider]}
+            min={0}
+            max={100}
+            step={1}
+            onValueChange={(value) => {
+              const next = Array.isArray(value) ? value[0] : value;
+              if (typeof next === 'number') {
+                setCompareSlider(next);
+              }
+            }}
+          />
         </div>
-        <Slider
-          value={[compareSlider]}
-          min={0}
-          max={100}
-          step={1}
-          onValueChange={(value) => {
-            const next = Array.isArray(value) ? value[0] : value;
-            if (typeof next === 'number') {
-              setCompareSlider(next);
-            }
-          }}
-        />
-      </div>
+      ) : (
+        <div>
+          {scale > 1 && (
+            <div className="absolute bottom-4 left-1/2 z-20 rounded-xl mb-4 -translate-x-1/2 text-[11px] text-white/70 flex items-center gap-3.5 shadow-lg select-none">
+              <>
+                <span className="text-cyan-400 font-bold bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-400/25">
+                  {scale.toFixed(1)}x Zoom
+                </span>
+              </>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
